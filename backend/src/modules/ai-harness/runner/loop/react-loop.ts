@@ -60,6 +60,7 @@ import { CacheControlPlanner } from "../context/cache-control-planner";
 import { HookRegistry } from "../../agents/core/hook-registry";
 import { BudgetAccountant } from "../../guardrails/budget/budget-accountant";
 import { ModelPricingRegistry } from "@/modules/ai-engine/llm/models/pricing/model-pricing.registry";
+import { classifyProviderFailure } from "@/modules/ai-engine/llm/providers/provider-failure";
 import { wrapToolObservation } from "./external-observation.util";
 import {
   MAX_TOOL_GATE_NUDGES,
@@ -1029,12 +1030,42 @@ export class ReActLoop implements IAgentLoop {
             | "context_too_long"
             | "outage"
             | "byok_quota_exceeded" = "outage";
+          // ★ L3-W0 typed error 归一化（2026-07-02）：优先按结构化信号
+          //   （HTTP status + provider error code）分类，消息文案 regex 降为
+          //   兜底——文案已因 xAI/OpenAI 差异修过两次，且它是 FailureLearner
+          //   等学习机制的输入地基。typed 拿不到（错误对象被中间层剥掉
+          //   axios 形状）时走既有 regex 链，行为零下降。
+          const typedFailure = classifyProviderFailure(err);
           // ★ 2026-05-01 (mission b791054e 真因)：quota/billing 错误必须独立编码 —
           //   OpenAI insufficient_quota 文案是"You exceeded your current quota,
           //   please check your plan and billing details" — 不含 "rate limit" / "429"，
           //   原本兜底成 PROVIDER_API_ERROR + "Agent 内部错误"，掩盖了"账户余额耗尽"
           //   这一关键真因。优先级最高（先于 rate_limit 判断）。
-          if (
+          if (typedFailure) {
+            switch (typedFailure.kind) {
+              case "quota_exceeded":
+                failureCode = "PROVIDER_QUOTA_EXCEEDED";
+                fallbackReason = "byok_quota_exceeded";
+                break;
+              case "rate_limit":
+                failureCode = "PROVIDER_RATE_LIMIT";
+                fallbackReason = "rate_limit";
+                break;
+              case "model_not_found":
+                failureCode = "PROVIDER_BYOK_MODEL_NOT_FOUND";
+                fallbackReason = "model_not_found";
+                break;
+              case "context_too_long":
+                failureCode = "PROVIDER_TRUNCATED";
+                fallbackReason = "context_too_long";
+                break;
+              case "auth":
+              case "server_error":
+                // 既有 regex 链无对应细分（历史归 PROVIDER_API_ERROR/outage），
+                // 保持默认值不变——只提精度不改语义面
+                break;
+            }
+          } else if (
             /(insufficient[_\s-]?quota|exceeded[_\s\w]*quota|quota[_\s\w]*exceed|billing[_\s\w]*details|insufficient[_\s\w]*credit|insufficient[_\s\w]*balance|payment\s+required)/i.test(
               message,
             )
