@@ -37,6 +37,7 @@ import {
   CONSISTENCY_CHECK_SYSTEM_PROMPT,
   CONSISTENCY_CHECK_USER_PROMPT,
 } from "../../prompts/consistency-check.prompt";
+import { InsightPromptPolicyService } from "../../prompts/insight-prompt-policy.service";
 
 /**
  * Report Generator Service
@@ -54,6 +55,8 @@ export class ReportGeneratorService {
   constructor(
     private readonly chatFacade: ChatFacade,
     private readonly assembler: ReportAssemblerService,
+    // ★ L3 W1: prompt 模板 dual-read（DB 策略优先，代码常量兜底）
+    private readonly promptPolicy: InsightPromptPolicyService,
     @Optional() private readonly qualityGate?: ReportQualityGateService,
   ) {}
 
@@ -262,8 +265,11 @@ ${warningConflicts.length > 0 ? `### 次要差异（建议处理）\n${warningCo
       `[generateStructuredReport] Generating report for ${dimensionInputs.length} dimensions`,
     );
 
-    // 渲染系统提示词（语言感知）
-    const systemPrompt = renderSynthesisSystemPrompt(topic.language || "zh");
+    // 渲染系统提示词（语言感知；模板经 dual-read）
+    const systemPrompt = renderSynthesisSystemPrompt(
+      topic.language || "zh",
+      await this.promptPolicy.reportSynthesis(),
+    );
 
     // 调用 AI 生成报告（带 input-complexity-check 容错）
     // ★ 不传 explicit maxTokens — 由 TaskProfile mapper 根据模型实际限制自动计算

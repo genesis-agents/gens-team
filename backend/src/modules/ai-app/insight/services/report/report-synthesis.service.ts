@@ -68,6 +68,7 @@ import {
   CONSISTENCY_CHECK_SYSTEM_PROMPT,
   CONSISTENCY_CHECK_USER_PROMPT,
 } from "../../prompts/consistency-check.prompt";
+import { InsightPromptPolicyService } from "../../prompts/insight-prompt-policy.service";
 import { ReportEditorService } from "./report-editor.service";
 import {
   ReportAssemblerService,
@@ -103,6 +104,8 @@ export class ReportSynthesisService {
     private readonly teamFacade: TeamFacade,
     private readonly reportEditor: ReportEditorService,
     private readonly assembler: ReportAssemblerService,
+    // ★ L3 W1: prompt 模板 dual-read（DB 策略优先，代码常量兜底）
+    private readonly promptPolicy: InsightPromptPolicyService,
     // ★ v4: 报告级质量门控
     private readonly qualityGate: ReportQualityGateService,
     // ★ v5: 全链路质量追踪
@@ -1734,9 +1737,10 @@ ${warningConflicts.length > 0 ? `### 次要差异（建议处理）\n${warningCo
       `[generateStructuredReport] Generating report for ${dimensionInputs.length} dimensions`,
     );
 
-    // 渲染系统提示词（语言感知）
+    // 渲染系统提示词（语言感知；模板经 dual-read）
     const baseSystemPrompt = renderSynthesisSystemPrompt(
       topic.language || "zh",
+      await this.promptPolicy.reportSynthesis(),
     );
 
     // ★ 2026-04-18: LaTeX validator + 3-attempt retry at synthesis boundary.

@@ -56,11 +56,8 @@ import {
   SessionLatencyTrackerService,
   type LatencySessionSummary,
 } from "@/modules/ai-harness/facade";
-import {
-  REPORT_EDITING_SYSTEM_PROMPT,
-  buildEditPrompt,
-  buildEnhancedEditPrompt,
-} from "./prompts";
+import { buildEditPrompt, buildEnhancedEditPrompt } from "./prompts";
+import { InsightPromptPolicyService } from "./prompts/insight-prompt-policy.service";
 import { BillingContext } from "../../platform/facade";
 import type { ResearchDepth } from "./types";
 
@@ -134,6 +131,8 @@ export class TopicInsightsService {
     private readonly researchStrategyService: ResearchStrategyService,
     private readonly agentActivityService: AgentActivityService,
     private readonly credibilityReportService: CredibilityReportService,
+    // ★ L3 W1: prompt 模板 dual-read（DB 策略优先，代码常量兜底）
+    private readonly promptPolicy: InsightPromptPolicyService,
     // ★ 4 个子服务（Facade pattern）
     private readonly crudService: TopicCrudService,
     private readonly dimensionService: TopicDimensionService,
@@ -1108,7 +1107,7 @@ export class TopicInsightsService {
       messages: [
         {
           role: "system",
-          content: REPORT_EDITING_SYSTEM_PROMPT,
+          content: await this.promptPolicy.reportEditing(),
         },
         { role: "user", content: prompt },
       ],

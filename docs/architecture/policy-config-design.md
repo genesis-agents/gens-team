@@ -126,11 +126,19 @@ teams.topology.debate-team
 
 ## 七、W1 分批计划
 
-| 批次             | 内容                                                                                                                                    | 验收                                              |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| **批 1（本次）** | 表 + 迁移 SQL + PolicyConfigService（dual-read/propose/activate/rollback）+ 单测                                                        | verify:arch 绿 + service spec 全绿 + 类型 0 error |
-| **批 2**         | 阈值先行（风险最低）：writing quality-thresholds + insight/playground 纯参数阈值入库；insight prompts 借 prompt-version.ts 版本语义入库 | 快照等同测试证明 DB 空 = 行为逐字节现状           |
-| **批 3**         | canonical 策略契约（prompt/拓扑数据面）+ playground↔insight 收敛 + report-template 半抽取补全（playground 采用共享契约）+ 其余模块分批  | 同上，逐模块 flag 灰度                            |
+| 批次         | 内容                                                                                                                                   | 验收                                              |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| **批 1** ✅  | 表 + 迁移 SQL + PolicyConfigService（dual-read/propose/activate/rollback）+ 单测                                                       | verify:arch 绿 + service spec 全绿 + 类型 0 error |
+| **批 2a** ✅ | writing 质量门三组阈值接 dual-read（样板）                                                                                             | 快照等同 spec 绿，writing 590 测试全绿            |
+| **批 2b** ✅ | insight 4 个核心 prompt 接 dual-read（借 prompt-version.ts 版本语义）                                                                  | 快照等同 spec 绿 + 13 套件 DI mock 修复           |
+| **批 2c**    | **playground（用户真入口）策略阈值**：minFindingsThreshold / chapterToleranceRatio 接 dual-read                                        | 快照等同 spec + playground 套件全绿               |
+| **批 3**     | canonical 策略契约（prompt/拓扑数据面）+ playground↔insight 收敛 + report-template 半抽取补全（playground 采用共享契约）+ 其余模块分批 | 同上，逐模块 flag 灰度                            |
+
+**优先级修正（2026-07-02 用户纠偏）**：2026-06-12 IA 重构后左侧菜单「AI 洞察」已改指 agent-playground，`/ai-insights`（insight 模块）仅路由保活（书签/直链可达）。**用户真入口是 playground**——批 2 原以 insight 为主的排序是按迁移顺滑度而非产品权重排的，已纠正为 insight 收尾即转 playground。insight 改动保留的理由：保活路由仍可能有流量、marketplace deep-insight 是其克隆、其 prompt 版本机制是 W2 telemetry 样板。
+
+**批 2c 接入形态（同步消费方约束）**：三个消费点中 s3 stage / per-dim-pipeline 在 async 流内可直接 await，但 `researcher.agent.ts` 的 `validateBusinessRules` 是框架 finalize 同步校验（无 ctx 参数、不能 await）。方案：**mission 启动时 resolve 一次 DB overlay 存模块级快照**（async + DI 可用处刷新），同步消费方读快照叠加在 `loadPlaygroundRuntimeConfig()` 之上；快照未刷新/DB 空 = 纯 env/profile 现状（零下降）。副产品：mission 内策略字节级一致（同 prompt cache prefix 冻结原则）。测试需暴露 reset 钩子防跨用例污染（借鉴 Claude Code 反向洞察 #8）。
+
+**策略 vs 安全网的划分原则（批 2c 起生效）**：playground runtime 旋钮里只有**策略类**（minFindingsThreshold、chapterToleranceRatio——影响产出质量的业务决策）进 PolicyConfig；**安全网类**（staleThresholdMin / softWarn / wallTimeCap / noProgress\* / tokenCapUnits——liveness 看门狗与预算兜底）**永不数据化**，留 env + tuning profile。理由：W3 变体提议器将获得改 PolicyConfig 的权力，**系统不应能修改自己的保险丝**——爆炸半径控制（缺口 #6）的前置纪律。
 
 ## 八、待用户拍板的开放点（不阻塞批 1）
 

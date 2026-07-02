@@ -28,8 +28,8 @@ import {
 import { AIModelType } from "@prisma/client";
 import type { SectionPlan } from "../core/research/research-leader.service";
 import type { FigureRegistryEntry } from "./evidence-summary.utils";
+import { InsightPromptPolicyService } from "../../prompts/insight-prompt-policy.service";
 import {
-  SECTION_WRITING_SYSTEM_PROMPT,
   SECTION_WRITING_USER_PROMPT_TEMPLATE,
   SECTION_REVISION_USER_PROMPT_TEMPLATE,
   formatEvidenceForPrompt,
@@ -175,6 +175,7 @@ export class SectionWriterService {
   constructor(
     private readonly chatFacade: ChatFacade,
     private readonly engineFacade: AIFacade,
+    private readonly promptPolicy: InsightPromptPolicyService,
     @Optional()
     private readonly promptCacheCoordinator?: PromptCacheCoordinatorService,
   ) {}
@@ -356,7 +357,8 @@ export class SectionWriterService {
     const languageInstruction = getLanguageInstruction(
       input.topicLanguage || "zh",
     );
-    const systemPrompt = renderPromptTemplate(SECTION_WRITING_SYSTEM_PROMPT, {
+    const sectionWritingTemplate = await this.promptPolicy.sectionWriting();
+    const systemPrompt = renderPromptTemplate(sectionWritingTemplate, {
       languageInstruction,
       externalContentNotice: getExternalContentNotice(input.topicLanguage),
       writingStandards: getWritingStandards(input.topicLanguage || "zh"),
@@ -870,7 +872,7 @@ export class SectionWriterService {
       input.topicLanguage || "zh",
     );
     const revisionSystemPrompt = renderPromptTemplate(
-      SECTION_WRITING_SYSTEM_PROMPT,
+      await this.promptPolicy.sectionWriting(),
       {
         languageInstruction: revisionLanguageInstruction,
         externalContentNotice: getExternalContentNotice(input.topicLanguage),
