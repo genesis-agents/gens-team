@@ -140,8 +140,28 @@ teams.topology.debate-team
 
 **策略 vs 安全网的划分原则（批 2c 起生效）**：playground runtime 旋钮里只有**策略类**（minFindingsThreshold、chapterToleranceRatio——影响产出质量的业务决策）进 PolicyConfig；**安全网类**（staleThresholdMin / softWarn / wallTimeCap / noProgress\* / tokenCapUnits——liveness 看门狗与预算兜底）**永不数据化**，留 env + tuning profile。理由：W3 变体提议器将获得改 PolicyConfig 的权力，**系统不应能修改自己的保险丝**——爆炸半径控制（缺口 #6）的前置纪律。
 
-## 八、待用户拍板的开放点（不阻塞批 1）
+## 八、批 3b canonical prompt 契约终稿（2026-07-02 设计 workflow 合成，评分 C 22.5 > A 21 > B 13）
 
-1. **TOPOLOGY 的 value 形状**：摸底建议只存数据面（角色清单/数量约束/步骤依赖），执行面（ctx 读写/重跑级联）留代码——批 3 前确认
+**基底裁决**：方案 C 的机制 × 方案 A 的范围。
+
+- **载体**：SKILL.md 原文作 canonical（`SkillDocPolicyValue = { schemaVersion: 1, markdown }`），解析复用 ai-engine 的 skill parser（新拆 `loadSkillFromString`，`loadSkill(file)` 委托之）——不发明第三种格式
+- **投影保险丝**：DB 覆盖**只作用于 `skillSpec.systemPrompt`**；frontmatter 的 allowedTools/allowedModels/outputSchema 永远取代码，DB 文档 frontmatter 与代码副本不一致 → 整 key 拒绝回代码 + warn——堵死"一次 PROMPT activate 静默扩权工具面"
+- **接入形态**：`applyMissionPolicyOverlay(cfg)` 纯函数 per-mission clone，快照全空返回原引用（toBe 级零下降）；绝不回写 registry/catalog/dag-view（反向洞察 #8）；刷新点与批 2c 的 strategy overlay 同点位（runMission 起点）
+- **机制统一 ≠ 文本共 key**：insight 4 key 冻结（value 形状上提契约、禁止新增）；两代文本收敛走逐 key 人工 activate（changeReason + golden eval 把关），永远不是迁移的自动副作用
+- **key**：`playground.prompt.skill.<roleId>` × 8（leader 缓接，见开放点）；deep-insight（playground 字节级克隆，7/8 identical + leader DIFFERS）跨模块读同组 key
+- **surface 枚举**：`PLAYGROUND_POLICY_SURFACE` 带 `efficacy: "live" | "soul-inert"` 标注（实测仅 plan/assess/signoff 三个 primitive 消费 `skillSpec.systemPrompt`，其余角色运行时 prompt 主体在 `buildSystemPrompt()` 执行面）；W3 提议器 v1 只许写 live 条目
+
+**迁移步骤**（每步带验证标准，详见 workflow 合成全文）：① 契约文件 + insight 类型上提 → ② SKILL.md 双副本 sha256 漂移守护 spec → ③ engine `loadSkillFromString` 拆分 → ④ playground prompt 快照 dual-read + `applyMissionPolicyOverlay`（核心）→ ⑤ surface 枚举 + efficacy 一致性 spec → ⑥ deep-insight 接同 key（leader 缓接）→ ⑦ backfill propose 不激活 + staging 人工灰度 → ⑧ W2 telemetry 溯源快照对接。
+
+**不做清单**（带复活触发条件）：拓扑 TOPOLOGY key（W3 提拓扑变体/analyst 拍板/用户自定义团队时复活，数据面草案 = roles min-max + steps dependsOn）、两代文本收敛、`buildSystemPrompt` 动态正文模板化（若 W3 证实 soul 层杠杆不足 → 二期静态段抽取，**可能早到**）、B 的全套投机抽象（15 值 roleId union / 双轴寻址）、拓扑 v1 死旋钮、insight review-gate 阈值、deep-insight 独立 kill-switch、删 SKILL.md 副本、insight 三级链。
+
+**已自驱拍板**（有异议请推翻）：灰度捆绑接受——deep-insight 跨模块读 `playground.*`，开 playground 白名单同时点亮 marketplace 面（同产品两货架，预期行为）；独立止血靠 rollback 该 key。
+
+**残留风险如实声明**：8 key 中仅 live 路径角色的 soul 即时生效（其余 soul-inert = 编码统一 + 二期铺路）；模块级快照并发 mission last-write-wins（批 2c 同款已接受，per-mission clone 保 mission 内冻结）；DB 文本与代码内业务红线语义漂移无法机器校验——靠 changeReason + contentHash 溯源 + activate 前 golden eval 人工门。
+
+## 九、待用户拍板的开放点
+
+1. ~~**TOPOLOGY 的 value 形状**~~ ✅ 已定：只存数据面，且整体推迟（§八不做清单 #1，草案留档）
 2. **Redis 热切换**：多实例部署时 60s TTL 是否够，还是照抄 CapabilityFeatureFlags 加 Redis 层？——W2 影子模式前定
-3. **analyst 角色分叉**：playground 单 analyst vs insight 3 专业角色，收敛到哪边或保留双拓扑？——批 3 前定
+3. ~~**analyst 角色分叉**~~ ✅ 已定：不强行合并（§八机制统一不共文本）
+4. **leader SKILL.md 双副本已漂移**（playground 版 vs marketplace deep-insight 版内容不同）：以哪版为准、还是有意分叉各自保留？拍板前 leader 不接共享 key（漂移守护 spec 对 leader 用 it.skip 留闸 + deep-insight 缓接）
