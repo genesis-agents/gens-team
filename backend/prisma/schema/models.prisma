@@ -2538,6 +2538,36 @@ model SystemSetting {
   @@map("system_settings")
 }
 
+// ============ 策略配置（L3 W1 策略数据化）============
+// 设计稿: docs/architecture/policy-config-design.md
+// append-only: 行创建后 value 不变，改 = 插入新 version；回滚 = 复制旧值为新 version 激活
+
+enum PolicyKind {
+  PROMPT
+  THRESHOLD
+  TOPOLOGY
+}
+
+model PolicyConfig {
+  id           String     @id @default(cuid())
+  key          String     @db.VarChar(200) // 命名空间点分: "<module>.<kind>.<name>", 如 "insight.prompt.section-writing"
+  version      Int // 每 key 单调递增，从 1 起
+  kind         PolicyKind
+  value        Json // PROMPT: {template}; THRESHOLD: 对象; TOPOLOGY: 拓扑数据面
+  contentHash  String     @db.VarChar(16) // sha256 前 16 hex（对齐 insight prompt-version.ts hashPrompt）
+  isActive     Boolean    @default(false) // 每 key 至多一行 active（service 事务保证）
+  createdBy    String     @db.VarChar(200) // who: "human:<email>" | "system:<component>"
+  changeReason String     @db.Text // why: 必填，审计链是 L3 回滚的依据
+  activatedBy  String?    @db.VarChar(200)
+  activatedAt  DateTime?  @map("activated_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@unique([key, version])
+  @@index([key, isActive])
+  @@index([kind, isActive])
+  @@map("policy_configs")
+}
+
 // ============ AI模型配置 ============
 
 // AI模型类型枚举 - 支持 Tier 分级

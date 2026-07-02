@@ -34,6 +34,7 @@ import { NotificationModule } from "./modules/platform/notifications/notificatio
 import { NotificationDispatcherModule } from "./modules/platform/notifications/dispatcher/notification-dispatcher.module";
 import { ReleaseModule } from "./modules/platform/release/release.module";
 import { SettingsModule } from "./modules/platform/settings/settings.module";
+import { PolicyConfigModule } from "./modules/platform/policy-config/policy-config.module";
 import { StorageModule } from "./modules/platform/storage/storage.module";
 import { DbOpsModule } from "./modules/platform/db-ops/db-ops.module";
 import { CreditsModule } from "./modules/platform/credits/credits.module";
@@ -198,6 +199,7 @@ import { AiObservabilityService } from "./modules/ai-harness/facade";
     NotificationDispatcherModule,
     ReleaseModule,
     SettingsModule,
+    PolicyConfigModule,
     StorageModule,
     DbOpsModule,
     CreditsModule,
