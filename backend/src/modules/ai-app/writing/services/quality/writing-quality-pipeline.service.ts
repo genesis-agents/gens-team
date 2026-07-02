@@ -84,7 +84,7 @@ export class WritingQualityPipelineService {
     }
 
     // Stage 2: Content Gate (heuristic scoring)
-    const contentVerdict = this.contentGate.evaluate(
+    const contentVerdict = await this.contentGate.evaluate(
       currentContent,
       projectId,
       {

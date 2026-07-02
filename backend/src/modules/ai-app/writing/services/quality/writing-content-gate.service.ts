@@ -10,7 +10,7 @@
 
 import { Injectable } from "@nestjs/common";
 import { NarrativeCraftService } from "./narrative-craft.service";
-import { CONTENT_GATE } from "../config/quality-thresholds.config";
+import { WritingQualityPolicyService } from "../config/writing-quality-policy.service";
 
 export interface QualityVerdict {
   passed: boolean;
@@ -33,19 +33,23 @@ export interface QualityIssue {
 
 @Injectable()
 export class WritingContentGateService {
-  constructor(private readonly narrativeCraft: NarrativeCraftService) {}
+  constructor(
+    private readonly narrativeCraft: NarrativeCraftService,
+    private readonly policy: WritingQualityPolicyService,
+  ) {}
 
   /**
    * Evaluate content quality
    */
-  evaluate(
+  async evaluate(
     content: string,
     _projectId: string,
     _options?: {
       chapterNumber?: number;
       characters?: Array<{ name: string; role?: string }>;
     },
-  ): QualityVerdict {
+  ): Promise<QualityVerdict> {
+    const gate = await this.policy.contentGate();
     const issues: QualityIssue[] = [];
 
     // 1. Narrative craft check (code-based, fast)
@@ -76,7 +80,7 @@ export class WritingContentGateService {
     const consistencyScore = 80;
 
     // Calculate overall score
-    const weights = CONTENT_GATE.DIMENSION_WEIGHTS;
+    const weights = gate.DIMENSION_WEIGHTS;
     const overallScore = Math.round(
       coherenceScore * weights.coherence +
         consistencyScore * weights.consistency +
@@ -85,7 +89,7 @@ export class WritingContentGateService {
         narrativeCraftScore * weights.narrativeCraft,
     );
 
-    const passed = overallScore >= CONTENT_GATE.MIN_OVERALL_SCORE;
+    const passed = overallScore >= gate.MIN_OVERALL_SCORE;
 
     return {
       passed,

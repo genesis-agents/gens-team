@@ -10,7 +10,7 @@
  */
 
 import { Injectable } from "@nestjs/common";
-import { STRUCTURAL_GATE } from "../config/quality-thresholds.config";
+import { WritingQualityPolicyService } from "../config/writing-quality-policy.service";
 
 export interface StructuralGateResult {
   passed: boolean;
@@ -28,7 +28,7 @@ export interface StructuralViolation {
 
 @Injectable()
 export class WritingStructuralGateService {
-  constructor() {}
+  constructor(private readonly policy: WritingQualityPolicyService) {}
 
   /**
    * Run structural validation on generated content
@@ -44,10 +44,11 @@ export class WritingStructuralGateService {
     const fixedContent = content;
 
     // 1. Word count validation
+    const gate = await this.policy.structuralGate();
     const wordCount = this.countWords(content);
     const minWords = options?.isOutline
-      ? STRUCTURAL_GATE.MIN_OUTLINE_WORDS
-      : STRUCTURAL_GATE.MIN_CHAPTER_WORDS;
+      ? gate.MIN_OUTLINE_WORDS
+      : gate.MIN_CHAPTER_WORDS;
 
     if (wordCount < minWords) {
       violations.push({

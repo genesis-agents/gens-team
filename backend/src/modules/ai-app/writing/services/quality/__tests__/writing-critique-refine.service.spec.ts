@@ -1,5 +1,6 @@
 import { Logger } from "@nestjs/common";
 import { WritingCritiqueRefineService } from "../writing-critique-refine.service";
+import { CRITIQUE_REFINE } from "../../config/quality-thresholds.config";
 
 describe("WritingCritiqueRefineService", () => {
   let service: WritingCritiqueRefineService;
@@ -14,7 +15,14 @@ describe("WritingCritiqueRefineService", () => {
       analyzeContent: jest.fn(),
       rewriteEnding: jest.fn(),
     };
-    service = new WritingCritiqueRefineService(narrativeCraft as never);
+    // dual-read 代码兜底路径：policy 返回代码常量（DB 空时的行为）
+    const policy = {
+      critiqueRefine: jest.fn().mockResolvedValue(CRITIQUE_REFINE),
+    };
+    service = new WritingCritiqueRefineService(
+      narrativeCraft as never,
+      policy as never,
+    );
   });
 
   it("skips refinement when initial score >= SKIP_THRESHOLD (85)", async () => {

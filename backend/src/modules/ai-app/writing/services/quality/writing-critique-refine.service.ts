@@ -11,7 +11,7 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { NarrativeCraftService } from "./narrative-craft.service";
-import { CRITIQUE_REFINE } from "../config/quality-thresholds.config";
+import { WritingQualityPolicyService } from "../config/writing-quality-policy.service";
 import type { QualityVerdict } from "./writing-content-gate.service";
 
 export interface CritiqueRefineResult {
@@ -30,7 +30,10 @@ export interface CritiqueRefineResult {
 export class WritingCritiqueRefineService {
   private readonly logger = new Logger(WritingCritiqueRefineService.name);
 
-  constructor(private readonly narrativeCraft: NarrativeCraftService) {}
+  constructor(
+    private readonly narrativeCraft: NarrativeCraftService,
+    private readonly policy: WritingQualityPolicyService,
+  ) {}
 
   /**
    * Iteratively improve content that failed quality gate
@@ -40,8 +43,9 @@ export class WritingCritiqueRefineService {
     verdict: QualityVerdict,
     _modelId: string,
   ): Promise<CritiqueRefineResult> {
+    const cfg = await this.policy.critiqueRefine();
     // Skip if already good enough
-    if (verdict.overallScore >= CRITIQUE_REFINE.SKIP_THRESHOLD) {
+    if (verdict.overallScore >= cfg.SKIP_THRESHOLD) {
       return {
         content,
         iterations: 0,
@@ -56,7 +60,7 @@ export class WritingCritiqueRefineService {
     let bestContent = content;
     let bestScore = currentScore;
 
-    for (let i = 0; i < CRITIQUE_REFINE.MAX_ITERATIONS; i++) {
+    for (let i = 0; i < cfg.MAX_ITERATIONS; i++) {
       this.logger.log(
         `[Iteration ${i + 1}] Current score: ${currentScore}, attempting refinement`,
       );
@@ -94,14 +98,14 @@ export class WritingCritiqueRefineService {
       }
 
       const improvement = newScore - currentScore;
-      if (improvement < CRITIQUE_REFINE.MIN_IMPROVEMENT) {
+      if (improvement < cfg.MIN_IMPROVEMENT) {
         return {
           content: bestContent,
           iterations: i + 1,
           improved: bestScore > verdict.overallScore,
           finalScore: bestScore,
           stopReason:
-            improvement < CRITIQUE_REFINE.CONVERGENCE_WINDOW
+            improvement < cfg.CONVERGENCE_WINDOW
               ? "score_converged"
               : "no_improvement",
         };
@@ -109,7 +113,7 @@ export class WritingCritiqueRefineService {
 
       currentScore = newScore;
 
-      if (currentScore >= CRITIQUE_REFINE.SKIP_THRESHOLD) {
+      if (currentScore >= cfg.SKIP_THRESHOLD) {
         return {
           content: currentContent,
           iterations: i + 1,
@@ -122,7 +126,7 @@ export class WritingCritiqueRefineService {
 
     return {
       content: bestContent,
-      iterations: CRITIQUE_REFINE.MAX_ITERATIONS,
+      iterations: cfg.MAX_ITERATIONS,
       improved: bestScore > verdict.overallScore,
       finalScore: bestScore,
       stopReason: "max_iterations",
