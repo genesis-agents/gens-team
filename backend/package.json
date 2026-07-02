@@ -46,7 +46,8 @@
     "audit:debt:strict": "tsx scripts/dev-tools/audit-architecture-debt.ts --strict",
     "audit:debt:json": "tsx scripts/dev-tools/audit-architecture-debt.ts --json",
     "maintenance:policy": "tsx scripts/maintenance/update-policy-whitelist.ts",
-    "maintenance:validate": "tsx scripts/maintenance/validate-data-integrity.ts"
+    "maintenance:validate": "tsx scripts/maintenance/validate-data-integrity.ts",
+    "report:mission-baseline": "tsx scripts/maintenance/report-mission-baseline.ts"
   },
   "prisma": {
     "schema": "prisma/schema",

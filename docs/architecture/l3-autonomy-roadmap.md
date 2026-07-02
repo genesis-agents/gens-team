@@ -54,12 +54,20 @@
 
 ## 六、W0 任务清单
 
-| #   | 任务                                                                       | 状态           |
-| --- | -------------------------------------------------------------------------- | -------------- |
-| 1   | 单例 adapter BYOK 竞态 P0 修复（withConfig 绑定视图 + 竞态复现测试）       | ✅ `b3b6a42d0` |
-| 2   | provider typed error 归一化（新分类器优先、regex 兜底双轨）                | ⏳             |
-| 3   | eval fail-open 修复（解析失败/空 verdicts 不再默认通过）                   | ⏳             |
-| 4   | CI 覆盖率实测 + 开启强制（`test:ci` 加 `--coverage`，修 codecov 静默失败） | ⏳             |
-| 5   | golden eval 数据集骨架                                                     | ⏳             |
-| 6   | 业务基线指标固化（mission 成功率/成本/时延，从现有 tracing 提取）          | ⏳             |
-| 7   | Dockerfile 改 `npm ci`（构建可复现，SOTA 报告 P0）                         | ⏳             |
+| #   | 任务                                                                          | 状态                                                                 |
+| --- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| 1   | 单例 adapter BYOK 竞态 P0 修复（withConfig 绑定视图 + 竞态复现测试）          | ✅ `b3b6a42d0`                                                       |
+| 2   | provider typed error 归一化（结构化信号优先、regex 兜底双轨）                 | ✅ `787313589`                                                       |
+| 3   | eval fail-open 修复（`EVAL_FAIL_CLOSED` 开关 + 常开观测 warn）                | ✅ `2ffb26c37`                                                       |
+| 4   | CI 覆盖率开启强制（阈值按实测锁棘轮：pg 81/92、harness fn77、engine 74/80）   | ✅ `8dba3a21a`                                                       |
+| 5   | golden eval 数据集骨架（verdict 解析 + consensus 样本，只增不删）             | ✅ `b4029d809`                                                       |
+| 6   | 业务基线报告脚本 `npm run report:mission-baseline`（成功率/成本/时延 p50-95） | ✅（生产首拍待下次部署后容器内跑，脚本已随镜像 COPY scripts 进容器） |
+| 7   | Dockerfile 改 `npm ci` + backend 独立 lockfile + CI lock-sync 校验            | ✅ `be509bffe`                                                       |
+
+### W0 收尾后的下一步（W0 转正观察项）
+
+1. **CI 首跑观察**：本分支推送后看 `test:ci --coverage` 在 GH runner 的耗时/内存与阈值是否绿（阈值=模块内实测下界，全量只会更高，理论必绿）
+2. **EVAL_FAIL_CLOSED 翻开关前**：先看生产日志里 "all judges abstained" warn 的触发频率（常开观测已埋）
+3. **生产基线首拍**：下次部署后 `railway ssh` 容器内跑 baseline 脚本存档 `docs/operations/baselines/`
+4. **已知 flaky**：platform settings.service.spec 并行+coverage 下偶发（单跑绿），W1 前修
+5. W1（策略数据化）开工前先建 `PolicyConfig` 新表设计稿（带版本 + who/when/why 审计字段，决策 §五-2）
