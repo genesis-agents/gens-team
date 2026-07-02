@@ -1,6 +1,6 @@
 # L3 自主性路线图（四波次计划）
 
-> **状态**: W1 执行中（W0 已收尾，待推送 + CI 首跑观察）
+> **状态**: W1 执行中——批 1/2a/2b/2c/3a 已提交（基建 + writing/insight/playground/六模块共 9 个模块接 dual-read），批 3b（canonical 契约收敛）设计中；推送阻塞在 gh token workflow scope
 > **拍板日期**: 2026-07-02（用户授权全程自驱："质量 100%，L3 能力 100%，未来的工程/架构/测试/代码质量 100%"）
 > **执行分支**: `feat/l3-w0-foundation`（W0）→ `feat/l3-w1-policy-config`（W1）
 > **W1 设计稿**: [policy-config-design.md](policy-config-design.md)（表结构 / dual-read / 分批计划 / playground↔insight 复制真实形态摸底）
