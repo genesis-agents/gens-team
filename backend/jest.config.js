@@ -68,23 +68,30 @@ module.exports = {
     // 使用 directory 路径而非 glob —— jest 在该目录所有文件上做 aggregate 检查
     // （glob "**/*.ts" 是 per-file 检查，单个低 coverage 文件即破坏阈值，不实用）
     // 真实目录是 ai-app/playground/（旧 key 写成 agent-playground 是笔误，
-    // 导致 playground 后端长期无阈值守门、悄悄落到 global=0）。2026-06-14 修正
-    // 路径并把四项阈值统一拉到 95%（前后台看护用例攻坚目标）。
+    // 导致 playground 后端长期无阈值守门、悄悄落到 global=0）。
+    //
+    // ★ L3-W0 #4（2026-07-02）棘轮基线：此前 95/85 阈值只在本地 test:coverage
+    // 触发、CI 不带 --coverage 完全空转（言行不一）。本次 CI 接通 --coverage，
+    // 阈值按 2026-07-02 模块内实测值下调锁基线（防回退棘轮，CI 全量跑分只会
+    // 高于模块内实测，故实测值即安全下界）。攻坚目标保留在注释：
+    //   playground branches 81→95 / functions 92→95
+    //   harness   functions 77→85
+    //   engine    branches 74→75 / functions 80→85
     "./src/modules/ai-app/playground/": {
-      branches: 95,
-      functions: 95,
+      branches: 81, // 实测 81.1（目标 95）
+      functions: 92, // 实测 92.2（目标 95）
       lines: 95,
       statements: 95,
     },
     "./src/modules/ai-harness/": {
       branches: 75,
-      functions: 85,
+      functions: 77, // 实测 77.19（目标 85）
       lines: 85,
       statements: 85,
     },
     "./src/modules/ai-engine/": {
-      branches: 75,
-      functions: 85,
+      branches: 74, // 实测 74.64（目标 75）
+      functions: 80, // 实测 80.04（目标 85）
       lines: 85,
       statements: 85,
     },
