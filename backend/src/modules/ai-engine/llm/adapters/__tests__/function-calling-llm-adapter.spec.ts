@@ -86,6 +86,62 @@ describe("FunctionCallingLLMAdapter", () => {
     });
   });
 
+  // ==================== withConfig（P0 2026-07-02 防单例配置竞态） ====================
+
+  describe("withConfig", () => {
+    it("should return a bound view with its own config, not mutate the singleton", () => {
+      const bound = adapter.withConfig({
+        aiMemberId: "member-A",
+        userId: "alice",
+      });
+
+      expect(bound.getConfig()?.userId).toBe("alice");
+      // 单例自身 config 不受影响
+      expect(adapter.getConfig()).toBeUndefined();
+    });
+
+    it("should isolate concurrent bound views from each other (BYOK 串号复现)", () => {
+      // 复现原竞态：请求 A 绑定 alice 后，请求 B 绑定 bob
+      const boundA = adapter.withConfig({
+        aiMemberId: "member-A",
+        userId: "alice",
+      });
+      const boundB = adapter.withConfig({
+        aiMemberId: "member-B",
+        userId: "bob",
+      });
+
+      // 旧 setConfig 模式下 boundA 的 userId 会被 B 覆盖成 bob；withConfig 必须各自独立
+      expect(boundA.getConfig()?.userId).toBe("alice");
+      expect(boundB.getConfig()?.userId).toBe("bob");
+    });
+
+    it("should not be affected by later setConfig on the singleton", () => {
+      const bound = adapter.withConfig({
+        aiMemberId: "member-A",
+        userId: "alice",
+      });
+
+      adapter.setConfig({ aiMemberId: "member-B", userId: "bob" });
+
+      expect(bound.getConfig()?.userId).toBe("alice");
+      expect(adapter.getConfig()?.userId).toBe("bob");
+    });
+
+    it("should share injected services via prototype (chat still works on bound view)", async () => {
+      // 不带 aiMemberId：走默认 LLM 配置路径（同上方 chat 基础测试），
+      // 只验证绑定视图经原型链拿到注入服务
+      const bound = adapter.withConfig({ workspaceId: "ws-456" });
+
+      const result = await bound.chat({
+        messages: [{ role: "user", content: "hi" }],
+      });
+
+      expect(result.content).toBe("mocked AI response");
+      expect(mockAiChatService.chat).toHaveBeenCalled();
+    });
+  });
+
   // ==================== formatTools ====================
 
   describe("formatTools", () => {

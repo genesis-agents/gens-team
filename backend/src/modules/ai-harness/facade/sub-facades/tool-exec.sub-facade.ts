@@ -334,7 +334,9 @@ export class ToolExecSubFacade {
       return;
     }
 
-    this.tools.llmAdapter.setConfig({
+    // ★ P0 2026-07-02：改 withConfig 绑定视图，替代单例 setConfig ——
+    // 此前并发请求 B 的 setConfig 会覆盖 A 流式中途的 userId/apiKey（BYOK 串号）。
+    const boundAdapter = this.tools.llmAdapter.withConfig({
       provider: request.modelConfig.provider,
       modelId: request.modelConfig.modelId,
       apiKey: request.modelConfig.apiKey,
@@ -347,7 +349,7 @@ export class ToolExecSubFacade {
     });
 
     yield* this.tools.executor.executeWithContext(
-      this.tools.llmAdapter,
+      boundAdapter,
       request.systemPrompt,
       request.userPrompt,
       request.context,

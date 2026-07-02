@@ -62,6 +62,11 @@ describe("ToolExecSubFacade", () => {
 
     mockLlmAdapter = {
       setConfig: jest.fn(),
+      // withConfig 返回每请求绑定视图（P0 2026-07-02 防单例配置竞态）
+      withConfig: jest.fn((config: unknown) => ({
+        ...mockLlmAdapter,
+        config,
+      })),
     };
 
     mockCapabilityResolver = {
@@ -682,12 +687,19 @@ describe("ToolExecSubFacade", () => {
         events.push(event);
       }
 
-      expect(mockLlmAdapter.setConfig).toHaveBeenCalledWith({
+      expect(mockLlmAdapter.withConfig).toHaveBeenCalledWith({
         provider: "openai",
         modelId: "gpt-4o",
         apiKey: "sk-test",
         apiEndpoint: "https://api.openai.com",
       });
+      // 单例 setConfig 不再被调用（防并发配置竞态）
+      expect(mockLlmAdapter.setConfig).not.toHaveBeenCalled();
+      // executor 收到的是 withConfig 返回的绑定视图，而非单例本身
+      const boundAdapter = mockLlmAdapter.withConfig.mock.results[0].value;
+      expect(mockToolExecutor.executeWithContext.mock.calls[0][0]).toBe(
+        boundAdapter,
+      );
       expect(events).toHaveLength(2);
     });
   });
