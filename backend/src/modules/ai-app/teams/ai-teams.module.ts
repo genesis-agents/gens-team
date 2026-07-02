@@ -51,6 +51,8 @@ import {
   TeamMissionService,
   MissionExecutionService,
   MissionReviewService,
+  // L3 W1 策略数据化：审核模式表 dual-read
+  TeamsReviewPolicyService,
   // TaskBreakdownService 已删 (2026-04-30)
   TeamCollaborationService,
   MissionPromptService,
@@ -135,6 +137,8 @@ import { DEBATE_TEAM_CONFIG } from "./teams";
     TeamMissionService,
     MissionExecutionService,
     MissionReviewService,
+    // L3 W1 策略数据化：审核模式表 dual-read
+    TeamsReviewPolicyService,
     // TaskBreakdownService 已删 (2026-04-30)
     TeamCollaborationService,
     MissionPromptService,

@@ -221,10 +221,14 @@ export const PROJECT_KEYWORDS = [
 
 /**
  * 检查问题是否与项目相关
+ *
+ * L3 W1 策略数据化：keywords 可由调用方传入（经 AskPolicyService dual-read
+ * 解析的 DB 覆盖值）；不传时用代码常量，行为与迁移前逐字节相同。
  */
-export function isProjectRelatedQuery(query: string): boolean {
+export function isProjectRelatedQuery(
+  query: string,
+  keywords: readonly string[] = PROJECT_KEYWORDS,
+): boolean {
   const lowerQuery = query.toLowerCase();
-  return PROJECT_KEYWORDS.some((keyword) =>
-    lowerQuery.includes(keyword.toLowerCase()),
-  );
+  return keywords.some((keyword) => lowerQuery.includes(keyword.toLowerCase()));
 }

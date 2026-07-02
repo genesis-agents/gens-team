@@ -24,6 +24,8 @@ import { SocialLeaderService } from "../mission/services/social-leader.service";
 import { ContentFetcherService } from "../mission/services/content-fetcher.service";
 import { ContentTransformerService } from "../mission/services/content-transformer.service";
 import { ContentCheckerService } from "../mission/services/content-checker.service";
+// ★ L3 W1 策略数据化：social prompts/阈值/违禁词 dual-read（PolicyConfig）
+import { SocialStrategyPolicyService } from "../mission/services/config/social-strategy-policy.service";
 import { ContentVersionService } from "../mission/services/content-version.service";
 import { ReviewService } from "../mission/services/review.service";
 import { PublishExecutorService } from "../mission/services/publish-executor.service";
@@ -110,6 +112,8 @@ import { PromptSkillRegistrationService } from "@/modules/ai-engine/facade";
     // ★ B7-1 canonical view (thinning plan §B7-1)
     SocialMissionQueryService,
     ContentFetcherService,
+    // L3 W1: 策略常量 dual-read 入口，必须先于其消费方可解析
+    SocialStrategyPolicyService,
     ContentTransformerService,
     ContentCheckerService,
     ContentVersionService,

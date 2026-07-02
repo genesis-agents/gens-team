@@ -8,6 +8,8 @@ import {
 } from "@/modules/ai-harness/facade";
 import { AiAskController } from "./ai-ask.controller";
 import { AiAskService } from "./ai-ask.service";
+// L3 W1 策略数据化：ask 模块 prompt/阈值常量的 PolicyConfig dual-read 入口
+import { AskPolicyService } from "./config/ask-policy.service";
 import { PrismaModule } from "../../../common/prisma/prisma.module";
 // 直接从文件导入，避免 barrel export 循环依赖
 import { AiEngineModule } from "../../ai-engine/ai-engine.module";
@@ -78,6 +80,7 @@ import { HandoffAdapter } from "./adapters/handoff.adapter";
   ],
   providers: [
     AiAskService,
+    AskPolicyService,
     AskRoomService,
     AskRoomRuntimeService,
     AskRoomRuntimeStateStore,

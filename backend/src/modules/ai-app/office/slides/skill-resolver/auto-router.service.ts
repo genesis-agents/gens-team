@@ -2,6 +2,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ChatFacade, ChatMessage } from "@/modules/ai-harness/facade";
 import { AIModelType } from "@prisma/client";
 import { PresetLoader } from "./preset-loader.service";
+import {
+  OfficePolicyService,
+  OFFICE_POLICY_KEYS,
+} from "../../config/office-policy.service";
 import type {
   SkillConditions,
   SlidesAudience,
@@ -36,7 +40,10 @@ export interface RoutingSuggestion {
 export class SlidesAutoRouterService {
   private readonly logger = new Logger(SlidesAutoRouterService.name);
 
+  // 截断保险丝（安全网类，永不数据化）
   private static readonly SAMPLE_CHARS = 3000;
+  // L3 W1: 代码兜底常量，infer() 内经 OfficePolicyService dual-read
+  // （key: office.prompt.slides-auto-router）
   private static readonly SYSTEM_PROMPT = `你是一个幻灯片生成路由器。输入一段源文本，推断出最合适的幻灯片生成预设。
 
 你必须严格输出 JSON，结构如下（不要额外解释）：
@@ -61,6 +68,7 @@ export class SlidesAutoRouterService {
   constructor(
     private readonly chat: ChatFacade,
     private readonly presetLoader: PresetLoader,
+    private readonly officePolicy: OfficePolicyService,
   ) {}
 
   /**
@@ -85,8 +93,14 @@ export class SlidesAutoRouterService {
       sample,
     ].join("\n");
 
+    // L3 W1: prompt 经 PolicyConfig dual-read（DB 空/flag 关时逐字节回代码常量）
+    const systemPrompt = await this.officePolicy.prompt(
+      OFFICE_POLICY_KEYS.SLIDES_AUTO_ROUTER,
+      SlidesAutoRouterService.SYSTEM_PROMPT,
+    );
+
     const messages: ChatMessage[] = [
-      { role: "system", content: SlidesAutoRouterService.SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       { role: "user", content: userMessage },
     ];
 

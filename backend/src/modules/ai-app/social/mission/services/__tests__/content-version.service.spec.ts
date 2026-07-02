@@ -1,9 +1,32 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { NotFoundException } from "@nestjs/common";
 import { ContentVersionService } from "../content-version.service";
+import {
+  CONTENT_OVERFLOW_THRESHOLD,
+  SocialStrategyPolicyService,
+  TITLE_OVERFLOW_THRESHOLD,
+} from "../config/social-strategy-policy.service";
+import {
+  WECHAT_ADAPTATION_SYSTEM_PROMPT,
+  XIAOHONGSHU_ADAPTATION_SYSTEM_PROMPT,
+} from "../../skills/social-version.prompt";
 import { PrismaService } from "../../../../../../common/prisma/prisma.service";
 import { ChatFacade } from "@/modules/ai-harness/facade";
 import { SocialPlatformType } from "@prisma/client";
+
+// L3 W1: policy service mock 返回代码常量（等同 DB 空 / flag 关的零下降路径）
+const mockSocialPolicy = {
+  contentOverflowThreshold: jest
+    .fn()
+    .mockResolvedValue(CONTENT_OVERFLOW_THRESHOLD),
+  titleOverflowThreshold: jest.fn().mockResolvedValue(TITLE_OVERFLOW_THRESHOLD),
+  wechatAdaptationSystemPrompt: jest
+    .fn()
+    .mockResolvedValue(WECHAT_ADAPTATION_SYSTEM_PROMPT),
+  xiaohongshuAdaptationSystemPrompt: jest
+    .fn()
+    .mockResolvedValue(XIAOHONGSHU_ADAPTATION_SYSTEM_PROMPT),
+};
 
 describe("ContentVersionService", () => {
   let service: ContentVersionService;
@@ -68,6 +91,7 @@ describe("ContentVersionService", () => {
         ContentVersionService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: ChatFacade, useValue: mockAiFacade },
+        { provide: SocialStrategyPolicyService, useValue: mockSocialPolicy },
       ],
     }).compile();
 

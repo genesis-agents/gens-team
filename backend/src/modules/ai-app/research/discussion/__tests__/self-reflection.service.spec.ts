@@ -17,6 +17,8 @@ import { Logger } from "@nestjs/common";
 import { AIModelType } from "@prisma/client";
 import { SelfReflectionService } from "../self-reflection.service";
 import { ChatFacade } from "@/modules/ai-harness/facade";
+import { ResearchStrategyPolicyService } from "../research-strategy-policy.service";
+import { REFLECTION_PROMPTS, ResearchLanguage } from "../prompt-locale";
 import type {
   ResearchPlan,
   SearchRound,
@@ -29,6 +31,11 @@ import type {
 // ============================================================
 
 const mockFacade = { chat: jest.fn() };
+
+// dual-read DI mock：返回代码常量（等价 flag 关/DB 空）
+const mockStrategyPolicy = {
+  reflectionSystemPrompt: jest.fn(),
+};
 
 function buildSource(overrides: Partial<SearchSource> = {}): SearchSource {
   return {
@@ -91,11 +98,20 @@ describe("SelfReflectionService", () => {
 
   beforeEach(async () => {
     mockFacade.chat.mockReset();
+    mockStrategyPolicy.reflectionSystemPrompt
+      .mockReset()
+      .mockImplementation(
+        async (lang: ResearchLanguage) => REFLECTION_PROMPTS[lang].systemPrompt,
+      );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SelfReflectionService,
         { provide: ChatFacade, useValue: mockFacade },
+        {
+          provide: ResearchStrategyPolicyService,
+          useValue: mockStrategyPolicy,
+        },
       ],
     }).compile();
 

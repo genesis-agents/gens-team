@@ -27,6 +27,7 @@ import { SkillRegistry, PromptSkillBridge } from "@/modules/ai-harness/facade";
 import { SkillLoaderService } from "@/modules/ai-engine/facade";
 import { AiEngineModule } from "@/modules/ai-engine/ai-engine.module";
 import { AIModelService } from "../../core/ai-model.service";
+import { OfficePolicyService } from "../../config/office-policy.service";
 import { PrismaModule } from "@/common/prisma/prisma.module";
 import { BrowserModule } from "@/common/browser/browser.module";
 
@@ -110,7 +111,12 @@ const SLIDES_CODE_SKILL_PROVIDERS = [
     PrismaModule,
     BrowserModule,
   ],
-  providers: [AIModelService, ...SLIDES_CODE_SKILL_PROVIDERS],
+  // OfficePolicyService: L3 W1 策略数据化 dual-read 入口（skills 内 prompt/阈值消费）
+  providers: [
+    AIModelService,
+    OfficePolicyService,
+    ...SLIDES_CODE_SKILL_PROVIDERS,
+  ],
   exports: [AIModelService, ...SLIDES_CODE_SKILL_PROVIDERS],
 })
 export class SlidesSkillsModule implements OnModuleInit {

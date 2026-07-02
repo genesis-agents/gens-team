@@ -34,6 +34,10 @@ import {
   ContentAnalyzerSkill,
   ContentAnalysisResult,
 } from "./content-analyzer.skill";
+import {
+  OfficePolicyService,
+  OFFICE_POLICY_KEYS,
+} from "../../config/office-policy.service";
 
 /**
  * 重试上下文 - 用于传递之前的审核反馈
@@ -105,6 +109,8 @@ export interface ContentCompressionResult {
 
 /**
  * 内容压缩系统提示词 - 优化版：强调内容丰富度和数据驱动
+ * L3 W1: 代码兜底常量，运行时经 OfficePolicyService dual-read
+ * （key: office.prompt.content-compression-system）
  */
 const CONTENT_COMPRESSION_SYSTEM_PROMPT = `你是一位顶级的 PPT 内容策划师，擅长创建信息密度高、视觉层次丰富的专业幻灯片内容。
 
@@ -340,6 +346,7 @@ export class ContentCompressionSkill implements ISkill<
     private readonly dataSupplementSkill: DataSupplementSkill,
     @Inject(forwardRef(() => ContentAnalyzerSkill))
     private readonly contentAnalyzer: ContentAnalyzerSkill,
+    @Optional() private readonly officePolicy?: OfficePolicyService,
   ) {}
 
   /**
@@ -411,6 +418,12 @@ export class ContentCompressionSkill implements ISkill<
     );
 
     try {
+      // L3 W1: 刷新 sync 阈值 overlay（ContentAnalyzer 分页密度等由 sync
+      // analyze() 消费，不能 await，故在此 async 入口刷新快照）
+      if (this.officePolicy) {
+        await this.officePolicy.refreshStrategyOverlays();
+      }
+
       // Ensure maxCharacters is set for buildUserMessage
       const inputWithDefaults = { ...normalizedInput, maxCharacters: maxChars };
       const userMessage = this.buildUserMessage(inputWithDefaults);
@@ -422,8 +435,16 @@ export class ContentCompressionSkill implements ISkill<
         );
       }
 
+      // L3 W1: prompt 经 PolicyConfig dual-read（DB 空/flag 关时逐字节回代码常量）
+      const systemPrompt = this.officePolicy
+        ? await this.officePolicy.prompt(
+            OFFICE_POLICY_KEYS.CONTENT_COMPRESSION_SYSTEM,
+            CONTENT_COMPRESSION_SYSTEM_PROMPT,
+          )
+        : CONTENT_COMPRESSION_SYSTEM_PROMPT;
+
       const messages: ChatMessage[] = [
-        { role: "system", content: CONTENT_COMPRESSION_SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ];
 

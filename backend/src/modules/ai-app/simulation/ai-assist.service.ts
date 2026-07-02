@@ -2,6 +2,12 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ExternalDataService } from "./external-data.service";
 import { ChatFacade } from "@/modules/ai-harness/facade";
 import type { ChatMessage } from "@/modules/ai-harness/facade";
+import { SimulationPolicyService } from "./config/simulation-policy.service";
+import {
+  CompanyMetricsTemplate,
+  IndustryModifier,
+  renderSimulationTemplate,
+} from "./config/simulation-policy.config";
 
 export interface IndustryAnalysis {
   companies: Array<{
@@ -32,100 +38,9 @@ export interface IndustryAnalysis {
 // - supplier: 供应商（分配给GREEN队）
 // - regional: 区域玩家（根据用户选择决定是竞争对手还是自己）
 
-// 公司指标生成模板 - 基于公司类型（仅用于 LLM fallback）
-interface CompanyMetricsTemplate {
-  cash: { min: number; max: number }; // 万美元
-  share: { min: number; max: number }; // %
-  margin: { min: number; max: number }; // %
-  debt: { min: number; max: number }; // 万美元
-  capacity: { min: number; max: number };
-  inventory: { min: number; max: number };
-  priceBand: string;
-  delivery: string;
-  patents: { min: number; max: number };
-  channels: string;
-  brand: string;
-}
-
-const COMPANY_METRICS_BY_TYPE: Record<string, CompanyMetricsTemplate> = {
-  benchmark: {
-    cash: { min: 50000, max: 200000 },
-    share: { min: 25, max: 60 },
-    margin: { min: 35, max: 55 },
-    debt: { min: 10000, max: 50000 },
-    capacity: { min: 5000, max: 20000 },
-    inventory: { min: 500, max: 2000 },
-    priceBand: "高端",
-    delivery: "2-4周",
-    patents: { min: 500, max: 5000 },
-    channels: "直销+代理",
-    brand: "global_leader",
-  },
-  challenger: {
-    cash: { min: 20000, max: 80000 },
-    share: { min: 10, max: 25 },
-    margin: { min: 25, max: 40 },
-    debt: { min: 5000, max: 30000 },
-    capacity: { min: 2000, max: 8000 },
-    inventory: { min: 300, max: 1000 },
-    priceBand: "中高端",
-    delivery: "3-6周",
-    patents: { min: 100, max: 1000 },
-    channels: "直销+电商",
-    brand: "strong",
-  },
-  regional: {
-    cash: { min: 10000, max: 50000 },
-    share: { min: 5, max: 20 },
-    margin: { min: 20, max: 35 },
-    debt: { min: 3000, max: 20000 },
-    capacity: { min: 1000, max: 5000 },
-    inventory: { min: 200, max: 800 },
-    priceBand: "中端",
-    delivery: "2-4周",
-    patents: { min: 50, max: 500 },
-    channels: "区域代理",
-    brand: "growing",
-  },
-  startup: {
-    cash: { min: 1000, max: 20000 },
-    share: { min: 1, max: 10 },
-    margin: { min: 15, max: 30 },
-    debt: { min: 500, max: 10000 },
-    capacity: { min: 100, max: 1000 },
-    inventory: { min: 50, max: 300 },
-    priceBand: "中低端",
-    delivery: "4-8周",
-    patents: { min: 10, max: 100 },
-    channels: "电商+直销",
-    brand: "emerging",
-  },
-};
-
-// 行业特定调整系数
-const INDUSTRY_MODIFIERS: Record<
-  string,
-  Partial<{
-    cashMultiplier: number;
-    marginBonus: number;
-    patentMultiplier: number;
-    deliveryFast: boolean;
-  }>
-> = {
-  "AI Compute Infrastructure": {
-    cashMultiplier: 2,
-    marginBonus: 10,
-    patentMultiplier: 3,
-  },
-  Semiconductor: { cashMultiplier: 3, marginBonus: 15, patentMultiplier: 5 },
-  "Cloud Services": { cashMultiplier: 2, marginBonus: 5, deliveryFast: true },
-  Fintech: { cashMultiplier: 1.5, marginBonus: -5 },
-  "E-commerce": { cashMultiplier: 1.2, deliveryFast: true },
-  SaaS: { marginBonus: 20, deliveryFast: true },
-  Gaming: { marginBonus: 10, patentMultiplier: 0.5 },
-  Healthcare: { cashMultiplier: 2.5, patentMultiplier: 4 },
-  "Electric Vehicles": { cashMultiplier: 3, patentMultiplier: 2 },
-};
+// 公司指标模板 / 行业调整系数：代码常量迁至 config/simulation-policy.config.ts，
+// 运行时经 SimulationPolicyService dual-read（key: simulation.threshold.company-metrics-template
+// / simulation.threshold.industry-modifiers）
 
 @Injectable()
 export class AIAssistService {
@@ -134,6 +49,7 @@ export class AIAssistService {
   constructor(
     private readonly externalData: ExternalDataService,
     private readonly chatFacade: ChatFacade,
+    private readonly simulationPolicy: SimulationPolicyService,
   ) {}
 
   /**
@@ -220,55 +136,22 @@ export class AIAssistService {
   }): Promise<IndustryAnalysis | null> {
     const { industry, region, existingCompanies } = params;
 
-    const systemPrompt = `你是一位资深的行业分析师和商业情报专家。请根据用户提供的行业和区域信息，分析该行业的竞争格局。
-
-你的分析必须基于真实的市场数据和行业知识，包括：
-1. 识别该行业的主要参与者（至少5-8家真实公司）
-2. 分析每家公司的市场定位和竞争优势
-3. 推荐适合商业模拟的关键角色
-4. 提供行业洞察和趋势分析
-
-公司类型说明：
-- competitor: 直接竞争对手（用于RED队，模拟竞争压力）
-- customer: 主要客户/采购方（用于GREEN队，模拟市场需求）
-- supplier: 关键供应商（用于GREEN队，模拟供应链）
-- benchmark: 行业标杆（通常是用户自己选择的公司）
-
-注意：
-- 不要返回用户已经选择的公司
-- 优先推荐真实存在的知名公司
-- 根据区域筛选相关公司
-
-请以 JSON 格式返回，不要包含任何其他文字：
-{
-  "companies": [
-    { "name": "公司名称", "type": "competitor/customer/supplier", "market": "Global/China/US/等", "reason": "推荐理由" }
-  ],
-  "agents": [
-    { "role": "角色名称", "team": "WHITE/CHAOS", "reason": "角色作用" }
-  ],
-  "goals": {
-    "targetShare": "市场份额目标建议",
-    "risk": "风险控制建议",
-    "growth": "增长策略建议"
-  },
-  "insights": ["行业洞察1", "行业洞察2", "行业洞察3"]
-}`;
-
-    const userPrompt = `请分析以下行业的竞争格局：
-
-行业：${industry}
-目标区域：${region}
-${existingCompanies.length > 0 ? `用户已选择的公司（请不要重复推荐）：${existingCompanies.join("、")}` : ""}
-
-请推荐：
-1. 5-8家该行业的主要竞争对手公司（type为competitor）
-2. 2-3家主要客户或采购方（type为customer）
-3. 1-2家关键供应商（type为supplier）
-4. 适合WHITE队（监管/分析师）和CHAOS队（黑天鹅事件）的角色
-5. 战略目标建议和行业洞察
-
-所有公司必须是真实存在的知名企业。`;
+    // prompt 模板经 PolicyConfig dual-read（DB 空时逐字节等同代码常量）
+    const systemPrompt =
+      await this.simulationPolicy.industryAnalysisSystemPrompt();
+    const userPromptPolicy =
+      await this.simulationPolicy.industryAnalysisUserPrompt();
+    const userPrompt = renderSimulationTemplate(userPromptPolicy.template, {
+      industry,
+      region,
+      existingCompaniesSection:
+        existingCompanies.length > 0
+          ? renderSimulationTemplate(
+              userPromptPolicy.existingCompaniesSection,
+              { existingCompanies: existingCompanies.join("、") },
+            )
+          : "",
+    });
 
     // 从数据库获取已配置 API Key 的可用模型
     const availableModels = await this.chatFacade.getAvailableModels();
@@ -540,18 +423,28 @@ ${existingCompanies.length > 0 ? `用户已选择的公司（请不要重复推�
 
     const analysis = await this.analyzeIndustry({ industry, region });
 
-    // 根据行业特点推荐参数
-    const isHighRisk = ["Semiconductor", "AI Compute Infrastructure"].includes(
-      industry,
-    );
-    const isRegulationHeavy = ["Fintech", "Healthcare"].includes(industry);
+    // 根据行业特点推荐参数（启发式数值经 PolicyConfig dual-read，
+    // 与 suggestParams 共用 simulation.threshold.suggest-params-heuristics 一份数据）
+    const heuristics = await this.simulationPolicy.suggestParamsHeuristics();
+    const scenario = heuristics.scenarioSuggestion;
+    const isHighRisk = scenario.highRiskIndustries.includes(industry);
+    const isRegulationHeavy =
+      scenario.regulationHeavyIndustries.includes(industry);
 
     return {
       name: `${industry} 战略推演 - ${region}`,
       description: `${industry}行业${region}市场竞争格局推演，涵盖${analysis.companies.length}家主要参与者`,
-      recommendedRounds: isHighRisk ? 6 : 4,
-      chaosProb: isHighRisk ? 0.35 : isRegulationHeavy ? 0.25 : 0.2,
-      humanBreakEvery: isRegulationHeavy ? 1 : 2,
+      recommendedRounds: isHighRisk
+        ? scenario.rounds.highRisk
+        : scenario.rounds.default,
+      chaosProb: isHighRisk
+        ? scenario.chaosProb.highRisk
+        : isRegulationHeavy
+          ? scenario.chaosProb.regulationHeavy
+          : scenario.chaosProb.default,
+      humanBreakEvery: isRegulationHeavy
+        ? scenario.humanBreakEvery.regulationHeavy
+        : scenario.humanBreakEvery.default,
       keyRisks: analysis.insights.slice(0, 3),
     };
   }
@@ -627,8 +520,16 @@ ${existingCompanies.length > 0 ? `用户已选择的公司（请不要重复推�
       );
     }
 
-    // Step 3: 回退到本地模板生成
-    const templateResult = this.generateMetricsFromTemplate(params);
+    // Step 3: 回退到本地模板生成（模板与行业系数经 PolicyConfig dual-read）
+    const [metricsTemplates, industryModifiers] = await Promise.all([
+      this.simulationPolicy.companyMetricsTemplates(),
+      this.simulationPolicy.industryModifiers(),
+    ]);
+    const templateResult = this.generateMetricsFromTemplate(
+      params,
+      metricsTemplates,
+      industryModifiers,
+    );
     return {
       ...templateResult,
       dataSource: "Local Template (Fallback)",
@@ -676,40 +577,17 @@ ${existingCompanies.length > 0 ? `用户已选择的公司（请不要重复推�
       startup: "初创公司/新兴企业",
     };
 
-    // 构建系统提示，根据是否有外部数据调整
-    let systemPrompt = `你是一位资深的行业分析师和商业情报专家。请根据公司名称、类型、所属行业和市场，生成合理的公司量化指标。
-
-注意事项：
-1. 数据应该基于该行业的实际情况和公司类型进行合理估算
-2. 如果是知名公司，尽量贴近其公开财务数据的量级
-3. 如果是虚构或不知名公司，根据行业和类型给出合理假设
-4. 所有数值应该保持内部一致性（如初创公司不应有过高的现金储备）`;
-
-    if (externalData) {
-      systemPrompt += `
-5. 重要：用户提供了外部API获取的真实数据，请优先参考这些数据，并据此调整生成的指标
-6. 如果外部数据中包含财务数据、市场数据，请直接使用或合理换算`;
-    }
-
-    systemPrompt += `
-
-请以 JSON 格式返回，不要包含任何其他文字：
-{
-  "metrics": {
-    "cash": <现金储备，万美元>,
-    "share": <市场份额，百分比数值如15表示15%>,
-    "margin": <毛利率，百分比数值>,
-    "debt": <负债，万美元>,
-    "capacity": <产能单位数>,
-    "inventory": <库存单位数>,
-    "priceBand": "<定位：高端/中高端/中端/中低端/低端>",
-    "delivery": "<交付周期如：2-4周>",
-    "patents": <专利数量>,
-    "channels": "<渠道：如直销+代理>",
-    "brand": "<品牌力：global_leader/strong/growing/niche/emerging>"
-  },
-  "reasoning": "<简要说明生成依据，如果使用了外部数据请注明>"
-}`;
+    // 构建系统提示（基础模板 + 有外部数据时的条件追加段，经 PolicyConfig dual-read）
+    const metricsPromptPolicy =
+      await this.simulationPolicy.companyMetricsSystemPrompt();
+    const systemPrompt = renderSimulationTemplate(
+      metricsPromptPolicy.template,
+      {
+        externalDataSection: externalData
+          ? metricsPromptPolicy.externalDataSection
+          : "",
+      },
+    );
 
     // 构建用户提示
     let userPrompt = `公司名称：${companyName}
@@ -816,12 +694,16 @@ ${externalDataStr.slice(0, 3000)}${externalDataStr.length > 3000 ? "\n...(数据
   /**
    * 使用本地模板生成公司指标（回退方案）
    */
-  private generateMetricsFromTemplate(params: {
-    companyName: string;
-    companyType: string;
-    industry: string;
-    market?: string;
-  }): {
+  private generateMetricsFromTemplate(
+    params: {
+      companyName: string;
+      companyType: string;
+      industry: string;
+      market?: string;
+    },
+    metricsTemplates: Record<string, CompanyMetricsTemplate>,
+    industryModifiers: Record<string, IndustryModifier>,
+  ): {
     metrics: {
       cash: number;
       share: number;
@@ -841,16 +723,15 @@ ${externalDataStr.slice(0, 3000)}${externalDataStr.length > 3000 ? "\n...(数据
 
     // 1. 获取公司类型基础模板
     const template =
-      COMPANY_METRICS_BY_TYPE[companyType] ||
-      COMPANY_METRICS_BY_TYPE["startup"];
+      metricsTemplates[companyType] || metricsTemplates["startup"];
 
     // 2. 获取行业调整系数
-    let modifier = INDUSTRY_MODIFIERS[industry] || {};
+    let modifier = industryModifiers[industry] || {};
 
     // 尝试模糊匹配行业
-    if (!INDUSTRY_MODIFIERS[industry]) {
+    if (!industryModifiers[industry]) {
       const lowerIndustry = industry.toLowerCase();
-      for (const [key, value] of Object.entries(INDUSTRY_MODIFIERS)) {
+      for (const [key, value] of Object.entries(industryModifiers)) {
         if (
           key.toLowerCase().includes(lowerIndustry) ||
           lowerIndustry.includes(key.toLowerCase())
@@ -961,76 +842,75 @@ ${externalDataStr.slice(0, 3000)}${externalDataStr.length > 3000 ? "\n...(数据
       `AI Assist suggesting params for: ${industry}, region: ${region}, companies: ${companyCount}, agents: ${agentCount}`,
     );
 
+    // 启发式规则表经 PolicyConfig dual-read（DB 空时逐字节等同代码常量）
+    const heuristics = await this.simulationPolicy.suggestParamsHeuristics();
+
     // 行业特征判断
-    const isHighVolatility = [
-      "AI Compute Infrastructure",
-      "Semiconductor",
-      "Electric Vehicles",
-    ].includes(industry);
-
-    const isHighRegulation = [
-      "Fintech",
-      "Healthcare",
-      "Semiconductor",
-    ].includes(industry);
-
-    const isFastPaced = [
-      "E-commerce",
-      "SaaS",
-      "Cloud Services",
-      "Gaming",
-    ].includes(industry);
-
-    const isGeopolitical = [
-      "AI Compute Infrastructure",
-      "Semiconductor",
-    ].includes(industry);
+    const isHighVolatility =
+      heuristics.industryTraits.highVolatility.includes(industry);
+    const isHighRegulation =
+      heuristics.industryTraits.highRegulation.includes(industry);
+    const isFastPaced = heuristics.industryTraits.fastPaced.includes(industry);
+    const isGeopolitical =
+      heuristics.industryTraits.geopolitical.includes(industry);
 
     // 根据行业特征推荐参数
-    let blindMove = true; // 默认开启盲注，更真实
-    const cot = true; // 默认开启CoT，提高透明度
-    let chaosProb = 0.2; // 基础黑天鹅概率
-    let irrationalProb = 0.15; // 基础非理性概率
-    let humanBreakEvery = 2; // 默认每2轮人工介入
-    let rounds = 4; // 默认4轮
+    let blindMove = heuristics.baseline.blindMove; // 默认开启盲注，更真实
+    const cot = heuristics.baseline.cot; // 默认开启CoT，提高透明度
+    let chaosProb = heuristics.baseline.chaosProb; // 基础黑天鹅概率
+    let irrationalProb = heuristics.baseline.irrationalProb; // 基础非理性概率
+    let humanBreakEvery = heuristics.baseline.humanBreakEvery; // 默认每2轮人工介入
+    let rounds = heuristics.baseline.rounds; // 默认4轮
 
     // 高波动性行业
     if (isHighVolatility) {
-      chaosProb = 0.35;
-      irrationalProb = 0.25;
-      rounds = 6;
+      chaosProb = heuristics.highVolatility.chaosProb;
+      irrationalProb = heuristics.highVolatility.irrationalProb;
+      rounds = heuristics.highVolatility.rounds;
     }
 
     // 高监管行业
     if (isHighRegulation) {
-      humanBreakEvery = 1; // 每轮都需要人工审核
-      irrationalProb = 0.1; // 监管压力下更理性
+      humanBreakEvery = heuristics.highRegulation.humanBreakEvery; // 每轮都需要人工审核
+      irrationalProb = heuristics.highRegulation.irrationalProb; // 监管压力下更理性
     }
 
     // 快节奏行业
     if (isFastPaced) {
-      blindMove = true;
-      chaosProb = 0.25;
+      blindMove = heuristics.fastPaced.blindMove;
+      chaosProb = heuristics.fastPaced.chaosProb;
     }
 
     // 地缘政治敏感行业
     if (isGeopolitical) {
-      chaosProb = Math.min(0.5, chaosProb + 0.15);
+      chaosProb = Math.min(
+        heuristics.geopolitical.chaosProbCap,
+        chaosProb + heuristics.geopolitical.chaosProbBoost,
+      );
     }
 
     // 根据参与者数量调整
-    if (companyCount > 3) {
-      rounds = Math.min(8, rounds + 2); // 更多公司需要更多轮次
-      humanBreakEvery = Math.min(3, humanBreakEvery + 1);
+    if (companyCount > heuristics.scale.companyCountThreshold) {
+      rounds = Math.min(
+        heuristics.scale.roundsCap,
+        rounds + heuristics.scale.roundsBoost,
+      ); // 更多公司需要更多轮次
+      humanBreakEvery = Math.min(
+        heuristics.scale.humanBreakCap,
+        humanBreakEvery + heuristics.scale.humanBreakBoost,
+      );
     }
 
-    if (agentCount > 6) {
+    if (agentCount > heuristics.scale.agentCountThreshold) {
       humanBreakEvery = Math.max(1, humanBreakEvery - 1); // 更多角色需要更频繁审核
     }
 
     // 根据区域调整
     if (region === "China") {
-      chaosProb = Math.min(0.5, chaosProb + 0.1); // 政策不确定性
+      chaosProb = Math.min(
+        heuristics.regionChina.chaosProbCap,
+        chaosProb + heuristics.regionChina.chaosProbBoost,
+      ); // 政策不确定性
     }
 
     // 根据目标调整
@@ -1039,22 +919,18 @@ ${externalDataStr.slice(0, 3000)}${externalDataStr.length > 3000 ? "\n...(数据
     }
 
     // 推荐启用的事件类型
-    const enabledEvents: string[] = [
-      "supply_chain",
-      "regulation",
-      "competitor",
-    ];
+    const enabledEvents: string[] = [...heuristics.events.base];
 
     if (isHighVolatility) {
-      enabledEvents.push("tech", "finance");
+      enabledEvents.push(...heuristics.events.highVolatility);
     }
 
     if (isHighRegulation) {
-      enabledEvents.push("media", "customer");
+      enabledEvents.push(...heuristics.events.highRegulation);
     }
 
     if (isGeopolitical) {
-      enabledEvents.push("disaster", "talent");
+      enabledEvents.push(...heuristics.events.geopolitical);
     }
 
     // 生成推理说明

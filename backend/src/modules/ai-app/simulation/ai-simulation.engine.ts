@@ -19,6 +19,11 @@ import {
 } from "@/modules/ai-harness/facade";
 import { WorkingMemoryManagerService } from "@/modules/ai-harness/facade";
 import { LruMap } from "@/common/utils/lru-map";
+import {
+  AgentPromptPolicy,
+  SimulationPolicyService,
+} from "./config/simulation-policy.service";
+import { renderSimulationTemplate } from "./config/simulation-policy.config";
 
 interface EvidenceRef {
   provider: string;
@@ -45,72 +50,8 @@ interface BlackSwanEvent {
   triggered: boolean;
 }
 
-// 黑天鹅事件库
-const BLACK_SWAN_EVENTS: Omit<BlackSwanEvent, "triggered" | "probability">[] = [
-  {
-    type: "supply_chain",
-    name: "供应链中断",
-    description: "关键供应商遭遇不可抗力，交付周期延长50%+",
-    impact: "high",
-    affectedTeams: ["BLUE", "RED"],
-  },
-  {
-    type: "regulation",
-    name: "监管政策突变",
-    description: "新出口管制/反垄断政策出台，限制部分业务",
-    impact: "high",
-    affectedTeams: ["BLUE", "RED", "GREEN"],
-  },
-  {
-    type: "competitor_move",
-    name: "竞争对手突击",
-    description: "主要竞争对手宣布重大价格下调或技术突破",
-    impact: "medium",
-    affectedTeams: ["BLUE"],
-  },
-  {
-    type: "customer_change",
-    name: "大客户变动",
-    description: "关键客户大单签约或解约",
-    impact: "medium",
-    affectedTeams: ["BLUE", "RED"],
-  },
-  {
-    type: "media_exposure",
-    name: "媒体曝光事件",
-    description: "负面新闻曝光，舆情危机爆发",
-    impact: "medium",
-    affectedTeams: ["BLUE", "RED"],
-  },
-  {
-    type: "tech_breakthrough",
-    name: "技术突破/失败",
-    description: "关键技术研发取得突破或遭遇重大挫折",
-    impact: "high",
-    affectedTeams: ["BLUE", "RED"],
-  },
-  {
-    type: "financial_shock",
-    name: "金融市场冲击",
-    description: "融资环境恶化、汇率剧烈波动或信贷紧缩",
-    impact: "high",
-    affectedTeams: ["BLUE", "RED"],
-  },
-  {
-    type: "talent_crisis",
-    name: "人才危机",
-    description: "核心团队离职或招聘困难",
-    impact: "medium",
-    affectedTeams: ["BLUE", "RED"],
-  },
-  {
-    type: "natural_disaster",
-    name: "自然灾害/疫情",
-    description: "不可抗力导致运营中断",
-    impact: "high",
-    affectedTeams: ["BLUE", "RED", "GREEN"],
-  },
-];
+// 黑天鹅事件库：代码常量迁至 config/simulation-policy.config.ts，
+// 运行时经 SimulationPolicyService dual-read（key: simulation.prompt.black-swan-events）
 
 @Injectable()
 export class AiSimulationEngineService {
@@ -121,6 +62,7 @@ export class AiSimulationEngineService {
     private readonly prisma: PrismaService,
     private readonly externalData: ExternalDataService,
     private readonly chatFacade: ChatFacade,
+    private readonly simulationPolicy: SimulationPolicyService,
     @Optional() private readonly missionExecutor?: MissionExecutorService,
     @Optional() private readonly progressTracker?: ProgressTrackerService,
     @Optional() private readonly kernelJournal?: EventJournalService,
@@ -168,13 +110,19 @@ export class AiSimulationEngineService {
       return this.generateTemplateDecision(agent, worldState, irrationalBias);
     }
 
-    // 构建角色上下文
-    const systemPrompt = this.buildAgentSystemPrompt(agent, scenario);
+    // 构建角色上下文（prompt 模板经 PolicyConfig dual-read，DB 空时逐字节等同代码常量）
+    const promptPolicy = await this.simulationPolicy.agentPromptPolicy();
+    const systemPrompt = this.buildAgentSystemPrompt(
+      agent,
+      scenario,
+      promptPolicy,
+    );
     const userPrompt = this.buildAgentUserPrompt(
       agent,
       worldState,
       roundNumber,
       irrationalBias,
+      promptPolicy,
     );
 
     const messages: ChatMessage[] = [
@@ -268,32 +216,17 @@ export class AiSimulationEngineService {
   private buildAgentSystemPrompt(
     agent: { role: string; team: string; persona: Prisma.JsonValue },
     scenario: { name: string; industry: string },
+    promptPolicy: AgentPromptPolicy,
   ): string {
-    const teamRole = {
-      BLUE: "你是蓝军（我方/主角），代表当前市场主导者。你的目标是保持市场份额、抵御竞争、防范风险。",
-      RED: "你是红军（对手/挑战者），代表激进的竞争者。你的目标是抢占市场、颠覆格局、寻找弱点攻击。",
-      GREEN:
-        "你是绿军（市场/客户/供应商），代表市场参与者、客户和供应链伙伴。你的目标是追求自身利益最大化、评估合作方、做出采购或供应决策。",
-      WHITE:
-        "你是白方（裁判/监管机构），代表监管机构、行业协会和中立观察者。你关注合规、公平竞争、政策执行和行业健康发展。",
-      CHAOS:
-        "你是混沌军（黑天鹅制造者），你会引入不可预测的市场冲击和突发事件。",
-      ARBITER: "你是裁判，负责评估各方行动的可行性和后果。",
-    };
-
-    return `你是一个战略推演中的AI角色。
-场景：${scenario.name} - ${scenario.industry}
-${teamRole[agent.team as keyof typeof teamRole] || ""}
-
-你的角色：${agent.role}
-${agent.persona ? `人设：${JSON.stringify(agent.persona)}` : ""}
-
-回复格式要求：
-1. 内心独白（Inner Monologue）：你的分析思考过程，对手可能看不到
-2. 公开行动（Public Action）：你决定采取的具体行动，所有人可见
-
-请用以下JSON格式回复：
-{"innerMonologue": "你的思考...", "publicAction": "你的行动..."}`;
+    return renderSimulationTemplate(promptPolicy.systemTemplate, {
+      scenarioName: scenario.name,
+      industry: scenario.industry,
+      teamRole: promptPolicy.teamRoles[agent.team] || "",
+      role: agent.role,
+      personaSection: agent.persona
+        ? `人设：${JSON.stringify(agent.persona)}`
+        : "",
+    });
   }
 
   private buildAgentUserPrompt(
@@ -301,6 +234,7 @@ ${agent.persona ? `人设：${JSON.stringify(agent.persona)}` : ""}
     worldState: Record<string, unknown>,
     roundNumber: number,
     irrationalBias: boolean,
+    promptPolicy: AgentPromptPolicy,
   ): string {
     const marketInfo = worldState.market ? "市场数据已获取" : "市场数据缺失";
     const financeInfo = worldState.finance ? "财务数据已获取" : "财务数据缺失";
@@ -309,28 +243,28 @@ ${agent.persona ? `人设：${JSON.stringify(agent.persona)}` : ""}
       ? "监管政策已获取"
       : "监管政策缺失";
 
-    let prompt = `当前是第 ${roundNumber} 轮推演。
+    const round = promptPolicy.round;
+    const blackSwan = worldState.blackSwan as BlackSwanEvent | undefined;
 
-外部态势：
-- ${marketInfo}
-- ${financeInfo}
-- ${newsInfo}
-- ${regulationInfo}
-
-${worldState.blackSwan ? `⚠️ 黑天鹅事件：${(worldState.blackSwan as BlackSwanEvent).name} - ${(worldState.blackSwan as BlackSwanEvent).description}` : ""}
-
-请基于你的角色和当前态势，决定你的下一步行动。`;
-
-    if (irrationalBias) {
-      prompt +=
-        "\n\n⚡ 注意：当前存在市场非理性情绪，你可能需要考虑情绪化因素。";
-    }
-
-    if (agent.memoryPublic) {
-      prompt += `\n\n公共记忆：${JSON.stringify(agent.memoryPublic)}`;
-    }
-
-    return prompt;
+    return renderSimulationTemplate(round.template, {
+      roundNumber: String(roundNumber),
+      marketInfo,
+      financeInfo,
+      newsInfo,
+      regulationInfo,
+      blackSwanSection: blackSwan
+        ? renderSimulationTemplate(round.blackSwanSection, {
+            name: blackSwan.name,
+            description: blackSwan.description,
+          })
+        : "",
+      irrationalSection: irrationalBias ? round.irrationalSection : "",
+      memorySection: agent.memoryPublic
+        ? renderSimulationTemplate(round.memorySection, {
+            memoryPublic: JSON.stringify(agent.memoryPublic),
+          })
+        : "",
+    });
   }
 
   private parseAgentResponse(
@@ -823,9 +757,10 @@ ${worldState.blackSwan ? `⚠️ 黑天鹅事件：${(worldState.blackSwan as Bl
     let blackSwanEvent: BlackSwanEvent | undefined;
 
     if (chaosTriggered) {
-      // 从事件库中随机选择一个黑天鹅事件
-      const randomIndex = Math.floor(Math.random() * BLACK_SWAN_EVENTS.length);
-      const selectedEvent = BLACK_SWAN_EVENTS[randomIndex];
+      // 从事件库中随机选择一个黑天鹅事件（事件库经 PolicyConfig dual-read）
+      const blackSwanLibrary = await this.simulationPolicy.blackSwanEvents();
+      const randomIndex = Math.floor(Math.random() * blackSwanLibrary.length);
+      const selectedEvent = blackSwanLibrary[randomIndex];
       blackSwanEvent = {
         ...selectedEvent,
         probability: chaosProb,

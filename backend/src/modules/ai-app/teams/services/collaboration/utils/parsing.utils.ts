@@ -5,7 +5,8 @@
  * 从 team-mission.service.ts 提取
  */
 
-import { REVIEW_RESULT_PATTERNS } from "../prompt";
+// L3 W1 策略数据化：经模块级 overlay 快照读取（DB dual-read，空 = 代码常量同引用）
+import { getReviewResultPatterns } from "../config/teams-review-policy.service";
 
 /**
  * 审核结果（增强版，带置信度）
@@ -28,8 +29,11 @@ export interface ReviewResult {
  * 5. 默认策略（基于内容分析）
  */
 export function parseReviewResult(content: string): ReviewResult {
+  // L3 W1: overlay 快照（上游 async 审核入口刷新；未刷新 = 代码常量原样）
+  const patterns = getReviewResultPatterns();
+
   // ★★★ 最高优先级：检查标准格式 "## 审核结果：通过/需要修改" ★★★
-  const formatMatch = content.match(REVIEW_RESULT_PATTERNS.STANDARD_FORMAT);
+  const formatMatch = content.match(patterns.STANDARD_FORMAT);
   if (formatMatch) {
     const result = formatMatch[1];
     if (result === "通过") {
@@ -52,7 +56,7 @@ export function parseReviewResult(content: string): ReviewResult {
   const lowerContent = content.toLowerCase();
 
   // ★ 明确通过标记检测
-  for (const { pattern, weight } of REVIEW_RESULT_PATTERNS.APPROVE_PATTERNS) {
+  for (const { pattern, weight } of patterns.APPROVE_PATTERNS) {
     if (lowerContent.includes(pattern)) {
       return {
         isApproved: true,
@@ -64,7 +68,7 @@ export function parseReviewResult(content: string): ReviewResult {
   }
 
   // ★ 否定模式检测
-  for (const { pattern, weight } of REVIEW_RESULT_PATTERNS.REJECT_PATTERNS) {
+  for (const { pattern, weight } of patterns.REJECT_PATTERNS) {
     if (lowerContent.includes(pattern)) {
       return {
         isApproved: false,
@@ -76,10 +80,7 @@ export function parseReviewResult(content: string): ReviewResult {
   }
 
   // ★ 需要修改模式检测
-  for (const {
-    pattern,
-    weight,
-  } of REVIEW_RESULT_PATTERNS.REVISION_NEEDED_PATTERNS) {
+  for (const { pattern, weight } of patterns.REVISION_NEEDED_PATTERNS) {
     if (lowerContent.includes(pattern)) {
       return {
         isApproved: false,
@@ -102,10 +103,9 @@ export function parseReviewResult(content: string): ReviewResult {
   }
 
   // ★ 检查是否包含实质性的修改建议
-  const hasSubstantiveFeedback =
-    REVIEW_RESULT_PATTERNS.SUBSTANTIVE_FEEDBACK_KEYWORDS.some((keyword) =>
-      content.includes(keyword),
-    );
+  const hasSubstantiveFeedback = patterns.SUBSTANTIVE_FEEDBACK_KEYWORDS.some(
+    (keyword) => content.includes(keyword),
+  );
 
   if (hasSubstantiveFeedback) {
     return {

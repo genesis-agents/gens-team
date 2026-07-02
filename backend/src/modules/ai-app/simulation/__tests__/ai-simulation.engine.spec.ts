@@ -3,6 +3,8 @@ import { AiSimulationEngineService } from "../ai-simulation.engine";
 import { PrismaService } from "../../../../common/prisma/prisma.service";
 import { ExternalDataService } from "../external-data.service";
 import { ChatFacade } from "@/modules/ai-harness/facade";
+import { PolicyConfigService } from "@/modules/platform/facade";
+import { SimulationPolicyService } from "../config/simulation-policy.service";
 import { SimulationRunStatus, SimulationTeam } from "@prisma/client";
 
 describe("AiSimulationEngineService", () => {
@@ -76,9 +78,18 @@ describe("AiSimulationEngineService", () => {
       chat: jest.fn(),
     };
 
+    // PolicyConfig dual-read 打桩为纯代码兜底（返回 codeFallback，行为等同 DB 空）
+    const mockPolicyConfig = {
+      resolve: jest.fn(<T>(_key: string, codeFallback: T) =>
+        Promise.resolve({ value: codeFallback, source: "code" as const }),
+      ),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AiSimulationEngineService,
+        SimulationPolicyService,
+        { provide: PolicyConfigService, useValue: mockPolicyConfig },
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ExternalDataService, useValue: mockExternalData },
         { provide: ChatFacade, useValue: mockAiFacade },

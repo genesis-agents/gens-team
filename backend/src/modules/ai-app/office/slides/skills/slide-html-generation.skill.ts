@@ -25,6 +25,11 @@ import {
   SLIDE_DESIGN_SYSTEM_BASE_PROMPT,
   buildSlideHtmlUserPrompt,
 } from "../../prompts/slide-design-system.prompt";
+import {
+  OfficePolicyService,
+  OFFICE_POLICY_KEYS,
+} from "../../config/office-policy.service";
+import type { OfficePolicyKey } from "../../config/office-policy.service";
 import { postProcessSlideHtml } from "./html-post-processor";
 
 // ============================================================================
@@ -77,7 +82,20 @@ export class SlideHtmlGenerationSkill implements ISkill<
   readonly tags = ["slides", "html", "generation", "ai-adaptive"];
   readonly version = "6.0.0";
 
-  constructor(@Optional() private readonly chatFacade?: ChatFacade) {}
+  constructor(
+    @Optional() private readonly chatFacade?: ChatFacade,
+    @Optional() private readonly officePolicy?: OfficePolicyService,
+  ) {}
+
+  /** L3 W1: prompt 经 PolicyConfig dual-read；服务缺席时逐字节回代码常量 */
+  private async policyPrompt(
+    key: OfficePolicyKey,
+    codeFallback: string,
+  ): Promise<string> {
+    return this.officePolicy
+      ? this.officePolicy.prompt(key, codeFallback)
+      : codeFallback;
+  }
 
   async execute(
     input: SlideHtmlGenerationInput,
@@ -130,8 +148,16 @@ export class SlideHtmlGenerationSkill implements ISkill<
 
       // Use base prompt + injected theme tokens if available, else full prompt
       const systemPrompt = input.themePromptFragment
-        ? SLIDE_DESIGN_SYSTEM_BASE_PROMPT + "\n\n" + input.themePromptFragment
-        : SLIDE_DESIGN_SYSTEM_PROMPT;
+        ? (await this.policyPrompt(
+            OFFICE_POLICY_KEYS.SLIDE_DESIGN_SYSTEM_BASE,
+            SLIDE_DESIGN_SYSTEM_BASE_PROMPT,
+          )) +
+          "\n\n" +
+          input.themePromptFragment
+        : await this.policyPrompt(
+            OFFICE_POLICY_KEYS.SLIDE_DESIGN_SYSTEM,
+            SLIDE_DESIGN_SYSTEM_PROMPT,
+          );
 
       // Call AI via AIFacade
       const messages: ChatMessage[] = [

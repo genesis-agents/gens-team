@@ -4,10 +4,31 @@
 
 import { Test, TestingModule } from "@nestjs/testing";
 import { ContentTransformerService } from "../content-transformer.service";
+import { SocialStrategyPolicyService } from "../config/social-strategy-policy.service";
+import {
+  BILINGUAL_FORMAT_GUIDE,
+  WECHAT_ARTICLE_SYSTEM_PROMPT,
+  XIAOHONGSHU_NOTE_BILINGUAL_ADDENDUM,
+  XIAOHONGSHU_NOTE_SYSTEM_PROMPT,
+} from "../../skills/social-transformer.prompt";
 import { ChatFacade } from "@/modules/ai-harness/facade";
 import { SocialContentType } from "@prisma/client";
 
 jest.mock("@/modules/ai-harness/facade");
+
+// L3 W1: policy service mock 返回代码常量（等同 DB 空 / flag 关的零下降路径）
+const mockSocialPolicy = {
+  wechatArticleSystemPrompt: jest
+    .fn()
+    .mockResolvedValue(WECHAT_ARTICLE_SYSTEM_PROMPT),
+  xiaohongshuNoteSystemPrompt: jest
+    .fn()
+    .mockResolvedValue(XIAOHONGSHU_NOTE_SYSTEM_PROMPT),
+  bilingualFormatGuide: jest.fn().mockResolvedValue(BILINGUAL_FORMAT_GUIDE),
+  xiaohongshuNoteBilingualAddendum: jest
+    .fn()
+    .mockResolvedValue(XIAOHONGSHU_NOTE_BILINGUAL_ADDENDUM),
+};
 
 describe("ContentTransformerService", () => {
   let service: ContentTransformerService;
@@ -38,6 +59,7 @@ describe("ContentTransformerService", () => {
       providers: [
         ContentTransformerService,
         { provide: ChatFacade, useValue: mockAiFacade },
+        { provide: SocialStrategyPolicyService, useValue: mockSocialPolicy },
       ],
     }).compile();
 

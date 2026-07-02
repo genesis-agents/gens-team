@@ -5,13 +5,18 @@
  * 替代简单的 PageTypeSelectionSkill，使用加权匹配算法
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import {
   PageOutline,
   PageTemplateType,
   NarrativePlan,
 } from "../checkpoint/checkpoint.types";
 import { templateRegistry, SlideTemplate } from "../templates";
+import {
+  OfficePolicyService,
+  OFFICE_POLICY_KEYS,
+  getOfficeStrategy,
+} from "../../config/office-policy.service";
 import {
   ISkill,
   SkillContext,
@@ -91,6 +96,8 @@ export interface TemplateMatchResult {
 
 /**
  * 匹配权重配置
+ * L3 W1: 代码兜底常量，match() 内经 getOfficeStrategy overlay dual-read
+ * （key: office.threshold.template-match-weights）
  */
 const MATCH_WEIGHTS = {
   keywordMatch: 0.3, // 内容关键词 vs 模板 useCases
@@ -232,6 +239,10 @@ export class TemplateMatcherSkill implements ISkill<
 > {
   private readonly logger = new Logger(TemplateMatcherSkill.name);
 
+  constructor(
+    @Optional() private readonly officePolicy?: OfficePolicyService,
+  ) {}
+
   /**
    * Skill Interface Implementation
    */
@@ -316,6 +327,12 @@ export class TemplateMatcherSkill implements ISkill<
     }
 
     try {
+      // L3 W1: match() 为 sync（matchAll/getTemplateType 亦直接调用），
+      // 在 async 入口刷新策略 overlay 快照（playground overlay 模式）
+      if (this.officePolicy) {
+        await this.officePolicy.refreshStrategyOverlays();
+      }
+
       const result = this.match(normalizedInput);
 
       return {
@@ -385,6 +402,12 @@ export class TemplateMatcherSkill implements ISkill<
       );
     }
 
+    // L3 W1: 权重经 overlay dual-read（overlay 空 = 与代码常量同引用）
+    const weights = getOfficeStrategy(
+      OFFICE_POLICY_KEYS.TEMPLATE_MATCH_WEIGHTS,
+      MATCH_WEIGHTS,
+    );
+
     const scores: {
       template: SlideTemplate;
       score: number;
@@ -403,12 +426,12 @@ export class TemplateMatcherSkill implements ISkill<
       );
 
       const totalScore =
-        details.keywordScore * MATCH_WEIGHTS.keywordMatch +
-        details.capacityScore * MATCH_WEIGHTS.contentCapacity +
-        details.positionScore * MATCH_WEIGHTS.narrativePosition +
-        details.contextScore * MATCH_WEIGHTS.contextFit +
-        details.diversityScore * MATCH_WEIGHTS.diversity +
-        details.emotionalScore * MATCH_WEIGHTS.emotionalMatch;
+        details.keywordScore * weights.keywordMatch +
+        details.capacityScore * weights.contentCapacity +
+        details.positionScore * weights.narrativePosition +
+        details.contextScore * weights.contextFit +
+        details.diversityScore * weights.diversity +
+        details.emotionalScore * weights.emotionalMatch;
 
       scores.push({ template, score: totalScore, details });
     }

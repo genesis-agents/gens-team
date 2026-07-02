@@ -15,6 +15,10 @@ import {
   SEARCH_ENHANCE,
   STEP_COUNT_GUIDE,
 } from "./prompt-locale";
+import {
+  ResearchStrategyPolicyService,
+  StepCountGuide,
+} from "./research-strategy-policy.service";
 
 /**
  * 研究规划服务
@@ -26,7 +30,10 @@ import {
 export class ResearchPlannerService {
   private readonly logger = new Logger(ResearchPlannerService.name);
 
-  constructor(private readonly chatFacade: ChatFacade) {}
+  constructor(
+    private readonly chatFacade: ChatFacade,
+    private readonly strategyPolicy: ResearchStrategyPolicyService,
+  ) {}
 
   /**
    * 生成研究计划
@@ -51,7 +58,11 @@ export class ResearchPlannerService {
     const previousContext = options?.previousContext;
     const lang = resolveLanguage(options?.language);
 
+    // L3 W1 策略数据化：步数指导走 PolicyConfig dual-read（DB 空/flag 关时逐字节同代码常量）
+    const stepCountGuideMap = await this.strategyPolicy.planStepCountGuide();
+
     const systemPrompt = this.buildPlanningPrompt(
+      stepCountGuideMap,
       depth,
       includeAcademic,
       isFollowUp,
@@ -93,13 +104,17 @@ export class ResearchPlannerService {
    * 构建规划提示词
    */
   private buildPlanningPrompt(
+    stepCountGuideMap: StepCountGuide,
     depth: "quick" | "standard" | "thorough",
     includeAcademic: boolean,
     isFollowUp: boolean = false,
     previousContext?: PreviousReportContext,
     language: ResearchLanguage = "zh-CN",
   ): string {
-    const stepCountGuide = STEP_COUNT_GUIDE[language][depth];
+    // DB 值形状不对（缺语言/档位）时回代码常量，防止 "undefined" 注入 prompt
+    const stepCountGuide =
+      stepCountGuideMap?.[language]?.[depth] ||
+      STEP_COUNT_GUIDE[language][depth];
 
     // 追问模式的特殊提示
     if (isFollowUp && previousContext) {

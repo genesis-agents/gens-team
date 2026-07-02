@@ -30,6 +30,10 @@ import {
   MISSING_PLACEHOLDER,
   MISSING_NUMBER_PLACEHOLDER,
 } from "../templates/base/template-requirements";
+import {
+  OfficePolicyService,
+  OFFICE_POLICY_KEYS,
+} from "../../config/office-policy.service";
 
 /**
  * 数据补全输入
@@ -90,6 +94,8 @@ interface MissingDataItem {
 
 /**
  * 数据提取系统提示词
+ * L3 W1: 代码兜底常量，运行时经 OfficePolicyService dual-read
+ * （key: office.prompt.data-extraction）
  */
 const DATA_EXTRACTION_PROMPT = `你是一位数据提取专家，擅长从搜索结果中提取结构化数据。
 
@@ -130,6 +136,7 @@ export class DataSupplementSkill implements ISkill<
     @Optional() private readonly chatFacade: ChatFacade,
     // ★ 架构重构：通过 ToolRegistry 调用工具
     @Optional() private readonly toolRegistry: ToolRegistry,
+    @Optional() private readonly officePolicy?: OfficePolicyService,
   ) {}
 
   /**
@@ -592,8 +599,16 @@ ${resultsSummary}
 ## 请求
 从搜索结果中提取数据，填充上述缺失字段。返回 JSON 格式。`;
 
+    // L3 W1: prompt 经 PolicyConfig dual-read（DB 空/flag 关时逐字节回代码常量）
+    const systemPrompt = this.officePolicy
+      ? await this.officePolicy.prompt(
+          OFFICE_POLICY_KEYS.DATA_EXTRACTION,
+          DATA_EXTRACTION_PROMPT,
+        )
+      : DATA_EXTRACTION_PROMPT;
+
     const messages = [
-      { role: "system" as const, content: DATA_EXTRACTION_PROMPT },
+      { role: "system" as const, content: systemPrompt },
       { role: "user" as const, content: userMessage },
     ];
 

@@ -5,7 +5,7 @@
  * 这是内容驱动架构的核心组件，用于替代硬编码的模板容量配置
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import {
   ISkill,
   SkillContext,
@@ -18,6 +18,21 @@ import {
   ContentSection,
   StatContent,
 } from "../checkpoint/checkpoint.types";
+import {
+  OfficePolicyService,
+  OFFICE_POLICY_KEYS,
+  getOfficeStrategy,
+} from "../../config/office-policy.service";
+
+/**
+ * 分页密度阈值（每页最大区块数/字符数）——直接决定 PPT 页数与信息密度
+ * L3 W1: 代码兜底常量，消费点经 getOfficeStrategy overlay dual-read
+ * （key: office.threshold.page-density）
+ */
+const PAGE_DENSITY = {
+  MAX_SECTIONS_PER_PAGE: 6,
+  MAX_CHARS_PER_PAGE: 800,
+};
 
 // ============================================================================
 // Content Features Types
@@ -193,6 +208,10 @@ export class ContentAnalyzerSkill implements ISkill<
   private readonly logger = new Logger(ContentAnalyzerSkill.name);
   private readonly ANALYSIS_VERSION = "4.0.0";
 
+  constructor(
+    @Optional() private readonly officePolicy?: OfficePolicyService,
+  ) {}
+
   // ============================================================================
   // ISkill Implementation - Required Properties
   // ============================================================================
@@ -209,9 +228,7 @@ export class ContentAnalyzerSkill implements ISkill<
   // Configuration
   // ============================================================================
 
-  // 页面最大容量配置（基于视觉舒适度，而非硬编码）
-  private readonly MAX_SECTIONS_PER_PAGE = 6;
-  private readonly MAX_CHARS_PER_PAGE = 800;
+  // 分页密度阈值见模块级 PAGE_DENSITY（L3 W1 策略数据化，overlay dual-read）
   private readonly OPTIMAL_SECTIONS = { min: 2, max: 4 };
 
   // ============================================================================
@@ -252,6 +269,12 @@ export class ContentAnalyzerSkill implements ISkill<
     }
 
     try {
+      // L3 W1: analyze() 为 sync（ContentCompressionSkill 等直接调用），
+      // 在 async 入口刷新策略 overlay 快照（playground overlay 模式）
+      if (this.officePolicy) {
+        await this.officePolicy.refreshStrategyOverlays();
+      }
+
       this.logger.debug(
         `[execute] Starting content analysis - executionId: ${context.executionId}`,
       );
@@ -917,13 +940,19 @@ export class ContentAnalyzerSkill implements ISkill<
     suggestedPageCount: number;
     overflowSections: number;
   } {
+    // L3 W1: 分页密度经 overlay dual-read（overlay 空 = 与代码常量同引用）
+    const density = getOfficeStrategy(
+      OFFICE_POLICY_KEYS.PAGE_DENSITY,
+      PAGE_DENSITY,
+    );
+
     const sectionsOverflow = Math.max(
       0,
-      metrics.totalSections - this.MAX_SECTIONS_PER_PAGE,
+      metrics.totalSections - density.MAX_SECTIONS_PER_PAGE,
     );
     const charsOverflow = Math.max(
       0,
-      metrics.totalCharacters - this.MAX_CHARS_PER_PAGE,
+      metrics.totalCharacters - density.MAX_CHARS_PER_PAGE,
     );
 
     const fitsOnOnePage = sectionsOverflow === 0 && charsOverflow === 0;
@@ -935,7 +964,7 @@ export class ContentAnalyzerSkill implements ISkill<
         metrics.totalSections / this.OPTIMAL_SECTIONS.max,
       );
       const pagesByChars = Math.ceil(
-        metrics.totalCharacters / this.MAX_CHARS_PER_PAGE,
+        metrics.totalCharacters / density.MAX_CHARS_PER_PAGE,
       );
       suggestedPageCount = Math.max(pagesBySection, pagesByChars);
     }
@@ -976,11 +1005,15 @@ export class ContentAnalyzerSkill implements ISkill<
 
     const pageCount = features.estimatedCapacity.suggestedPageCount;
     const sectionsPerPage = Math.ceil(totalSections / pageCount);
+    const density = getOfficeStrategy(
+      OFFICE_POLICY_KEYS.PAGE_DENSITY,
+      PAGE_DENSITY,
+    );
 
     return {
       shouldSplit: true,
       suggestedPageCount: pageCount,
-      sectionsPerPage: Math.min(sectionsPerPage, this.MAX_SECTIONS_PER_PAGE),
+      sectionsPerPage: Math.min(sectionsPerPage, density.MAX_SECTIONS_PER_PAGE),
     };
   }
 }

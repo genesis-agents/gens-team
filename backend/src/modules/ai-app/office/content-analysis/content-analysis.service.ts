@@ -11,6 +11,10 @@ import {
   CONTENT_ANALYSIS_USER_PROMPT,
 } from "./content-analysis.prompts";
 import {
+  OfficePolicyService,
+  OFFICE_POLICY_KEYS,
+} from "../config/office-policy.service";
+import {
   ContentAnalysisInput,
   ContentAnalysisResult,
   ContentFeatures,
@@ -31,7 +35,10 @@ import {
 export class ContentAnalysisService {
   private readonly logger = new Logger(ContentAnalysisService.name);
 
-  constructor(private readonly chatFacade: ChatFacade) {}
+  constructor(
+    private readonly chatFacade: ChatFacade,
+    private readonly officePolicy: OfficePolicyService,
+  ) {}
 
   /**
    * 分析内容特征
@@ -348,17 +355,27 @@ export class ContentAnalysisService {
     confidence?: number;
   }> {
     try {
-      const userPrompt = CONTENT_ANALYSIS_USER_PROMPT.replace(
-        "{{title}}",
-        input.context?.title || "未知标题",
-      )
+      // L3 W1: prompt 经 PolicyConfig dual-read（DB 空/flag 关时逐字节回代码常量）
+      const [systemPrompt, userTemplate] = await Promise.all([
+        this.officePolicy.prompt(
+          OFFICE_POLICY_KEYS.CONTENT_ANALYSIS_SYSTEM,
+          CONTENT_ANALYSIS_SYSTEM_PROMPT,
+        ),
+        this.officePolicy.prompt(
+          OFFICE_POLICY_KEYS.CONTENT_ANALYSIS_USER,
+          CONTENT_ANALYSIS_USER_PROMPT,
+        ),
+      ]);
+
+      const userPrompt = userTemplate
+        .replace("{{title}}", input.context?.title || "未知标题")
         .replace("{{purpose}}", input.context?.purpose || "生成专业报告")
         .replace("{{content}}", input.content.slice(0, 8000)); // 限制长度
 
       // ★ 使用 ChatFacade 统一入口
       const response = await this.chatFacade.chat({
         messages: [
-          { role: "system", content: CONTENT_ANALYSIS_SYSTEM_PROMPT },
+          { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
         modelType: AIModelType.CHAT_FAST, // 内容分析使用快速模型

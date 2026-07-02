@@ -16,6 +16,7 @@ import { CreditsModule } from "../../../platform/credits/credits.module";
 
 import { DiscussionResearchService } from "./discussion-research.service";
 import { ResearchPlannerService } from "./research-planner.service";
+import { ResearchStrategyPolicyService } from "./research-strategy-policy.service";
 import { IterativeSearchService } from "./iterative-search.service";
 import { SelfReflectionService } from "./self-reflection.service";
 import { ReportSynthesizerService } from "./report-synthesizer.service";
@@ -35,6 +36,7 @@ import { ResearchCritiqueService } from "../quality/research-critique.service";
 const services = [
   DiscussionResearchService,
   ResearchPlannerService,
+  ResearchStrategyPolicyService,
   IterativeSearchService,
   SelfReflectionService,
   ReportSynthesizerService,

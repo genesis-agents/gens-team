@@ -7,7 +7,7 @@
  * - summarizeForLeaderReview: 为长内容生成摘要
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { PrismaService } from "../../../../../../common/prisma/prisma.service";
 import {
   AgentTaskStatus,
@@ -22,6 +22,8 @@ import { AgentFacade } from "@/modules/ai-harness/facade";
 import { TaskCompletionType } from "@/modules/ai-harness/facade";
 import { MissionStateManager } from "@/modules/ai-harness/facade";
 import { parseReviewResult } from "../utils";
+// L3 W1 策略数据化：审核判定前刷新 review pattern overlay（DB dual-read 快照）
+import { TeamsReviewPolicyService } from "../config/teams-review-policy.service";
 import {
   MissionWithRelations,
   TeamMemberBase,
@@ -100,6 +102,8 @@ export class MissionReviewService {
     private stateManager: MissionStateManager,
     // ★ Leader 模型容错服务：支持重试和模型切换
     private leaderModelService: LeaderModelService,
+    // ★ L3 W1: 审核模式表 dual-read（@Optional 保零下降——缺省时纯代码常量）
+    @Optional() private readonly reviewPolicy?: TeamsReviewPolicyService,
   ) {
     // 验证 AI Engine 服务可用
     this.logger.debug(
@@ -309,6 +313,11 @@ export class MissionReviewService {
           clearInterval(reviewHeartbeatTimer);
           reviewHeartbeatTimer = null;
         }
+      }
+
+      // ★ L3 W1: 判定前刷新审核模式 overlay（fail-open，服务内部吞异常不阻断审核）
+      if (this.reviewPolicy) {
+        await this.reviewPolicy.refreshReviewPatternOverlay();
       }
 
       // 解析审核结果

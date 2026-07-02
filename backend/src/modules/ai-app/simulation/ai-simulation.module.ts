@@ -10,6 +10,7 @@ import { ExternalDataService } from "./external-data.service";
 import { AIAssistService } from "./ai-assist.service";
 import { AgentRegistry } from "@/modules/ai-harness/facade";
 import { SimulatorAgent } from "./agents";
+import { SimulationPolicyService } from "./config/simulation-policy.service";
 
 @Module({
   imports: [PrismaModule, AiEngineModule, CreditsModule],
@@ -20,6 +21,7 @@ import { SimulatorAgent } from "./agents";
     ExternalDataService,
     AIAssistService,
     SimulatorAgent,
+    SimulationPolicyService,
   ],
   exports: [
     AiSimulationService,

@@ -7,10 +7,7 @@ import {
   getPlatformLimits,
   PlatformLimits,
 } from "../../runtime/platform-limits.config";
-import {
-  WECHAT_ADAPTATION_SYSTEM_PROMPT,
-  XIAOHONGSHU_ADAPTATION_SYSTEM_PROMPT,
-} from "../skills/social-version.prompt";
+import { SocialStrategyPolicyService } from "./config/social-strategy-policy.service";
 
 export interface ContentVersionData {
   title: string;
@@ -26,13 +23,14 @@ export type SocialContentVersion =
 export class ContentVersionService {
   private readonly logger = new Logger(ContentVersionService.name);
 
-  // 内容超出限制阈值，超过此比例需要 AI 重写而非简单截断
-  private static readonly CONTENT_OVERFLOW_THRESHOLD = 1.2; // 正文超出 20% 需要 AI 重写
-  private static readonly TITLE_OVERFLOW_THRESHOLD = 1.5; // 标题超出 50% 需要 AI 重写
+  // 内容超出限制阈值（超过比例需要 AI 重写而非简单截断）已数据化：
+  // 经 SocialStrategyPolicyService dual-read，代码兜底常量见
+  // config/social-strategy-policy.service.ts（CONTENT/TITLE_OVERFLOW_THRESHOLD）
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly chatFacade: ChatFacade,
+    private readonly socialPolicy: SocialStrategyPolicyService,
   ) {}
 
   /**
@@ -317,7 +315,7 @@ export class ContentVersionService {
     contentId?: string,
   ): Promise<ContentVersionData> {
     // 检查是否需要 AI 适配
-    const needsAdaptation = this.needsAdaptation(content, limits);
+    const needsAdaptation = await this.needsAdaptation(content, limits);
 
     if (!needsAdaptation) {
       // 内容已符合限制，直接截断即可
@@ -332,7 +330,7 @@ export class ContentVersionService {
         messages: [
           {
             role: "system",
-            content: this.getAdaptationSystemPrompt(platformType),
+            content: await this.getAdaptationSystemPrompt(platformType),
           },
           {
             role: "user",
@@ -379,24 +377,26 @@ export class ContentVersionService {
    * - 如果超出限制较多，简单截断会严重影响质量，需要 AI 重新组织
    * - 如果超出不多，简单截断即可
    */
-  private needsAdaptation(
+  private async needsAdaptation(
     content: ContentVersionData,
     limits: PlatformLimits,
-  ): boolean {
-    // 如果正文超出限制 20% 以上，需要 AI 重新组织
+  ): Promise<boolean> {
+    const [contentOverflowThreshold, titleOverflowThreshold] =
+      await Promise.all([
+        this.socialPolicy.contentOverflowThreshold(),
+        this.socialPolicy.titleOverflowThreshold(),
+      ]);
+
+    // 如果正文超出限制比例（默认 20%）以上，需要 AI 重新组织
     if (
       limits.maxContent > 0 &&
-      content.content.length >
-        limits.maxContent * ContentVersionService.CONTENT_OVERFLOW_THRESHOLD
+      content.content.length > limits.maxContent * contentOverflowThreshold
     ) {
       return true;
     }
 
-    // 如果标题超出限制 50% 以上，需要 AI 重写
-    if (
-      content.title.length >
-      limits.maxTitle * ContentVersionService.TITLE_OVERFLOW_THRESHOLD
-    ) {
+    // 如果标题超出限制比例（默认 50%）以上，需要 AI 重写
+    if (content.title.length > limits.maxTitle * titleOverflowThreshold) {
       return true;
     }
 
@@ -477,12 +477,14 @@ ${content.content}
   /**
    * 获取 AI 适配系统提示
    */
-  private getAdaptationSystemPrompt(platformType: SocialPlatformType): string {
+  private async getAdaptationSystemPrompt(
+    platformType: SocialPlatformType,
+  ): Promise<string> {
     if (platformType === "WECHAT_MP") {
-      return WECHAT_ADAPTATION_SYSTEM_PROMPT;
+      return this.socialPolicy.wechatAdaptationSystemPrompt();
     }
 
-    return XIAOHONGSHU_ADAPTATION_SYSTEM_PROMPT;
+    return this.socialPolicy.xiaohongshuAdaptationSystemPrompt();
   }
 
   /**
