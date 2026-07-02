@@ -43,7 +43,8 @@ import {
 import { runPerDimPipeline } from "../helpers/per-dim-pipeline.util";
 import { narrate } from "../../artifacts/narrative.util";
 // ★ 2026-05-13: route min-findings retry threshold through typed runtime config
-import { loadPlaygroundRuntimeConfig } from "../../../runtime/playground-runtime.config";
+// ★ L3 W1 批 2c: 改经策略快照（DB overlay 叠加 env/profile；overlay 空 = 现状）
+import { getPlaygroundStrategyThresholds } from "../../../runtime/playground-strategy-policy";
 
 interface ResearcherDimResult {
   dimension: string;
@@ -610,7 +611,7 @@ async function runOneDim(
     // 触发无效的 self-heal retry。PLAYGROUND_TUNING_PROFILE=local-reasoning /
     // local-quantized 把阈值降到 3，per-knob env MIN_FINDINGS_THRESHOLD 进一步覆盖。
     const MIN_FINDINGS_THRESHOLD =
-      loadPlaygroundRuntimeConfig().minFindingsThreshold;
+      getPlaygroundStrategyThresholds().minFindingsThreshold;
     if (
       r.state === "completed" &&
       r.output &&

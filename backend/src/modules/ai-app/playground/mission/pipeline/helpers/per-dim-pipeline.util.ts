@@ -39,7 +39,8 @@ import {
 } from "../../../api/contracts/chapter-count.contract";
 // ★ 2026-05-22 ③L/M 单一源：报告总字数 = depthBase × lengthProfile 倍率
 import { resolveMissionTotalWords } from "../../../api/contracts/word-budget.contract";
-import { loadPlaygroundRuntimeConfig } from "../../../runtime/playground-runtime.config";
+// ★ L3 W1 批 2c: 改经策略快照（DB overlay 叠加 env/profile；overlay 空 = 现状）
+import { getPlaygroundStrategyThresholds } from "../../../runtime/playground-strategy-policy";
 import { stripChartJsonFromContent } from "@/modules/ai-engine/facade";
 
 import {
@@ -612,7 +613,8 @@ export async function runPerDimPipeline(
       expectedCount: outline.chapters.length,
       chapters: producedChapters,
       tolerance: {
-        maxMissingRatio: loadPlaygroundRuntimeConfig().chapterToleranceRatio,
+        maxMissingRatio:
+          getPlaygroundStrategyThresholds().chapterToleranceRatio,
       },
     });
     const writtenChapters: WrittenChapter[] = integrityCheck.validChapters;

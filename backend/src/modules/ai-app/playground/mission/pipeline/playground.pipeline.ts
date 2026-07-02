@@ -41,6 +41,8 @@ import {
   type ResolvedStageHooks,
   type StageRunArgs,
 } from "@/modules/ai-harness/facade";
+import { PolicyConfigService } from "@/modules/platform/facade";
+import { refreshPlaygroundStrategyOverlay } from "../../runtime/playground-strategy-policy";
 import type { PlaygroundTerminalExtra } from "../lifecycle/mission-store.service";
 import {
   MissionRuntimeShellService,
@@ -156,6 +158,9 @@ export class PlaygroundPipelineDispatcher
     @Optional()
     @Inject(forwardRef(() => MissionRerunOrchestratorService))
     private readonly rerunOrchestrator?: MissionRerunOrchestratorService,
+    // ★ L3 W1 批 2c: 策略阈值 dual-read。@Optional — 缺省装配（裁剪测试床）时
+    //   跳过 overlay 刷新，行为 = 纯 env/profile 现状。
+    @Optional() private readonly policyConfig?: PolicyConfigService,
   ) {
     // 2026-05-24 P4: framework 提供 emitToBus + bridgeOrchestratorStageEvent
     //   通用 mechanism；本 dispatcher 仅注入 playground 专属事件 type 字符串。
@@ -425,6 +430,17 @@ export class PlaygroundPipelineDispatcher
           `[playground-pipeline] concurrent run for mission ${missionId} skipped (already in flight)`,
         ),
       };
+    }
+    // ★ L3 W1 批 2c: mission 启动时刷新策略阈值 overlay（DB dual-read 快照，
+    //   同步消费方读快照 → mission 内策略字节级一致）。失败不阻断 mission。
+    if (this.policyConfig) {
+      await refreshPlaygroundStrategyOverlay(this.policyConfig).catch((err) =>
+        this.log.warn(
+          `[runMission ${missionId}] strategy overlay refresh failed (keeping env/profile values): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        ),
+      );
     }
     const session = await this.runtimeShell.openSession({
       missionId,
