@@ -84,6 +84,40 @@ describe("callJudgeLLM", () => {
     const result = await callJudgeLLM(llm, [], makeSpan() as never);
     expect(result.score).toBe(100);
   });
+
+  // ★ L3-W0 fail-open 修复（2026-07-02）：fail-closed 下失败 = 抛错弃权，不伪造 50 分
+  describe("fail-closed (EVAL_FAIL_CLOSED=1)", () => {
+    const original = process.env.EVAL_FAIL_CLOSED;
+
+    beforeEach(() => {
+      process.env.EVAL_FAIL_CLOSED = "1";
+    });
+
+    afterEach(() => {
+      if (original === undefined) delete process.env.EVAL_FAIL_CLOSED;
+      else process.env.EVAL_FAIL_CLOSED = original;
+    });
+
+    it("throws (abstain) when JSON is invalid", async () => {
+      const llm = makeLLM("not valid json at all");
+      await expect(callJudgeLLM(llm, [], makeSpan() as never)).rejects.toThrow(
+        /abstain/,
+      );
+    });
+
+    it("throws (abstain) when llm throws", async () => {
+      const llm = { call: jest.fn().mockRejectedValue(new Error("LLM down")) };
+      await expect(callJudgeLLM(llm, [], makeSpan() as never)).rejects.toThrow(
+        /LLM down.*abstain/,
+      );
+    });
+
+    it("valid verdict still parses normally", async () => {
+      const llm = makeLLM(JSON.stringify({ score: 85, critique: "Good" }));
+      const result = await callJudgeLLM(llm, [], makeSpan() as never);
+      expect(result.score).toBe(85);
+    });
+  });
 });
 
 describe("createSelfJudge", () => {

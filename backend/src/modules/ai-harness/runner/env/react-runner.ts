@@ -455,14 +455,35 @@ export class ReActRunner {
         }
       }
 
+      // ★ L3-W0 fail-open 修复（2026-07-02）：区分两种空 verdicts——
+      //   a) 未配置 judges = 未请求验证，直通 pass 是设计语义；
+      //   b) 配置了 judges 但全部异常弃权 = 裁判缺席，历史上伪造 pass 70
+      //      放行（fail-open）。EVAL_FAIL_CLOSED=1 时改为升级人工；默认仅
+      //      记 warn 观测触发频率（翻开关前先测量）。
+      const judgesAbstainedAll =
+        protocol.judges.length > 0 && verdicts.length === 0;
+      if (judgesAbstainedAll) {
+        this.logger.warn(
+          `[${task.id}] all ${protocol.judges.length} judges abstained — ` +
+            (process.env.EVAL_FAIL_CLOSED === "1"
+              ? "fail-closed, escalating to human"
+              : "fail-open default pass (set EVAL_FAIL_CLOSED=1 to escalate)"),
+        );
+      }
       const decision: ConsensusDecision =
         verdicts.length > 0
           ? consensus(verdicts)
-          : {
-              verdict: "pass",
-              score: 70,
-              note: "no judges available, default pass",
-            };
+          : judgesAbstainedAll && process.env.EVAL_FAIL_CLOSED === "1"
+            ? {
+                verdict: "escalate_to_human",
+                score: 0,
+                note: "all judges abstained — fail-closed",
+              }
+            : {
+                verdict: "pass",
+                score: 70,
+                note: "no judges available, default pass",
+              };
 
       await stores.verificationStore.write(
         { taskId: task.id, iteration, verdicts, decision },

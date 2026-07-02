@@ -96,3 +96,29 @@ describe("createConsensusResolver", () => {
     expect(decision.verdict).toBe("fail");
   });
 });
+
+// ★ L3-W0 fail-open 修复（2026-07-02）：EVAL_FAIL_CLOSED=1 时空 verdicts 不再默认 pass
+describe("createConsensusResolver — fail-closed (EVAL_FAIL_CLOSED=1)", () => {
+  const original = process.env.EVAL_FAIL_CLOSED;
+
+  beforeEach(() => {
+    process.env.EVAL_FAIL_CLOSED = "1";
+  });
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.EVAL_FAIL_CLOSED;
+    else process.env.EVAL_FAIL_CLOSED = original;
+  });
+
+  it("escalates to human when no verdicts (all judges abstained)", () => {
+    const decision = createConsensusResolver()([]);
+    expect(decision.verdict).toBe("escalate_to_human");
+    expect(decision.score).toBe(0);
+    expect(decision.note).toContain("fail-closed");
+  });
+
+  it("non-empty verdicts still resolve normally", () => {
+    const decision = createConsensusResolver()([v("j1", 80), v("j2", 90)]);
+    expect(decision.verdict).toBe("pass");
+  });
+});
