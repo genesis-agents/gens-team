@@ -4,6 +4,13 @@ import { ConfigService } from "@nestjs/config";
 import { SettingsService } from "../settings.service";
 import { PrismaService } from "../../../../common/prisma/prisma.service";
 
+// testSmtpConnection 动态 import nodemailer 并真实建连（connectionTimeout 10s > jest 默认 5s），
+// 并行+coverage 下 DNS/TCP 变慢即超时 —— 必须 mock 掉网络
+const mockSmtpVerify = jest.fn();
+jest.mock("nodemailer", () => ({
+  createTransport: jest.fn(() => ({ verify: mockSmtpVerify })),
+}));
+
 describe("SettingsService", () => {
   let service: SettingsService;
   let mockPrisma: jest.Mocked<Partial<PrismaService>>;
@@ -791,13 +798,30 @@ describe("SettingsService", () => {
         if (key === "SMTP_PORT") return "587";
         return undefined;
       });
+      mockSmtpVerify.mockRejectedValue(
+        new Error("connect ECONNREFUSED 127.0.0.1:587"),
+      );
 
-      // nodemailer.createTransport and verify will fail in test environment
       const result = await service.testSmtpConnection();
 
-      // Connection should fail (no real SMTP server)
       expect(result.success).toBe(false);
       expect(result.message).toContain("SMTP connection failed");
+    });
+
+    it("returns success when connection verifies", async () => {
+      (mockConfigService.get as jest.Mock).mockImplementation((key: string) => {
+        if (key === "SMTP_HOST") return "smtp.test.com";
+        if (key === "SMTP_USER") return "user@test.com";
+        if (key === "SMTP_PASS") return "password";
+        if (key === "SMTP_PORT") return "587";
+        return undefined;
+      });
+      mockSmtpVerify.mockResolvedValue(true);
+
+      const result = await service.testSmtpConnection();
+
+      expect(result.success).toBe(true);
+      expect(result.message).toContain("SMTP connection successful");
     });
   });
 
