@@ -38,10 +38,14 @@ export function hashPrompt(template: string): string {
 // PROMPT 策略 value 形状
 // ============================================================
 
-/** canonical 载体 = SKILL.md 原文（frontmatter + 正文一体，不发明第三种格式） */
+/**
+ * canonical 载体 = SKILL.md 原文（frontmatter + 正文一体，不发明第三种格式）。
+ * max: SKILL.md 实测 5-15KB，200K 字符硬顶防超大 prose 注入 system prompt
+ * （provider context 超限 / token 成本放大；propose 侧另有 1MB JSON 顶）。
+ */
 export const SkillDocPolicyValueSchema = z.object({
   schemaVersion: z.literal(1),
-  markdown: z.string().min(1),
+  markdown: z.string().min(1).max(200_000),
 });
 
 export type SkillDocPolicyValue = z.infer<typeof SkillDocPolicyValueSchema>;
@@ -52,7 +56,7 @@ export type SkillDocPolicyValue = z.infer<typeof SkillDocPolicyValueSchema>;
  */
 export const PromptTemplatePolicyValueSchema = z.object({
   schemaVersion: z.literal(1).optional(),
-  template: z.string().min(1),
+  template: z.string().min(1).max(200_000),
 });
 
 export type PromptTemplatePolicyValue = z.infer<

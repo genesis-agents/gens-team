@@ -2541,6 +2541,9 @@ model SystemSetting {
 // ============ 策略配置（L3 W1 策略数据化）============
 // 设计稿: docs/architecture/policy-config-design.md
 // append-only: 行创建后 value 不变，改 = 插入新 version；回滚 = 复制旧值为新 version 激活
+// 注意: DB 另有 partial unique index "policy_configs_one_active_per_key"
+// ON (key) WHERE isActive = true（Prisma 无法表达，见 20260703 迁移）——
+// 并发 activate 的最终兜底，勿在未来迁移中误删
 
 enum PolicyKind {
   PROMPT

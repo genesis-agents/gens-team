@@ -163,6 +163,8 @@ teams.topology.debate-team
 
 **拓扑数据面草案（留档，不实现）**：`TopologyPolicyValue = { schemaVersion: 1, roles: [{ roleId, minCount?, maxCount? }], steps: [{ id, dependsOn: string[] }] }`——只有依赖边与数量约束进 DB；ctxReads/ctxWrites/dbWrites/resetFields/rerunable 级联永远留代码。启动触发条件见 §八不做清单 #1。
 
+**深度检视修复（2026-07-03，合并前检视实锤）**：① activate 并发双 active 行（P1）——DB partial unique index `policy_configs_one_active_per_key` 兜底 + service P2002 重试 + getActiveRow orderBy 确定性；② writing/simulation 结构化 value 无防坏行——通用 `conformsToShape` 守卫（DB 值须形状兼容代码兜底，缺字段/类型漂移回代码）；③ prompt 尺寸上限——schema max 200K 字符 + propose 1MB JSON 硬顶。**接受不修（留痕）**：strategy overlay 并发 mission last-write-wins（批 2c 已拍板接受；prompt overlay 有 per-mission 冻结是因 config 副本机制顺路，strategy 消费点是无 ctx 的同步校验，per-mission 化需框架改造，W3 提拓扑/阈值变体时再评估）；propose 无调用方-模块绑定 enforcement——**W3 开工前置任务**：服务端按 PLAYGROUND_POLICY_SURFACE 白名单校验 system:\* 调用方的 key 写入面（W1 只有人写，人工审阅即门）。
+
 **落地状态（2026-07-02 批 3b 完成）**：步骤 1-7 已提交（`37dee663c` + backfill 脚本 `bd9352e2f`）；步骤 7 的 staging 灰度是部署后人工闸；步骤 8（评分落库附 PromptResolution 溯源）留 W2 开工首项，挂点 `getPlaygroundPromptResolution(roleId)` 已就绪。
 
 ## 九、待用户拍板的开放点

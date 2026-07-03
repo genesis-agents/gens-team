@@ -6,8 +6,11 @@
  * 快照等同测试见 __tests__/writing-quality-policy.service.spec.ts。
  */
 
-import { Injectable } from "@nestjs/common";
-import { PolicyConfigService } from "../../../../platform/facade";
+import { Injectable, Logger } from "@nestjs/common";
+import {
+  PolicyConfigService,
+  conformsToShape,
+} from "../../../../platform/facade";
 import {
   CONTENT_GATE,
   CRITIQUE_REFINE,
@@ -50,31 +53,43 @@ export const WRITING_POLICY_KEYS = {
 
 @Injectable()
 export class WritingQualityPolicyService {
+  private readonly logger = new Logger(WritingQualityPolicyService.name);
+
   constructor(private readonly policyConfig: PolicyConfigService) {}
 
   async structuralGate(): Promise<StructuralGateThresholds> {
-    const resolution =
-      await this.policyConfig.resolve<StructuralGateThresholds>(
-        WRITING_POLICY_KEYS.STRUCTURAL_GATE,
-        STRUCTURAL_GATE,
-      );
-    return resolution.value;
+    return this.resolveChecked(
+      WRITING_POLICY_KEYS.STRUCTURAL_GATE,
+      STRUCTURAL_GATE as StructuralGateThresholds,
+    );
   }
 
   async contentGate(): Promise<ContentGateThresholds> {
-    const resolution = await this.policyConfig.resolve<ContentGateThresholds>(
+    return this.resolveChecked(
       WRITING_POLICY_KEYS.CONTENT_GATE,
-      CONTENT_GATE,
+      CONTENT_GATE as ContentGateThresholds,
     );
-    return resolution.value;
   }
 
   async critiqueRefine(): Promise<CritiqueRefineThresholds> {
-    const resolution =
-      await this.policyConfig.resolve<CritiqueRefineThresholds>(
-        WRITING_POLICY_KEYS.CRITIQUE_REFINE,
-        CRITIQUE_REFINE,
+    return this.resolveChecked(
+      WRITING_POLICY_KEYS.CRITIQUE_REFINE,
+      CRITIQUE_REFINE as CritiqueRefineThresholds,
+    );
+  }
+
+  /** DB 值须形状兼容代码兜底（缺字段/类型漂移 → warn + 回代码），防坏行注入质量门 */
+  private async resolveChecked<T>(key: string, codeFallback: T): Promise<T> {
+    const resolution = await this.policyConfig.resolve<T>(key, codeFallback);
+    if (
+      resolution.source === "db" &&
+      !conformsToShape(resolution.value, codeFallback)
+    ) {
+      this.logger.warn(
+        `Policy "${key}" v${resolution.version} value malformed (shape mismatch), falling back to code thresholds`,
       );
+      return codeFallback;
+    }
     return resolution.value;
   }
 }

@@ -72,7 +72,10 @@ export { SettingsService } from "../settings/settings.service";
 
 // ─── Policy Config（L3 W1 策略数据化：版本化策略 dual-read）───
 export { PolicyConfigService } from "../policy-config/policy-config.service";
-export { PolicyKind } from "../policy-config/abstractions/policy-config.types";
+export {
+  PolicyKind,
+  conformsToShape,
+} from "../policy-config/abstractions/policy-config.types";
 export type {
   PolicyResolution,
   PolicySource,

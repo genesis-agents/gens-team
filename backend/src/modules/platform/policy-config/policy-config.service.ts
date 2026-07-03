@@ -83,6 +83,15 @@ export class PolicyConfigService {
       throw new BadRequestException("createdBy is required (audit trail)");
     }
 
+    // 尺寸上限：策略 value 会进 60s 内存缓存并随 mission 高频读取，超大 prose
+    // （误操作/未来系统写手）会放大 token 成本甚至 provider 400——1MB 硬顶
+    const serialized = JSON.stringify(input.value);
+    if (serialized.length > 1_000_000) {
+      throw new BadRequestException(
+        `Policy value too large (${serialized.length} bytes > 1MB cap) for "${input.key}"`,
+      );
+    }
+
     const contentHash = this.hashValue(input.value);
     // @@unique([key, version]) 兜底并发冲突；人写场景冲突罕见，重试一次足够
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -114,33 +123,51 @@ export class PolicyConfigService {
     throw new Error("propose retry exhausted");
   }
 
-  /** 事务切换 active：取消旧 active + 激活目标 version，缓存失效。 */
+  /**
+   * 事务切换 active：取消旧 active + 激活目标 version，缓存失效。
+   *
+   * 并发安全：READ COMMITTED 下两个并发 activate 的 updateMany 语句快照互相
+   * 看不见对方刚激活的行，应用层事务无法单独保证"每 key 至多一行 active"——
+   * 由 DB partial unique index（policy_configs_one_active_per_key，20260703
+   * 迁移）兜底：后提交事务撞 P2002 中止，这里重试一次即可看到已提交状态收敛。
+   */
   async activate(
     key: string,
     version: number,
     activatedBy: string,
   ): Promise<PolicyConfig> {
-    const result = await this.prisma.$transaction(async (tx) => {
-      const target = await tx.policyConfig.findUnique({
-        where: { key_version: { key, version } },
-      });
-      if (!target) {
-        throw new NotFoundException(
-          `PolicyConfig ${key} v${version} not found`,
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const result = await this.prisma.$transaction(async (tx) => {
+          const target = await tx.policyConfig.findUnique({
+            where: { key_version: { key, version } },
+          });
+          if (!target) {
+            throw new NotFoundException(
+              `PolicyConfig ${key} v${version} not found`,
+            );
+          }
+          await tx.policyConfig.updateMany({
+            where: { key, isActive: true },
+            data: { isActive: false },
+          });
+          return tx.policyConfig.update({
+            where: { key_version: { key, version } },
+            data: { isActive: true, activatedBy, activatedAt: new Date() },
+          });
+        });
+        this.cache.delete(key);
+        this.logger.log(
+          `Policy "${key}" v${version} activated by ${activatedBy}`,
         );
+        return result;
+      } catch (error) {
+        const isUniqueConflict =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002";
+        if (!isUniqueConflict || attempt === 1) throw error;
       }
-      await tx.policyConfig.updateMany({
-        where: { key, isActive: true },
-        data: { isActive: false },
-      });
-      return tx.policyConfig.update({
-        where: { key_version: { key, version } },
-        data: { isActive: true, activatedBy, activatedAt: new Date() },
-      });
-    });
-    this.cache.delete(key);
-    this.logger.log(`Policy "${key}" v${version} activated by ${activatedBy}`);
-    return result;
+    }
   }
 
   /** 停用当前 active 行（所有消费方回代码兜底），缓存失效。 */
@@ -212,6 +239,9 @@ export class PolicyConfigService {
     }
     const row = await this.prisma.policyConfig.findFirst({
       where: { key, isActive: true },
+      // orderBy 保证读取确定性（partial unique index 已保证至多一行，
+      // 这里是历史坏数据下的确定性兜底：取最高 version）
+      orderBy: { version: "desc" },
       select: { value: true, version: true, contentHash: true },
     });
     this.cache.set(key, { row, timestamp: Date.now() });

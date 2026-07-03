@@ -227,6 +227,16 @@ describe("PolicyConfigService", () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it("rejects value larger than 1MB (防超大 prose 炸缓存与 token 成本)", async () => {
+      await expect(
+        service.propose({
+          ...validInput,
+          value: { template: "x".repeat(1_100_000) },
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPolicyConfig.create).not.toHaveBeenCalled();
+    });
+
     it.each([
       "InsightPromptSectionWriting", // 非 kebab-case
       "insight.prompt", // 只有 2 段
@@ -280,6 +290,27 @@ describe("PolicyConfigService", () => {
         }),
       });
       expect(result.isActive).toBe(true);
+    });
+
+    it("retries once on partial-unique conflict (并发 activate 撞 DB 兜底索引)", async () => {
+      const conflict = new Prisma.PrismaClientKnownRequestError("conflict", {
+        code: "P2002",
+        clientVersion: "test",
+      });
+      mockPolicyConfig.findUnique.mockResolvedValue({ id: "p2", version: 2 });
+      mockPolicyConfig.updateMany.mockResolvedValue({ count: 1 });
+      mockPolicyConfig.update
+        .mockRejectedValueOnce(conflict)
+        .mockResolvedValueOnce({ id: "p2", version: 2, isActive: true });
+
+      const result = await service.activate(
+        "insight.prompt.section-writing",
+        2,
+        "human:a@b.c",
+      );
+
+      expect(result.isActive).toBe(true);
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(2);
     });
 
     it("invalidates resolve cache after activation", async () => {
