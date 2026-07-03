@@ -16,6 +16,7 @@ import type {
   Verdict,
 } from "@/modules/ai-harness/runner/env/types";
 import type { ConsensusResolver } from "@/modules/ai-harness/runner/env/react-runner";
+import { isEvalFailClosed } from "./fail-mode";
 
 export interface ConsensusOptions {
   /** 判 pass 的分数阈值（默认 70） */
@@ -35,6 +36,15 @@ export function createConsensusResolver(
 
   return (verdicts: readonly Verdict[]): ConsensusDecision => {
     if (verdicts.length === 0) {
+      // ★ L3-W0 fail-open 修复（2026-07-02）：空 verdicts = 全员弃权，
+      // fail-closed 模式下不再编造 pass 70，升级人工仲裁。
+      if (isEvalFailClosed()) {
+        return {
+          verdict: "escalate_to_human",
+          score: 0,
+          note: "no usable verdicts (all judges abstained) — fail-closed",
+        };
+      }
       return { verdict: "pass", score: 70, note: "no verdicts, default pass" };
     }
     const scores = verdicts.map((v) => v.score);

@@ -20,7 +20,7 @@
     "audit:capability:update": "node scripts/dev-tools/audit-capability-anti-patterns.cjs --write",
     "test": "jest",
     "test:quick": "jest --forceExit --testPathIgnorePatterns=\"jwt-auth.guard|jwt.strategy|team-collaboration|team-member.agent|ai-image.service|proxy.controller|guardrails|mcp-server|ai-social|news-extractor|collection-task|file-conversion|planning-orchestrator.service.spec|topic-research.gateway.spec\"",
-    "test:ci": "jest --forceExit --ci",
+    "test:ci": "jest --forceExit --ci --coverage --coverageReporters=lcov --coverageReporters=text-summary --maxWorkers=2",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:cov": "jest --coverage",
@@ -46,7 +46,8 @@
     "audit:debt:strict": "tsx scripts/dev-tools/audit-architecture-debt.ts --strict",
     "audit:debt:json": "tsx scripts/dev-tools/audit-architecture-debt.ts --json",
     "maintenance:policy": "tsx scripts/maintenance/update-policy-whitelist.ts",
-    "maintenance:validate": "tsx scripts/maintenance/validate-data-integrity.ts"
+    "maintenance:validate": "tsx scripts/maintenance/validate-data-integrity.ts",
+    "report:mission-baseline": "tsx scripts/maintenance/report-mission-baseline.ts"
   },
   "prisma": {
     "schema": "prisma/schema",
@@ -60,6 +61,7 @@
     "@googleapis/oauth2": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@mozilla/readability": "^0.6.0",
+    "@napi-rs/canvas": "^0.1.100",
     "@nestjs/apollo": "^12.1.0",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/bullmq": "^11.0.4",
@@ -80,7 +82,6 @@
     "@nestjs/websockets": "^10.4.20",
     "@notionhq/client": "^5.6.0",
     "@octokit/rest": "^22.0.1",
-    "@napi-rs/canvas": "^0.1.100",
     "@prisma/client": "^6.19.3",
     "archiver": "^7.0.1",
     "axios": "^1.13.2",

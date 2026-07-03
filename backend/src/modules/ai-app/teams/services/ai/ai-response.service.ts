@@ -1741,7 +1741,9 @@ Respond naturally and helpfully to the discussion. When relevant, reference the 
     const lastUserMessage = userMessages[userMessages.length - 1];
     const userPrompt = lastUserMessage?.content || "请继续";
 
-    this.toolFacade.functionCallingAdapter.setConfig({
+    // ★ P0 2026-07-02：改 withConfig 绑定视图，替代单例 setConfig ——
+    // 此前并发请求 B 的 setConfig 会覆盖 A 执行中途的 userId（BYOK 串号）。
+    const boundAdapter = this.toolFacade.functionCallingAdapter.withConfig({
       aiMemberId: aiMember.id,
       workspaceId: topicId,
       // ★ BYOK 单源：把发起人 userId 透传给 adapter，apiKey 经 KeyResolver
@@ -1771,7 +1773,7 @@ Respond naturally and helpfully to the discussion. When relevant, reference the 
       // executeWithContext() 会通过 AICapabilityResolver 解析可用工具
       const eventGenerator =
         this.toolFacade.functionCallingExecutor.executeWithContext(
-          this.toolFacade.functionCallingAdapter,
+          boundAdapter,
           systemPrompt,
           userPrompt,
           capabilityContext,

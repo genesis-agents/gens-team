@@ -119,12 +119,32 @@ export class FunctionCallingLLMAdapter implements FunctionCallingILLMAdapter {
 
   /**
    * 设置适配器配置
+   *
+   * @deprecated P0 2026-07-02：本类是 NestJS 单例，setConfig 写共享 this.config
+   * 后再做长时流式执行，并发请求 B 的 setConfig 会覆盖 A 流式中途的
+   * userId/apiKey → BYOK key 跨用户串用（计费/密钥串号）。请改用 withConfig()
+   * 获取每请求隔离的绑定视图。保留本方法仅为兼容存量调用与测试。
    */
   setConfig(config: FunctionCallingLLMAdapterConfig): void {
     this.config = config;
     this.logger.debug(
       `[setConfig] Configured: aiMemberId=${config.aiMemberId}, workspaceId=${config.workspaceId}`,
     );
+  }
+
+  /**
+   * 返回绑定了指定配置的调用视图（每请求独立，防单例配置竞态）。
+   *
+   * 绑定视图以原型链共享单例的全部方法与注入服务（aiChatService/prisma/
+   * keyResolver 等），仅 config 为自有属性：并发请求各自 withConfig 互不干扰，
+   * 单例后续的 setConfig 也不会影响已创建的绑定视图。
+   */
+  withConfig(
+    config: FunctionCallingLLMAdapterConfig,
+  ): FunctionCallingLLMAdapter {
+    const bound: FunctionCallingLLMAdapter = Object.create(this);
+    bound.config = config;
+    return bound;
   }
 
   /**

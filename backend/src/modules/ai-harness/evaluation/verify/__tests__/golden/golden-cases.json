@@ -1,0 +1,77 @@
+{
+  "$schema_note": "L3-W0 #5 golden eval 数据集（2026-07-02）。裁判链自身的回归样本：verdictParsing = judge LLM 原始输出 → 期望解析结果；consensus = 一组 verdicts → 期望仲裁决定。改动 parseVerdict / callJudgeLLM / consensus 前必须先过全部样本；新发现的裁判误判先在此落一条失败样本再修（复现先行）。样本只增不删——删除即回归面收缩，需在 PR 说明。",
+  "verdictParsing": [
+    {
+      "id": "clean-json",
+      "why": "标准合规输出",
+      "raw": "{\"score\": 85, \"critique\": \"结构完整，证据充分\"}",
+      "expect": { "score": 85 }
+    },
+    {
+      "id": "fenced-json",
+      "why": "```json 围栏包裹（gpt 系常见）",
+      "raw": "```json\n{\"score\": 72, \"critique\": \"尚可\"}\n```",
+      "expect": { "score": 72 }
+    },
+    {
+      "id": "prose-wrapped-json",
+      "why": "小模型前后加解说文字（2026-04-30 增强容错的动因）",
+      "raw": "Here is my evaluation: {\"score\": 64, \"critique\": \"论证薄弱\"} I hope this helps.",
+      "expect": { "score": 64 }
+    },
+    {
+      "id": "pure-prose",
+      "why": "LLM 吐散文不含 JSON（2026-06-21 mission runaway 事故的输出形态）→ 必须判不可解析，不得编造分数",
+      "raw": "这份报告整体质量不错，我给它打 85 分。结构清晰但证据略少。",
+      "expect": null
+    },
+    {
+      "id": "score-as-string",
+      "why": "score 是字符串非数字 → 不可解析（宁缺毋滥）",
+      "raw": "{\"score\": \"85\", \"critique\": \"ok\"}",
+      "expect": null
+    },
+    {
+      "id": "score-out-of-range",
+      "why": "越界分数钳到 0-100",
+      "raw": "{\"score\": 130, \"critique\": \"过誉\"}",
+      "expect": { "score": 100 }
+    }
+  ],
+  "consensus": [
+    {
+      "id": "unanimous-pass",
+      "verdicts": [
+        { "judgeId": "j1", "score": 82 },
+        { "judgeId": "j2", "score": 88 },
+        { "judgeId": "j3", "score": 79 }
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "unanimous-fail",
+      "verdicts": [
+        { "judgeId": "j1", "score": 40 },
+        { "judgeId": "j2", "score": 35 }
+      ],
+      "expect": "fail"
+    },
+    {
+      "id": "severe-disagreement-escalates",
+      "why": "10 vs 90 分裂 → 人工，不得静默取均值放行",
+      "verdicts": [
+        { "judgeId": "j1", "score": 10 },
+        { "judgeId": "j2", "score": 90 }
+      ],
+      "expect": "escalate_to_human"
+    },
+    {
+      "id": "moderate-disagreement-meta",
+      "verdicts": [
+        { "judgeId": "j1", "score": 50 },
+        { "judgeId": "j2", "score": 80 }
+      ],
+      "expect": "escalate_to_meta"
+    }
+  ]
+}

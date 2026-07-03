@@ -105,9 +105,19 @@ jobs:
       - name: Fix sharp optional dep (npm bug #4828)
         run: npm install sharp --no-save || true
 
+      - name: Backend Docker lockfile sync check
+        # L3-W0 #7（2026-07-02）：backend 维护独立 package-lock.json 供
+        # Dockerfile npm ci（构建可复现）。dry-run 校验它与 package.json
+        # 同步，防止两份 lock（root workspace lock / backend standalone lock）漂移。
+        run: npm ci --dry-run --legacy-peer-deps --workspaces=false
+        working-directory: ./backend
+
       - name: Run tests
         # Full suite (no skips) so security specs — jwt/guardrails/mcp-server —
         # actually run on every PR. test:quick stays as the fast local script.
+        # L3-W0 #4（2026-07-02）：test:ci 带 --coverage 后，jest.config 的
+        # per-module 覆盖率阈值（棘轮基线）在 CI 真实强制；此前不带 coverage
+        # 阈值完全空转、codecov 上传的 lcov 不存在而静默失败。
         run: npm run test:ci
         working-directory: ./backend
         env:

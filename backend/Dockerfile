@@ -23,14 +23,17 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json ./
+# Copy package files (lockfile = 可复现构建的唯一真相源)
+# L3-W0 #7（2026-07-02）：此前 npm install --no-package-lock 每次构建解析
+# 依赖树都可能不同，root overrides 也可能失效。backend 维护独立 lockfile
+# （monorepo root lock 在构建上下文之外拷不进来），CI 有 lock-sync 校验。
+COPY package.json package-lock.json ./
 
 # Copy Prisma schema
 COPY prisma ./prisma/
 
 # Install ALL dependencies (including devDependencies for build)
-RUN npm install --no-package-lock --legacy-peer-deps
+RUN npm ci --legacy-peer-deps
 
 # Copy source code
 COPY . .

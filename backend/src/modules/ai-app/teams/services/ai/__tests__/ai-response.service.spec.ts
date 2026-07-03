@@ -1664,8 +1664,16 @@ describe("AiResponseService", () => {
       const mockFunctionCallingExecutor = {
         executeWithContext: jest.fn().mockReturnValue(mockGenerator()),
       };
-      const mockFunctionCallingAdapter = {
+      const mockFunctionCallingAdapter: {
+        setConfig: jest.Mock;
+        withConfig: jest.Mock;
+      } = {
         setConfig: jest.fn(),
+        // withConfig 返回每请求绑定视图（P0 2026-07-02 防单例配置竞态）
+        withConfig: jest.fn((config: unknown) => ({
+          ...mockFunctionCallingAdapter,
+          config,
+        })),
       };
 
       const facadeWithFC = {
@@ -1709,10 +1717,17 @@ describe("AiResponseService", () => {
         [],
       );
 
-      expect(mockFunctionCallingAdapter.setConfig).toHaveBeenCalledWith({
+      expect(mockFunctionCallingAdapter.withConfig).toHaveBeenCalledWith({
         aiMemberId: "ai-1",
         workspaceId: "topic-1",
+        userId: undefined,
       });
+      // 单例 setConfig 不再被调用（防并发配置竞态）
+      expect(mockFunctionCallingAdapter.setConfig).not.toHaveBeenCalled();
+      // executor 收到的是 withConfig 返回的绑定视图，而非单例本身
+      expect(
+        mockFunctionCallingExecutor.executeWithContext.mock.calls[0][0],
+      ).toBe(mockFunctionCallingAdapter.withConfig.mock.results[0].value);
       expect(result).toBeDefined();
     });
 
@@ -1740,7 +1755,16 @@ describe("AiResponseService", () => {
       const mockFunctionCallingExecutor = {
         executeWithContext: jest.fn().mockReturnValue(errorGenerator()),
       };
-      const mockFunctionCallingAdapter = { setConfig: jest.fn() };
+      const mockFunctionCallingAdapter: {
+        setConfig: jest.Mock;
+        withConfig: jest.Mock;
+      } = {
+        setConfig: jest.fn(),
+        withConfig: jest.fn((config: unknown) => ({
+          ...mockFunctionCallingAdapter,
+          config,
+        })),
+      };
 
       const facadeWithFC = {
         ...mockAiFacade,

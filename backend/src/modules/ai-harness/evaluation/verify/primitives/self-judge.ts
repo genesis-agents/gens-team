@@ -19,6 +19,7 @@ import type {
   LLMCaller,
   ReActExecutionContext,
 } from "@/modules/ai-harness/runner/env/react-runner";
+import { isEvalFailClosed } from "./fail-mode";
 
 const SELF_EVAL_SYSTEM_PROMPT = `你是同一个 agent 的"严格评估员"身份。刚才你产出了一份 draft，
 现在用低温度、高标准重新审视。
@@ -70,7 +71,12 @@ export function createSelfJudge<TResult>(
 }
 
 /**
- * 公用 helper：调 LLM 产出 JSON verdict，解析失败 fallback 50 分。
+ * 公用 helper：调 LLM 产出 JSON verdict。
+ *
+ * 失败语义（★ L3-W0 fail-open 修复 2026-07-02）：
+ *   - fail-open（默认，历史行为）：LLM 挂/解析失败 → 伪造 50 分入共识
+ *   - fail-closed（EVAL_FAIL_CLOSED=1）：抛错 = 弃权，由 runner 的
+ *     per-judge catch 剔除该票，不再向共识注入编造分数
  */
 export async function callJudgeLLM(
   llm: LLMCaller,
@@ -85,6 +91,7 @@ export async function callJudgeLLM(
     startedAt: number;
   },
 ): Promise<Omit<Verdict, "judgeId">> {
+  let failure = "judge LLM 输出不可解析";
   try {
     const res = await llm.call({
       messages,
@@ -100,8 +107,13 @@ export async function callJudgeLLM(
         modelId: res.modelId,
       };
     }
-  } catch {
-    // fallthrough
+  } catch (err) {
+    failure = `judge LLM 调用失败: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  if (isEvalFailClosed()) {
+    // 弃权而非编造分数：runner 对单 judge 异常做 catch-and-skip，
+    // 该票被剔除；全员弃权时由 consensus 空 verdicts 分支升级人工。
+    throw new Error(`${failure} — abstain (fail-closed)`);
   }
   return { score: 50, critique: "judge LLM 解析失败，fallback 50 分" };
 }
