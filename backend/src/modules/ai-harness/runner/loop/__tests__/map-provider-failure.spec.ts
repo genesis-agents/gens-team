@@ -4,7 +4,7 @@
  * rate_limit）掩盖；typed 精确判定（quota/model/context）不受文案干扰。
  */
 
-import { mapProviderFailure } from "../react-loop";
+import { mapProviderFailure } from "../provider-failure-mapping";
 
 type Typed = Parameters<typeof mapProviderFailure>[0];
 
