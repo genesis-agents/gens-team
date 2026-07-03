@@ -13,6 +13,10 @@
 import { Injectable } from "@nestjs/common";
 import { PolicyConfigService } from "../../../platform/facade";
 import {
+  type PromptTemplatePolicyValue,
+  readPromptTemplatePolicy,
+} from "../../contracts/prompt-policy.contract";
+import {
   DIMENSION_RESEARCH_SYSTEM_PROMPT,
   SECTION_WRITING_SYSTEM_PROMPT,
 } from "./dimension-research.prompt";
@@ -25,11 +29,6 @@ export const INSIGHT_PROMPT_KEYS = {
   REPORT_SYNTHESIS: "insight.prompt.report-synthesis",
   REPORT_EDITING: "insight.prompt.report-editing",
 } as const;
-
-/** PROMPT 类策略的 value 形状（设计稿 §三） */
-interface PromptPolicyValue {
-  template: string;
-}
 
 @Injectable()
 export class InsightPromptPolicyService {
@@ -64,13 +63,12 @@ export class InsightPromptPolicyService {
   }
 
   private async template(key: string, codeFallback: string): Promise<string> {
-    const resolution = await this.policyConfig.resolve<PromptPolicyValue>(key, {
-      template: codeFallback,
-    });
-    const template = resolution.value?.template;
-    // DB 行 value 形状不对（缺 template）时回代码，防止 "undefined" 注入 system prompt
-    return typeof template === "string" && template.length > 0
-      ? template
-      : codeFallback;
+    const resolution =
+      await this.policyConfig.resolve<PromptTemplatePolicyValue>(key, {
+        template: codeFallback,
+      });
+    // DB 行 value 形状不对（缺 template / 空串）时回代码，防止 "undefined" 注入 system prompt
+    const parsed = readPromptTemplatePolicy(resolution.value);
+    return parsed?.template ?? codeFallback;
   }
 }

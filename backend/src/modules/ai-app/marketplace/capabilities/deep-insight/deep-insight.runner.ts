@@ -14,7 +14,14 @@
  *   - 持久化（checkpoint/resume + 终态仲裁）经 ctx.persistence 端口由消费方落库；
  *     能力内核不直连任何 store。
  */
-import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  Optional,
+  type OnModuleInit,
+} from "@nestjs/common";
+// ★ L3 W1 批 3c 步骤⑥: SKILL.md prompt policy dual-read（@Global PolicyConfigModule 提供）。
+import { PolicyConfigService } from "@/modules/platform/facade";
 // 工具 output 结构保留型截断（与基线 relay 同一实现；禁止 stringify+slice 摧毁结构）。
 import { truncatePayload } from "@/modules/ai-harness/facade";
 import {
@@ -38,8 +45,15 @@ import {
   type CapabilityRunResult,
   type PipelineMissionEvent,
   type MissionPersistencePort,
+  type MissionPipelineConfig,
   type MissionTerminalDetails,
 } from "./runner-deps";
+// ★ L3 W1 批 3c 步骤⑥: 同组 playground.prompt.skill.* key 的能力家 overlay
+//   （leader 显式排除；快照空 → apply 返回原引用 → 不传 configOverride，零下降）。
+import {
+  applyDeepInsightPromptOverlay,
+  refreshDeepInsightPromptOverlay,
+} from "./recipe/deep-insight-prompt-policy";
 import {
   fireSelfEvolutionPostlude,
   type SelfEvolutionPostludeDeps,
@@ -126,6 +140,8 @@ export class DeepInsightDefaultRunner
   private readonly log = new Logger(DeepInsightDefaultRunner.name);
   private readonly bindings: DeepInsightStageBindings;
   private pipelineRegistered = false;
+  /** 据 recipe 派生的 id="deep-insight" config（挂 hooks），注册件与 overlay 基底共用一份。 */
+  private derivedPipeline?: MissionPipelineConfig;
 
   constructor(
     private readonly agentRunner: AgentRunner,
@@ -143,6 +159,9 @@ export class DeepInsightDefaultRunner
     private readonly figureRelevance: FigureRelevanceService,
     // ★ S12 自进化 postlude：postmortem 分类（harness 共享，@Global HarnessModule 提供）。
     private readonly postmortemClassifier: PostmortemClassifierService,
+    // ★ L3 W1 批 3c: SKILL.md prompt policy dual-read。@Optional —— 缺省装配
+    //   （裁剪测试床）跳过 overlay 刷新，行为 = 纯能力家代码 SKILL.md 现状。
+    @Optional() private readonly policyConfig?: PolicyConfigService,
   ) {
     void this.chatFacade; // 保留注入（plan 等结构化抽取的未来用途）；当前 14 步全走 AgentRunner。
     this.bindings = new DeepInsightStageBindings(this.agentRunner, {
@@ -176,16 +195,28 @@ export class DeepInsightDefaultRunner
       this.pipelineRegistered = true;
       return;
     }
-    const stepsWithHooks = DEEP_INSIGHT_PIPELINE.steps.map((step) => ({
-      ...step,
-      hooks: this.bindings.buildHooksForStep(step.id),
-    }));
-    this.pipelineRegistry.register({
-      ...DEEP_INSIGHT_PIPELINE,
-      id: DEEP_INSIGHT_PIPELINE_ID,
-      steps: stepsWithHooks,
-    });
+    this.pipelineRegistry.register(this.getDerivedPipeline());
     this.pipelineRegistered = true;
+  }
+
+  /**
+   * 派生 config 单例（lazy + 缓存）：registerPipeline 注册它，run() 的 prompt
+   * overlay 以它为基底（快照空时 apply 原样返回同一引用 → 不传 configOverride）。
+   * bindings 无状态（hooks 内部从 ctx.input.invocation 取 per-run 数据），
+   * 缓存一份即可。
+   */
+  private getDerivedPipeline(): MissionPipelineConfig {
+    if (!this.derivedPipeline) {
+      this.derivedPipeline = {
+        ...DEEP_INSIGHT_PIPELINE,
+        id: DEEP_INSIGHT_PIPELINE_ID,
+        steps: DEEP_INSIGHT_PIPELINE.steps.map((step) => ({
+          ...step,
+          hooks: this.bindings.buildHooksForStep(step.id),
+        })),
+      };
+    }
+    return this.derivedPipeline;
   }
 
   async run(
@@ -199,6 +230,22 @@ export class DeepInsightDefaultRunner
       ctx.persistence ?? new InMemoryPersistencePort();
     // S12 postlude 需要 run 起始时间（用于 wallTimeMs 计算）。
     const runStartedAt = Date.now();
+
+    // ★ L3 W1 批 3c 步骤⑥: run 启动点刷新 SKILL.md prompt overlay 快照
+    //   （dual-read，与 playground runMission 刷新点同语义；leader 显式排除）。
+    //   失败不阻断 run —— 快照保持上次/空，行为回能力家代码 SKILL.md。
+    if (this.policyConfig) {
+      await refreshDeepInsightPromptOverlay(this.policyConfig).catch((err) =>
+        this.log.warn(
+          `[deep-insight ${missionId}] prompt overlay refresh failed (keeping code SKILL.md prompts): ${this.errMsg(err)}`,
+        ),
+      );
+    }
+    // prompt overlay 生效时给 orchestrator 一份 per-run config 副本；快照空 →
+    // apply 返回原引用 → 不传 configOverride → registry.get 现状路径（零下降）。
+    // 绝不回写共享 derivedPipeline / registry 注册件。
+    const basePipeline = this.getDerivedPipeline();
+    const overlaidPipeline = applyDeepInsightPromptOverlay(basePipeline);
 
     // ★ env5 recall + checkpoint：两个独立 IO 可并行，节省 run() 启动延迟。
     // ★ Fix C5/5c（2026-06-09）：Promise.all 并行跑，仅在两者都完成后再继续。
@@ -362,6 +409,10 @@ export class DeepInsightDefaultRunner
         pipelineId: DEEP_INSIGHT_PIPELINE_ID,
         input: pipelineInput,
         userId,
+        // ★ 批 3c 步骤⑥: overlay 命中才注入 per-run 副本（未命中不传 = 现状路径）。
+        ...(overlaidPipeline !== basePipeline
+          ? { configOverride: overlaidPipeline }
+          : {}),
         ...(ctx.signal ? { signal: ctx.signal } : {}),
         ...(resumeFromStepId ? { resumeFromStepId } : {}),
         initialCrossStageState: crossStageState.toJSON(),

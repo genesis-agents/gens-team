@@ -10,9 +10,9 @@
     "frontend/lib/design/tokens.ts"
   ],
   "totals": {
-    "all": 1946,
+    "all": 1947,
     "byLayer": {
-      "engine": 550,
+      "engine": 551,
       "frontend": 249,
       "harness": 1092,
       "platform": 55
@@ -28,7 +28,7 @@
       "engine/reliability": 19,
       "engine/routing": 8,
       "engine/safety": 24,
-      "engine/skills": 28,
+      "engine/skills": 29,
       "engine/tools": 50,
       "frontend/animations": 16,
       "frontend/badges": 4,
@@ -4076,6 +4076,14 @@
       "domain": "skills",
       "source": "backend/src/modules/ai-engine/skills/loader/skill-md/skill-md-loader.ts",
       "import": "import { loadSkill } from \"@/modules/ai-engine/facade\";"
+    },
+    {
+      "name": "loadSkillFromString",
+      "kind": "value",
+      "layer": "engine",
+      "domain": "skills",
+      "source": "backend/src/modules/ai-engine/skills/loader/skill-md/skill-md-loader.ts",
+      "import": "import { loadSkillFromString } from \"@/modules/ai-engine/facade\";"
     },
     {
       "name": "parseSkill",

@@ -498,6 +498,7 @@ export { SkillLoaderService } from "../skills/loader/loading/skill-loader.servic
 // 各 app 通过自身 shim 注入 agentsRootDir(各 app __dirname 推算),保持 callers 二元 API 不变。
 export {
   loadSkill,
+  loadSkillFromString,
   clearSkillCache,
   parseSkill,
   type ParsedSkill,

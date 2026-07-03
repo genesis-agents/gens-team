@@ -43,6 +43,12 @@ import {
 } from "@/modules/ai-harness/facade";
 import { PolicyConfigService } from "@/modules/platform/facade";
 import { refreshPlaygroundStrategyOverlay } from "../../runtime/playground-strategy-policy";
+// ★ L3 W1 批 3c: SKILL.md prompt dual-read overlay（refresh 快照 + per-mission
+//   config 纯函数叠加；绝不回写 PLAYGROUND_PIPELINE / registry / catalog）
+import {
+  applyMissionPolicyOverlay,
+  refreshPlaygroundPromptOverlay,
+} from "../../runtime/playground-prompt-policy";
 import type { PlaygroundTerminalExtra } from "../lifecycle/mission-store.service";
 import {
   MissionRuntimeShellService,
@@ -441,7 +447,25 @@ export class PlaygroundPipelineDispatcher
           }`,
         ),
       );
+      // ★ L3 W1 批 3c: 同点位刷新 SKILL.md prompt overlay 快照（DB dual-read）。
+      //   失败不阻断 mission —— 快照保持上次/空，行为回代码 SKILL.md。
+      await refreshPlaygroundPromptOverlay(this.policyConfig).catch((err) =>
+        this.log.warn(
+          `[runMission ${missionId}] prompt overlay refresh failed (keeping code SKILL.md prompts): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        ),
+      );
     }
+    // ★ L3 W1 批 3c: prompt overlay 生效时给 orchestrator 一份 per-mission config
+    //   副本（hooked steps + 覆盖后 roles）。快照全空 → applyMissionPolicyOverlay
+    //   返回原引用 → override 不传 → orchestrator 走 registry.get 现状路径（零下降）。
+    //   绝不回写共享常量 PLAYGROUND_PIPELINE / registry 注册件。
+    const overlaidBase = applyMissionPolicyOverlay(PLAYGROUND_PIPELINE);
+    const pipelineConfigOverride =
+      overlaidBase === PLAYGROUND_PIPELINE
+        ? undefined
+        : { ...this.buildPipelineWithHooks(), roles: overlaidBase.roles };
     const session = await this.runtimeShell.openSession({
       missionId,
       input,
@@ -580,6 +604,9 @@ export class PlaygroundPipelineDispatcher
         const result = await this.orchestrator.run({
           missionId,
           pipelineId: PLAYGROUND_PIPELINE.id,
+          // ★ L3 W1 批 3c: prompt overlay 命中时的 per-mission config 副本；
+          //   undefined = 走 registry 注册件（现状）
+          configOverride: pipelineConfigOverride,
           input,
           userId,
           tenantId: workspaceId,

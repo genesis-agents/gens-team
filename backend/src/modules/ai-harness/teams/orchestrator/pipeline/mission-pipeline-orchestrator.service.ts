@@ -83,6 +83,12 @@ export interface RunPipelineArgs<TInput = unknown> {
   readonly initialCrossStageState?: Readonly<Record<string, unknown>>;
   /** event listener（每个 MissionEvent emit 时调用）*/
   readonly onEvent?: (event: MissionEvent) => void | Promise<void>;
+  /**
+   * ★ L3 W1 批 3c (2026-07-02): per-mission config 覆盖（如 ai-app 侧 prompt
+   * policy overlay 产出的 per-run 副本）。registry 注册件是共享单例、绝不回写，
+   * 需要 per-mission 变体时经此参数注入。未传 = registry.get(pipelineId) 现状。
+   */
+  readonly configOverride?: MissionPipelineConfig;
 }
 
 @Injectable()
@@ -97,7 +103,7 @@ export class MissionPipelineOrchestrator {
   async run<TInput = unknown>(
     args: RunPipelineArgs<TInput>,
   ): Promise<MissionResult> {
-    const config = this.registry.get(args.pipelineId);
+    const config = args.configOverride ?? this.registry.get(args.pipelineId);
     const resolvedSteps = this.resolveSteps(config);
 
     const stageOutputs: Record<string, unknown> = {
