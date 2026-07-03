@@ -59,8 +59,10 @@ export class ResearchStrategyPolicyService {
       { template: codeFallback },
     );
     const template = resolution.value?.template;
-    // DB 行 value 形状不对（缺 template）时回代码，防止 "undefined" 注入 system prompt
-    return typeof template === "string" && template.length > 0
+    // DB 行形状不对（缺 template）或超 200K 上限（对齐 prompt-policy.contract）→ 回代码
+    return typeof template === "string" &&
+      template.length > 0 &&
+      template.length <= 200_000
       ? template
       : codeFallback;
   }

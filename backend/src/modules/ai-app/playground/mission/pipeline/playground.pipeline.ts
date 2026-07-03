@@ -437,16 +437,29 @@ export class PlaygroundPipelineDispatcher
         ),
       };
     }
-    // ★ L3 W1 批 2c: mission 启动时刷新策略阈值 overlay（DB dual-read 快照，
-    //   同步消费方读快照 → mission 内策略字节级一致）。失败不阻断 mission。
+    // ★ L3 W1 批 2c: mission 启动时刷新策略阈值 overlay（DB dual-read 快照）。
+    //   失败不阻断 mission。
+    // ★ 深度检视修复（2026-07-03）：strategy 快照是模块级共享的（同步消费方
+    //   无 ctx 可挂），有兄弟 mission 在跑时刷新会让它们的阈值中途变化——
+    //   只在"无在跑 mission"的静默时刻刷新（本 mission 的 session 尚未入 map，
+    //   sessions.size===0 即静默），真正兑现 mission 内策略一致；忙时跳过 =
+    //   新 activate 延迟到下一个静默启动才生效（人工激活低频，可接受）。
+    //   prompt overlay 无此问题：apply 进 per-mission config 副本，在跑
+    //   mission 持有自己的冻结拷贝，故不需要此守卫。
     if (this.policyConfig) {
-      await refreshPlaygroundStrategyOverlay(this.policyConfig).catch((err) =>
-        this.log.warn(
-          `[runMission ${missionId}] strategy overlay refresh failed (keeping env/profile values): ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        ),
-      );
+      if (this.sessions.size === 0) {
+        await refreshPlaygroundStrategyOverlay(this.policyConfig).catch((err) =>
+          this.log.warn(
+            `[runMission ${missionId}] strategy overlay refresh failed (keeping env/profile values): ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        );
+      } else {
+        this.log.debug(
+          `[runMission ${missionId}] strategy overlay refresh skipped (${this.sessions.size} mission(s) in flight — 保持在跑 mission 阈值一致)`,
+        );
+      }
       // ★ L3 W1 批 3c: 同点位刷新 SKILL.md prompt overlay 快照（DB dual-read）。
       //   失败不阻断 mission —— 快照保持上次/空，行为回代码 SKILL.md。
       await refreshPlaygroundPromptOverlay(this.policyConfig).catch((err) =>

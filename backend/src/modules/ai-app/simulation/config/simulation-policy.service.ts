@@ -65,10 +65,10 @@ export class SimulationPolicyService {
   // ==================== engine 消费 ====================
 
   async blackSwanEvents(): Promise<BlackSwanEventTemplate[]> {
-    const resolution = await this.policyConfig.resolve<
-      BlackSwanEventTemplate[]
-    >(SIMULATION_POLICY_KEYS.BLACK_SWAN_EVENTS, BLACK_SWAN_EVENTS);
-    return resolution.value;
+    return this.resolveValue(
+      SIMULATION_POLICY_KEYS.BLACK_SWAN_EVENTS,
+      BLACK_SWAN_EVENTS,
+    );
   }
 
   async agentPromptPolicy(): Promise<AgentPromptPolicy> {
@@ -154,7 +154,9 @@ export class SimulationPolicyService {
     });
     const template = resolution.value?.template;
     // DB 行 value 形状不对（缺 template）时回代码，防止 "undefined" 注入 prompt
-    return typeof template === "string" && template.length > 0
+    return typeof template === "string" &&
+      template.length > 0 &&
+      template.length <= 200_000
       ? template
       : codeFallback;
   }

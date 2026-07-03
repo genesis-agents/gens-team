@@ -11,7 +11,11 @@
  * （dispatcher.runMission 起点，async + DI 可用）刷新一次模块级 overlay 快照；
  * 同步消费方读 getPlaygroundStrategyThresholds()（overlay 叠加在 env/profile
  * 加载结果之上）。overlay 为空 = 行为逐字节等同现状（零下降）。
- * 副产品：mission 内策略字节级一致（同 prompt cache prefix 冻结原则）。
+ *
+ * mission 内一致性（2026-07-03 深度检视修复）：快照是模块级共享的，调用方
+ * （playground.pipeline）只在无在跑 mission 的静默时刻刷新——忙时跳过，
+ * 保证在跑 mission 的阈值不中途变化；代价是新 activate 延迟到下一个静默
+ * 启动才生效（人工激活低频，可接受）。
  */
 
 import { Logger } from "@nestjs/common";
