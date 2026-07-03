@@ -50,8 +50,6 @@ import {
   isProjectRelatedQuery,
 } from "./constants/project-context";
 import {
-  ASK_BASE_SYSTEM_PROMPT,
-  ASK_RESPONSE_GUIDELINES,
   PROJECT_KNOWLEDGE_SECTION_TITLE,
   PROJECT_KNOWLEDGE_INTRO,
   RAG_REFERENCE_SECTION_TITLE,
@@ -60,8 +58,8 @@ import {
   RAG_REFERENCE_SECTION_TITLE_CHAT,
   RAG_REFERENCE_INTRO_CHAT,
   RESPONSE_REQUIREMENTS_TITLE,
-  RESPONSE_REQUIREMENTS,
 } from "./prompts/ask-system.prompt";
+import { AskPolicyService } from "./config/ask-policy.service";
 import { CreateSessionDto, SendMessageDto } from "./dto";
 import { AskRoomRuntimeStateStore } from "./ai-ask-room-runtime-state.store";
 
@@ -105,6 +103,8 @@ export class AiAskService {
     // regression for non-wiki KBs.
     @Optional() private readonly kbQueryService: KbQueryService,
     @Optional() private readonly creditsService: CreditsService,
+    // L3 W1 策略数据化：prompt/关键词常量经 PolicyConfig dual-read
+    private readonly askPolicy: AskPolicyService,
     @Optional() private readonly missionExecutor?: MissionExecutorService,
     @Optional() private readonly kernelMemory?: WorkingMemoryManagerService,
     @Optional()
@@ -536,7 +536,7 @@ export class AiAskService {
             );
 
             // 构建系统提示词（包含 RAG 上下文和项目上下文）
-            const systemPrompt = this.buildSystemPromptWithContext(
+            const systemPrompt = await this.buildSystemPromptWithContext(
               contextMessages,
               ragContext,
               dto.content,
@@ -595,7 +595,7 @@ export class AiAskService {
           } else {
             // 使用传统模式（通过 AIFacade 调用）
             // 构建系统提示词（包含项目上下文和 RAG 上下文）
-            const systemPrompt = this.buildSystemPromptForChat(
+            const systemPrompt = await this.buildSystemPromptForChat(
               dto.content,
               ragContext,
             );
@@ -983,7 +983,7 @@ export class AiAskService {
     let assistantContent = "";
     const tokensUsed = 0; // chatStream 内部已上报，本地不再累计
     try {
-      const systemPrompt = this.buildSystemPromptForChat(
+      const systemPrompt = await this.buildSystemPromptForChat(
         dto.content,
         ragContext,
       );
@@ -1213,19 +1213,25 @@ export class AiAskService {
    * @param ragContext RAG 检索的知识库内容
    * @param userQuery 当前用户问题（用于判断是否需要项目上下文）
    */
-  private buildSystemPromptWithContext(
+  private async buildSystemPromptWithContext(
     contextMessages: MessageWithContext[],
     ragContext?: string,
     userQuery?: string,
-  ): string {
+  ): Promise<string> {
+    // L3 W1 策略数据化：prompt/关键词经 AskPolicyService dual-read（DB 空时逐字节 = 代码常量）
+    const [basePrompt, guidelines, projectKeywords] = await Promise.all([
+      this.askPolicy.baseSystemPrompt(),
+      this.askPolicy.responseGuidelines(),
+      this.askPolicy.projectKeywords(),
+    ]);
     const systemParts = [
-      ASK_BASE_SYSTEM_PROMPT,
+      basePrompt,
       this.getCurrentDateInfo(), // ★ 添加当前日期
-      ASK_RESPONSE_GUIDELINES,
+      guidelines,
     ];
 
     // 如果问题与 GenesisPod 项目相关，添加项目上下文
-    if (userQuery && isProjectRelatedQuery(userQuery)) {
+    if (userQuery && isProjectRelatedQuery(userQuery, projectKeywords)) {
       systemParts.push(`\n${PROJECT_KNOWLEDGE_SECTION_TITLE}`);
       systemParts.push(PROJECT_KNOWLEDGE_INTRO);
       systemParts.push(GENESIS_AI_CONTEXT);
@@ -1266,17 +1272,24 @@ export class AiAskService {
    * 构建聊天系统提示词（传统模式）
    * 包含项目上下文和 RAG 上下文
    */
-  private buildSystemPromptForChat(
+  private async buildSystemPromptForChat(
     userQuery: string,
     ragContext?: string,
-  ): string {
+  ): Promise<string> {
+    // L3 W1 策略数据化：prompt/关键词经 AskPolicyService dual-read（DB 空时逐字节 = 代码常量）
+    const [basePrompt, responseRequirements, projectKeywords] =
+      await Promise.all([
+        this.askPolicy.baseSystemPrompt(),
+        this.askPolicy.responseRequirements(),
+        this.askPolicy.projectKeywords(),
+      ]);
     const parts = [
-      ASK_BASE_SYSTEM_PROMPT,
+      basePrompt,
       this.getCurrentDateInfo(), // ★ 添加当前日期
     ];
 
     // 如果问题与 GenesisPod 项目相关，添加项目上下文
-    if (isProjectRelatedQuery(userQuery)) {
+    if (isProjectRelatedQuery(userQuery, projectKeywords)) {
       parts.push(`\n${PROJECT_KNOWLEDGE_SECTION_TITLE}`);
       parts.push(PROJECT_KNOWLEDGE_INTRO);
       parts.push(GENESIS_AI_CONTEXT);
@@ -1294,7 +1307,7 @@ export class AiAskService {
     }
 
     parts.push(`\n${RESPONSE_REQUIREMENTS_TITLE}`);
-    parts.push(...RESPONSE_REQUIREMENTS);
+    parts.push(...responseRequirements);
 
     return parts.join("\n");
   }

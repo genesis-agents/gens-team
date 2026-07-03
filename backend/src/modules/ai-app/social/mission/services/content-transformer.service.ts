@@ -1,12 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ChatFacade } from "@/modules/ai-harness/facade";
 import { SocialContentType, AIModelType } from "@prisma/client";
-import {
-  BILINGUAL_FORMAT_GUIDE,
-  WECHAT_ARTICLE_SYSTEM_PROMPT,
-  XIAOHONGSHU_NOTE_SYSTEM_PROMPT,
-  XIAOHONGSHU_NOTE_BILINGUAL_ADDENDUM,
-} from "../skills/social-transformer.prompt";
+import { SocialStrategyPolicyService } from "./config/social-strategy-policy.service";
 
 export interface TransformInput {
   sourceContent: string;
@@ -34,7 +29,10 @@ export interface TransformOutput {
 export class ContentTransformerService {
   private readonly logger = new Logger(ContentTransformerService.name);
 
-  constructor(private readonly chatFacade: ChatFacade) {}
+  constructor(
+    private readonly chatFacade: ChatFacade,
+    private readonly socialPolicy: SocialStrategyPolicyService,
+  ) {}
 
   async transform(input: TransformInput): Promise<TransformOutput> {
     this.logger.log(
@@ -47,7 +45,10 @@ export class ContentTransformerService {
       messages: [
         {
           role: "system",
-          content: this.getSystemPrompt(input.targetType, input.isBilingual),
+          content: await this.getSystemPrompt(
+            input.targetType,
+            input.isBilingual,
+          ),
         },
         {
           role: "user",
@@ -88,25 +89,33 @@ export class ContentTransformerService {
     return this.parseResponse(response.content, input.sourceTitle);
   }
 
-  private getSystemPrompt(
+  private async getSystemPrompt(
     targetType: SocialContentType,
     isBilingual?: boolean,
-  ): string {
-    // 双语输出的通用样式说明
-    const bilingualStyleGuide = isBilingual ? BILINGUAL_FORMAT_GUIDE : "";
-
+  ): Promise<string> {
     switch (targetType) {
-      case SocialContentType.WECHAT_ARTICLE:
-        return `${WECHAT_ARTICLE_SYSTEM_PROMPT.replace(
+      case SocialContentType.WECHAT_ARTICLE: {
+        const basePrompt = await this.socialPolicy.wechatArticleSystemPrompt();
+        // 双语输出的通用样式说明。DB 覆盖版 prompt 必须保留 "### 3. 结尾部分"
+        // 锚点（契约断言见 social-strategy-policy spec），锚点缺失时 replace
+        // 不命中，退化为不注入双语样式而非报错
+        const bilingualStyleGuide = isBilingual
+          ? await this.socialPolicy.bilingualFormatGuide()
+          : "";
+        return basePrompt.replace(
           /### 3\. 结尾部分/,
           `### 3. 结尾部分${bilingualStyleGuide}`,
-        )}`;
+        );
+      }
 
-      case SocialContentType.XIAOHONGSHU_NOTE:
+      case SocialContentType.XIAOHONGSHU_NOTE: {
+        const basePrompt =
+          await this.socialPolicy.xiaohongshuNoteSystemPrompt();
         const bilingualAddendum = isBilingual
-          ? XIAOHONGSHU_NOTE_BILINGUAL_ADDENDUM
+          ? await this.socialPolicy.xiaohongshuNoteBilingualAddendum()
           : "";
-        return `${XIAOHONGSHU_NOTE_SYSTEM_PROMPT}${bilingualAddendum}`;
+        return `${basePrompt}${bilingualAddendum}`;
+      }
 
       default:
         return "将内容转换为适合社交媒体发布的格式。";

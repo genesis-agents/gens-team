@@ -13,6 +13,10 @@ import {
 } from "@prisma/client";
 import { ChatFacade, DebatePattern } from "@/modules/ai-harness/facade";
 import { DebateAdapter } from "../../adapters/debate.adapter";
+import {
+  AskPolicyService,
+  DEFAULT_DEBATE_ROUNDS,
+} from "../../config/ask-policy.service";
 import type { ModeContext } from "../../adapters/mode-adapter.interface";
 import type { AskRoomServerEvent } from "../../gateway/ask-room-events.types";
 
@@ -96,6 +100,11 @@ function streamOf(content: string): AsyncIterable<StreamChunk> {
   })();
 }
 
+// L3 W1 策略数据化：DI mock 返回代码常量（与 flag 关时的 dual-read 行为一致）
+const mockAskPolicy = {
+  debateDefaultRounds: jest.fn().mockResolvedValue(DEFAULT_DEBATE_ROUNDS),
+};
+
 describe("DebateAdapter", () => {
   let adapter: DebateAdapter;
   let chatStream: jest.Mock;
@@ -107,6 +116,7 @@ describe("DebateAdapter", () => {
         DebateAdapter,
         { provide: ChatFacade, useValue: { chatStream } },
         { provide: DebatePattern, useValue: new DebatePattern() },
+        { provide: AskPolicyService, useValue: mockAskPolicy },
       ],
     }).compile();
     adapter = module.get(DebateAdapter);
@@ -260,6 +270,7 @@ describe("DebateAdapter", () => {
         DebateAdapter,
         { provide: ChatFacade, useValue: { chatStream } },
         { provide: DebatePattern, useValue: failingPattern },
+        { provide: AskPolicyService, useValue: mockAskPolicy },
       ],
     }).compile();
     const failingAdapter = failingModule.get(DebateAdapter);

@@ -19,6 +19,8 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { ReportGeneratorService } from "../report-generator.service";
 import { ReportAssemblerService } from "../report-assembler.service";
 import { ChatFacade } from "@/modules/ai-harness/facade";
+import { InsightPromptPolicyService } from "../../../prompts/insight-prompt-policy.service";
+import { createInsightPromptPolicyMock } from "../../../prompts/__tests__/insight-prompt-policy.mock";
 import type { ResearchTopic } from "@prisma/client";
 import type {
   DimensionAnalysisInput,
@@ -145,6 +147,10 @@ describe("ReportGeneratorService", () => {
       providers: [
         ReportGeneratorService,
         { provide: ChatFacade, useValue: mockFacade },
+        {
+          provide: InsightPromptPolicyService,
+          useValue: createInsightPromptPolicyMock(),
+        },
         {
           provide: ReportAssemblerService,
           useValue: {

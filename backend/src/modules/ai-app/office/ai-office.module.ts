@@ -46,6 +46,7 @@ import {
   SkillPolicyRegistry,
   SlidesAutoRouterService,
 } from "./slides/skill-resolver";
+import { OfficePolicyService } from "./config/office-policy.service";
 
 // Agents
 import { AiOfficeAgentsController } from "./agents";
@@ -113,6 +114,8 @@ import { OfficeContentSourceProvider } from "./integrations/office-content-sourc
     SkillResolver,
     // Auto-router (Phase C3): opt-in LLM preset inference
     SlidesAutoRouterService,
+    // L3 W1 策略数据化 dual-read 入口（auto-router prompt 消费）
+    OfficePolicyService,
     // Generic ContentSource — auto-discovered by engine ContentSourceRegistry
     OfficeContentSourceProvider,
   ],

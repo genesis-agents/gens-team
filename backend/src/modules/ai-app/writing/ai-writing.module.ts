@@ -78,6 +78,7 @@ import { WritingMissionQueryService } from "./services/mission/writing-mission-q
 import { WritingMissionExecutionService } from "./services/mission/writing-mission-execution.service";
 
 // NEW: Quality Pipeline
+import { WritingQualityPolicyService } from "./services/config/writing-quality-policy.service";
 import { WritingQualityPipelineService } from "./services/quality/writing-quality-pipeline.service";
 import { WritingStructuralGateService } from "./services/quality/writing-structural-gate.service";
 import { WritingContentGateService } from "./services/quality/writing-content-gate.service";
@@ -201,6 +202,7 @@ import {
     WritingMissionQueryService,
     WritingMissionExecutionService,
     // NEW: Quality Pipeline
+    WritingQualityPolicyService,
     WritingQualityPipelineService,
     WritingStructuralGateService,
     WritingContentGateService,

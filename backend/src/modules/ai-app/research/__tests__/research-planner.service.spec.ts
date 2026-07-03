@@ -5,9 +5,22 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { ResearchPlannerService } from "../discussion/research-planner.service";
 import { ChatFacade } from "@/modules/ai-harness/facade";
+import { ResearchStrategyPolicyService } from "../discussion/research-strategy-policy.service";
+import { STEP_COUNT_GUIDE } from "../discussion/prompt-locale";
+
+// 本 spec 对 @prisma/client 只做了最小 mock，policy service 模块也 mock 掉
+// 避免拉起 platform facade 依赖图（DI token 身份不变）
+jest.mock("../discussion/research-strategy-policy.service", () => ({
+  ResearchStrategyPolicyService: jest.fn(),
+}));
 
 jest.mock("@prisma/client", () => ({
-  PrismaClient: class PrismaClient { $connect = jest.fn(); $disconnect = jest.fn(); $on = jest.fn(); }, AIModelType: {
+  PrismaClient: class PrismaClient {
+    $connect = jest.fn();
+    $disconnect = jest.fn();
+    $on = jest.fn();
+  },
+  AIModelType: {
     CHAT: "CHAT",
     CHAT_FAST: "CHAT_FAST",
   },
@@ -64,6 +77,13 @@ describe("ResearchPlannerService", () => {
         {
           provide: ChatFacade,
           useValue: mockFacadeInstance,
+        },
+        {
+          provide: ResearchStrategyPolicyService,
+          // dual-read DI mock：返回代码常量（等价 flag 关/DB 空）
+          useValue: {
+            planStepCountGuide: jest.fn().mockResolvedValue(STEP_COUNT_GUIDE),
+          },
         },
       ],
     }).compile();

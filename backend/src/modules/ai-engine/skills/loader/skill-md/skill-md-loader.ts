@@ -55,9 +55,20 @@ export function loadSkill(
     throw new Error(`SKILL.md not found: ${filePath} (agent=${agentDir})`);
   }
   const raw = fs.readFileSync(filePath, "utf8");
-  const parsed = parseSkill(raw);
+  const parsed = loadSkillFromString(raw);
   cache.set(cacheKey, parsed);
   return parsed;
+}
+
+/**
+ * 从 SKILL.md 原文字符串加载（W0 policy-config: 供 DB 覆盖等非文件来源使用）。
+ *
+ * 与文件路径加载（loadSkill）走同一 parseSkill 实现，产物 deep-equal；
+ * 区别是不落模块级缓存 —— DB 内容可热更，由调用方自管快照/失效。
+ * 解析失败（缺 frontmatter / 缺 duty anchor 等）与 loadSkill 同样抛错。
+ */
+export function loadSkillFromString(markdown: string): ParsedSkill {
+  return parseSkill(markdown);
 }
 
 /** 测试用 */

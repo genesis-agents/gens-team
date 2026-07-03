@@ -10,12 +10,12 @@
     "frontend/lib/design/tokens.ts"
   ],
   "totals": {
-    "all": 1941,
+    "all": 1948,
     "byLayer": {
-      "engine": 550,
+      "engine": 551,
       "frontend": 249,
       "harness": 1092,
-      "platform": 50
+      "platform": 56
     },
     "byDomain": {
       "engine/content": 201,
@@ -28,7 +28,7 @@
       "engine/reliability": 19,
       "engine/routing": 8,
       "engine/safety": 24,
-      "engine/skills": 28,
+      "engine/skills": 29,
       "engine/tools": 50,
       "frontend/animations": 16,
       "frontend/badges": 4,
@@ -78,6 +78,7 @@
       "platform/email": 5,
       "platform/monitoring": 7,
       "platform/notifications": 18,
+      "platform/policy-config": 6,
       "platform/release": 1,
       "platform/settings": 1,
       "platform/storage": 2
@@ -4075,6 +4076,14 @@
       "domain": "skills",
       "source": "backend/src/modules/ai-engine/skills/loader/skill-md/skill-md-loader.ts",
       "import": "import { loadSkill } from \"@/modules/ai-engine/facade\";"
+    },
+    {
+      "name": "loadSkillFromString",
+      "kind": "value",
+      "layer": "engine",
+      "domain": "skills",
+      "source": "backend/src/modules/ai-engine/skills/loader/skill-md/skill-md-loader.ts",
+      "import": "import { loadSkillFromString } from \"@/modules/ai-engine/facade\";"
     },
     {
       "name": "parseSkill",
@@ -15579,6 +15588,54 @@
       "domain": "notifications",
       "source": "backend/src/modules/platform/notifications/dispatcher/preferences/unsubscribe-token.service.ts",
       "import": "import { UnsubscribeTokenService } from \"@/modules/platform/facade\";"
+    },
+    {
+      "name": "PolicyConfigService",
+      "kind": "value",
+      "layer": "platform",
+      "domain": "policy-config",
+      "source": "backend/src/modules/platform/policy-config/policy-config.service.ts",
+      "import": "import { PolicyConfigService } from \"@/modules/platform/facade\";"
+    },
+    {
+      "name": "PolicyKind",
+      "kind": "value",
+      "layer": "platform",
+      "domain": "policy-config",
+      "source": "backend/src/modules/platform/policy-config/abstractions/policy-config.types.ts",
+      "import": "import { PolicyKind } from \"@/modules/platform/facade\";"
+    },
+    {
+      "name": "PolicyResolution",
+      "kind": "type",
+      "layer": "platform",
+      "domain": "policy-config",
+      "source": "backend/src/modules/platform/policy-config/abstractions/policy-config.types.ts",
+      "import": "import { PolicyResolution } from \"@/modules/platform/facade\";"
+    },
+    {
+      "name": "PolicySource",
+      "kind": "type",
+      "layer": "platform",
+      "domain": "policy-config",
+      "source": "backend/src/modules/platform/policy-config/abstractions/policy-config.types.ts",
+      "import": "import { PolicySource } from \"@/modules/platform/facade\";"
+    },
+    {
+      "name": "ProposePolicyInput",
+      "kind": "type",
+      "layer": "platform",
+      "domain": "policy-config",
+      "source": "backend/src/modules/platform/policy-config/abstractions/policy-config.types.ts",
+      "import": "import { ProposePolicyInput } from \"@/modules/platform/facade\";"
+    },
+    {
+      "name": "conformsToShape",
+      "kind": "value",
+      "layer": "platform",
+      "domain": "policy-config",
+      "source": "backend/src/modules/platform/policy-config/abstractions/policy-config.types.ts",
+      "import": "import { conformsToShape } from \"@/modules/platform/facade\";"
     },
     {
       "name": "ReleaseService",

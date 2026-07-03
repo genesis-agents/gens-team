@@ -1,12 +1,25 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { ContentCheckerService } from "../content-checker.service";
+import {
+  FORBIDDEN_WORDS,
+  SocialStrategyPolicyService,
+} from "../config/social-strategy-policy.service";
+
+// L3 W1: policy service mock 返回代码常量（空违禁词列表 = 零下降路径）
+const mockSocialPolicy = {
+  forbiddenWords: jest.fn().mockResolvedValue(FORBIDDEN_WORDS),
+};
 
 describe("ContentCheckerService", () => {
   let service: ContentCheckerService;
 
   beforeEach(async () => {
+    mockSocialPolicy.forbiddenWords.mockResolvedValue(FORBIDDEN_WORDS);
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ContentCheckerService],
+      providers: [
+        ContentCheckerService,
+        { provide: SocialStrategyPolicyService, useValue: mockSocialPolicy },
+      ],
     }).compile();
 
     service = module.get<ContentCheckerService>(ContentCheckerService);

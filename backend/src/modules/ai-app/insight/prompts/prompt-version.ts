@@ -12,7 +12,7 @@
  * - hash 取 sha256 前 16 hex 字符，足够去重且不浪费存储
  */
 
-import { createHash } from "crypto";
+import { hashPrompt } from "../../contracts/prompt-policy.contract";
 import {
   SECTION_WRITING_SYSTEM_PROMPT,
   DIMENSION_RESEARCH_SYSTEM_PROMPT,
@@ -20,13 +20,12 @@ import {
 import { REPORT_SYNTHESIS_SYSTEM_PROMPT } from "./report-synthesis.prompt";
 import { REPORT_EDITING_SYSTEM_PROMPT } from "./report-editing.prompt";
 
-/** 计算 prompt 的稳定哈希（前 16 hex 字符） */
-export function hashPrompt(template: string): string {
-  return createHash("sha256")
-    .update(template, "utf8")
-    .digest("hex")
-    .slice(0, 16);
-}
+/**
+ * 计算 prompt 的稳定哈希（前 16 hex 字符）。
+ * 实现已上提至 contracts/prompt-policy.contract.ts（L3 W1 批 3b），
+ * 此处 re-export 保持既有 import 路径兼容，实现逐字节不变。
+ */
+export { hashPrompt };
 
 /** Prompt 元数据 */
 export interface PromptMetadata {

@@ -8,9 +8,11 @@
 
 import { Module } from "@nestjs/common";
 import { ContentAnalysisService } from "./content-analysis.service";
+import { OfficePolicyService } from "../config/office-policy.service";
 
 @Module({
-  providers: [ContentAnalysisService],
+  // OfficePolicyService: L3 W1 策略数据化 dual-read 入口（分析 prompt 消费）
+  providers: [ContentAnalysisService, OfficePolicyService],
   exports: [ContentAnalysisService],
 })
 export class ContentAnalysisModule {}

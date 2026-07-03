@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { SocialStrategyPolicyService } from "./config/social-strategy-policy.service";
 
 export interface ContentCheckResult {
   passed: boolean;
@@ -18,10 +19,9 @@ export interface ContentIssue {
 export class ContentCheckerService {
   private readonly logger = new Logger(ContentCheckerService.name);
 
-  // 基础违禁词列表（实际应从数据库或配置加载）
-  private readonly forbiddenWords: string[] = [
-    // 这里添加实际的违禁词
-  ];
+  // 违禁词列表已数据化：经 SocialStrategyPolicyService dual-read
+  // （key: social.threshold.forbidden-words），代码兜底为空数组
+  constructor(private readonly socialPolicy: SocialStrategyPolicyService) {}
 
   async check(content: string): Promise<ContentCheckResult> {
     this.logger.log("Checking content compliance");
@@ -29,7 +29,8 @@ export class ContentCheckerService {
     const suggestions: string[] = [];
 
     // 1. 检查违禁词
-    const forbiddenIssues = this.checkForbiddenWords(content);
+    const forbiddenWords = await this.socialPolicy.forbiddenWords();
+    const forbiddenIssues = this.checkForbiddenWords(content, forbiddenWords);
     issues.push(...forbiddenIssues);
 
     // 2. 检查内容长度
@@ -61,10 +62,13 @@ export class ContentCheckerService {
     };
   }
 
-  private checkForbiddenWords(content: string): ContentIssue[] {
+  private checkForbiddenWords(
+    content: string,
+    forbiddenWords: string[],
+  ): ContentIssue[] {
     const issues: ContentIssue[] = [];
 
-    for (const word of this.forbiddenWords) {
+    for (const word of forbiddenWords) {
       const index = content.indexOf(word);
       if (index !== -1) {
         issues.push({

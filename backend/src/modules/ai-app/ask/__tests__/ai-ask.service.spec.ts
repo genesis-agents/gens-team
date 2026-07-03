@@ -19,6 +19,25 @@ import { AiAskService } from "../ai-ask.service";
 import { PrismaService } from "../../../../common/prisma/prisma.service";
 import { ChatFacade, RAGFacade, ToolFacade } from "@/modules/ai-harness/facade";
 import { AskRoomRuntimeStateStore } from "../ai-ask-room-runtime-state.store";
+import {
+  AskPolicyService,
+  DEFAULT_DEBATE_ROUNDS,
+} from "../config/ask-policy.service";
+import {
+  ASK_BASE_SYSTEM_PROMPT,
+  ASK_RESPONSE_GUIDELINES,
+  RESPONSE_REQUIREMENTS,
+} from "../prompts/ask-system.prompt";
+import { PROJECT_KEYWORDS } from "../constants/project-context";
+
+// L3 W1 策略数据化：DI mock 返回代码常量（与 flag 关时的 dual-read 行为一致）
+const mockAskPolicy = {
+  baseSystemPrompt: jest.fn().mockResolvedValue(ASK_BASE_SYSTEM_PROMPT),
+  responseGuidelines: jest.fn().mockResolvedValue(ASK_RESPONSE_GUIDELINES),
+  responseRequirements: jest.fn().mockResolvedValue(RESPONSE_REQUIREMENTS),
+  projectKeywords: jest.fn().mockResolvedValue(PROJECT_KEYWORDS),
+  debateDefaultRounds: jest.fn().mockResolvedValue(DEFAULT_DEBATE_ROUNDS),
+};
 
 describe("AiAskService", () => {
   let service: AiAskService;
@@ -121,6 +140,7 @@ describe("AiAskService", () => {
           provide: AskRoomRuntimeStateStore,
           useValue: mockRuntimeStateStore,
         },
+        { provide: AskPolicyService, useValue: mockAskPolicy },
         // All other dependencies are @Optional
       ],
     }).compile();
@@ -464,6 +484,7 @@ describe("AiAskService", () => {
         mockFacade,
         null as any,
         creditsService as any,
+        mockAskPolicy as any,
       );
 
       await expect(
@@ -558,6 +579,9 @@ describe("AiAskService", () => {
         mockFacade,
         ragPipeline as any,
         null as any,
+        undefined as any, // kbQueryService
+        undefined as any, // creditsService
+        mockAskPolicy as any,
       );
 
       // Reset mock chain so the RAG test controls all return values
@@ -941,8 +965,8 @@ describe("AiAskService", () => {
   // =========================================================================
 
   describe("buildSystemPromptWithContext (private)", () => {
-    it("should include project context when query is project-related", () => {
-      const result = (service as any).buildSystemPromptWithContext(
+    it("should include project context when query is project-related", async () => {
+      const result = await (service as any).buildSystemPromptWithContext(
         [],
         undefined,
         "What is GenesisPod?",
@@ -952,8 +976,8 @@ describe("AiAskService", () => {
       expect(result.length).toBeGreaterThan(0);
     });
 
-    it("should include RAG context section when ragContext is provided", () => {
-      const result = (service as any).buildSystemPromptWithContext(
+    it("should include RAG context section when ragContext is provided", async () => {
+      const result = await (service as any).buildSystemPromptWithContext(
         [],
         "Knowledge base content here",
         "What is in my documents?",
@@ -961,13 +985,13 @@ describe("AiAskService", () => {
       expect(result).toContain("Knowledge base content here");
     });
 
-    it("should include conversation history when contextMessages have more than 1 item", () => {
+    it("should include conversation history when contextMessages have more than 1 item", async () => {
       const contextMessages = [
         { role: "user", content: "Previous question" },
         { role: "assistant", content: "Previous answer" },
         { role: "user", content: "Current question" },
       ];
-      const result = (service as any).buildSystemPromptWithContext(
+      const result = await (service as any).buildSystemPromptWithContext(
         contextMessages,
         undefined,
         "Current question",
@@ -975,9 +999,9 @@ describe("AiAskService", () => {
       expect(result).toContain("之前的对话历史");
     });
 
-    it("should not include history when only 1 message in context", () => {
+    it("should not include history when only 1 message in context", async () => {
       const contextMessages = [{ role: "user", content: "Only message" }];
-      const result = (service as any).buildSystemPromptWithContext(
+      const result = await (service as any).buildSystemPromptWithContext(
         contextMessages,
         undefined,
         "Only message",
@@ -991,8 +1015,8 @@ describe("AiAskService", () => {
   // =========================================================================
 
   describe("buildSystemPromptForChat (private)", () => {
-    it("should build a basic prompt without RAG context", () => {
-      const result = (service as any).buildSystemPromptForChat(
+    it("should build a basic prompt without RAG context", async () => {
+      const result = await (service as any).buildSystemPromptForChat(
         "Hello",
         undefined,
       );
@@ -1000,8 +1024,8 @@ describe("AiAskService", () => {
       expect(result.length).toBeGreaterThan(0);
     });
 
-    it("should include RAG context when provided", () => {
-      const result = (service as any).buildSystemPromptForChat(
+    it("should include RAG context when provided", async () => {
+      const result = await (service as any).buildSystemPromptForChat(
         "Search my docs",
         "RAG content here",
       );

@@ -36,8 +36,8 @@ import {
   type PendingMessage,
 } from "./mode-adapter.interface";
 import type { AskRoomServerEvent } from "../gateway/ask-room-events.types";
-
-const DEFAULT_DEBATE_ROUNDS = 3;
+// L3 W1 策略数据化：默认轮次经 PolicyConfig dual-read（代码兜底常量也迁到 policy 文件）
+import { AskPolicyService } from "../config/ask-policy.service";
 
 /**
  * 显式 abort 错误。runtime 通过 instanceof 区分 CANCELLED / FAILED。
@@ -58,6 +58,7 @@ export class DebateAdapter implements IModeAdapter {
   constructor(
     private readonly chatFacade: ChatFacade,
     private readonly debatePattern: DebatePattern,
+    private readonly askPolicy: AskPolicyService,
   ) {}
 
   async execute(
@@ -86,10 +87,11 @@ export class DebateAdapter implements IModeAdapter {
     const { red, blue, judge } = roles;
 
     const cfg = (ctx.session.roomConfig ?? {}) as Record<string, unknown>;
+    // 优先级链：roomConfig（用户显式配置）> DB policy > 代码常量（policy 内兜底）
     const maxRounds =
       typeof cfg.debateRounds === "number"
         ? cfg.debateRounds
-        : DEFAULT_DEBATE_ROUNDS;
+        : await this.askPolicy.debateDefaultRounds();
     const enableJudge = judge !== null;
 
     let seq = ctx.sequenceNumStart;

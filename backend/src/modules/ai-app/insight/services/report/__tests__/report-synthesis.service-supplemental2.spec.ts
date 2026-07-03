@@ -30,6 +30,8 @@ import { ReportAssemblerService } from "../report-assembler.service";
 import { ReportQualityGateService } from "../../quality/report-quality-gate.service";
 import { ReportQualityTraceService } from "../../quality/report-quality-trace.service";
 import { ResearchEventEmitterService } from "../../core/research/research-event-emitter.service";
+import { InsightPromptPolicyService } from "../../../prompts/insight-prompt-policy.service";
+import { createInsightPromptPolicyMock } from "../../../prompts/__tests__/insight-prompt-policy.mock";
 import type { ResearchTopic } from "@prisma/client";
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -307,6 +309,10 @@ async function buildModule(
     { provide: ReportAssemblerService, useValue: mocks.mockAssembler },
     { provide: ReportQualityTraceService, useValue: mocks.mockQualityTrace },
     { provide: ReportQualityGateService, useValue: mocks.mockQualityGate },
+    {
+      provide: InsightPromptPolicyService,
+      useValue: createInsightPromptPolicyMock(),
+    },
   ];
 
   if (extras.outputReviewer) {

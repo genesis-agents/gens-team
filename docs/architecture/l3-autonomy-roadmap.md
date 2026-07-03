@@ -1,8 +1,9 @@
 # L3 自主性路线图（四波次计划）
 
-> **状态**: W0 执行中
+> **状态**: W1 代码线完成——批 1/2a/2b/2c/3a/3b 全部提交（基建 + 9 模块 dual-read + canonical prompt 契约 + backfill 脚本）。剩余：推送（等凭据）→ CI 首跑观察 → 部署后人工灰度闸（backfill propose → staging 逐 key activate → mission 实跑验证 → rollback 演练）→ W2 telemetry 溯源对接（设计已定，`getPlaygroundPromptResolution` 挂点就绪）
 > **拍板日期**: 2026-07-02（用户授权全程自驱："质量 100%，L3 能力 100%，未来的工程/架构/测试/代码质量 100%"）
-> **执行分支**: `feat/l3-w0-foundation`（W0）
+> **执行分支**: `feat/l3-w0-foundation`（W0）→ `feat/l3-w1-policy-config`（W1）
+> **W1 设计稿**: [policy-config-design.md](policy-config-design.md)（表结构 / dual-read / 分批计划 / playground↔insight 复制真实形态摸底）
 > **前置输入**: [system-sota-assessment-2026-07-02.md](system-sota-assessment-2026-07-02.md)（五路并行审计交叉校验）
 
 ## 一、L3 的定义（自主性阶梯）

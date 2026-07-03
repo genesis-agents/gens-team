@@ -22,6 +22,8 @@ import { LeaderToolService } from "../../data/leader-tool.service";
 import { MissionObservabilityService } from "../../core/mission/mission-observability.service";
 import { ReportQualityGateService } from "../../quality/report-quality-gate.service";
 import { DimensionProgressService } from "../dimension-progress.service";
+import { InsightPromptPolicyService } from "../../../prompts/insight-prompt-policy.service";
+import { createInsightPromptPolicyMock } from "../../../prompts/__tests__/insight-prompt-policy.mock";
 import { DimensionStatus } from "@prisma/client";
 import { ResearchTopic, TopicDimension } from "@prisma/client";
 
@@ -347,6 +349,10 @@ describe("DimensionMissionService", () => {
             endPhaseSpan: jest.fn(),
             endMissionTrace: jest.fn(),
           },
+        },
+        {
+          provide: InsightPromptPolicyService,
+          useValue: createInsightPromptPolicyMock(),
         },
       ],
     }).compile();

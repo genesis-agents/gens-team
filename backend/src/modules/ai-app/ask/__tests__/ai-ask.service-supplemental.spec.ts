@@ -15,6 +15,13 @@
 
 import { NotFoundException } from "@nestjs/common";
 import { AiAskService } from "../ai-ask.service";
+import { DEFAULT_DEBATE_ROUNDS } from "../config/ask-policy.service";
+import {
+  ASK_BASE_SYSTEM_PROMPT,
+  ASK_RESPONSE_GUIDELINES,
+  RESPONSE_REQUIREMENTS,
+} from "../prompts/ask-system.prompt";
+import { PROJECT_KEYWORDS } from "../constants/project-context";
 
 // ---------------------------------------------------------------------------
 // Minimal mock helpers
@@ -61,14 +68,23 @@ function buildService(overrides: Record<string, unknown> = {}): AiAskService {
     routeIntent: jest.fn().mockResolvedValue(null),
   };
 
+  // L3 W1 策略数据化：DI mock 返回代码常量（与 flag 关时的 dual-read 行为一致）
+  const mockAskPolicy = {
+    baseSystemPrompt: jest.fn().mockResolvedValue(ASK_BASE_SYSTEM_PROMPT),
+    responseGuidelines: jest.fn().mockResolvedValue(ASK_RESPONSE_GUIDELINES),
+    responseRequirements: jest.fn().mockResolvedValue(RESPONSE_REQUIREMENTS),
+    projectKeywords: jest.fn().mockResolvedValue(PROJECT_KEYWORDS),
+    debateDefaultRounds: jest.fn().mockResolvedValue(DEFAULT_DEBATE_ROUNDS),
+  };
+
   const service = new AiAskService(
     mockPrisma as any,
     mockChatFacade as any,
     mockToolFacade as any,
     mockRagFacade as any,
-    mockAgentFacade as any,
-    null as any, // ragPipelineService
+    mockAgentFacade as any, // kbQueryService
     null as any, // creditsService
+    mockAskPolicy as any, // askPolicy
     undefined, // missionExecutor
     undefined, // kernelMemory
   );
@@ -581,10 +597,10 @@ describe("AiAskService (supplemental)", () => {
   // buildSystemPromptWithContext (private)
   // =========================================================================
   describe("buildSystemPromptWithContext", () => {
-    it("includes project context for project-related queries", () => {
+    it("includes project context for project-related queries", async () => {
       const service = buildService();
       // isProjectRelatedQuery returns true for "genesis" related query
-      const prompt = (service as any).buildSystemPromptWithContext(
+      const prompt = await (service as any).buildSystemPromptWithContext(
         [],
         undefined,
         "gens.team 的 research 功能怎么用",
@@ -593,9 +609,9 @@ describe("AiAskService (supplemental)", () => {
       expect(prompt.length).toBeGreaterThan(0);
     });
 
-    it("includes RAG context when provided", () => {
+    it("includes RAG context when provided", async () => {
       const service = buildService();
-      const prompt = (service as any).buildSystemPromptWithContext(
+      const prompt = await (service as any).buildSystemPromptWithContext(
         [],
         "RAG context text here",
         "some question",
@@ -603,14 +619,14 @@ describe("AiAskService (supplemental)", () => {
       expect(prompt).toContain("RAG context text here");
     });
 
-    it("includes conversation history when contextMessages has multiple entries", () => {
+    it("includes conversation history when contextMessages has multiple entries", async () => {
       const service = buildService();
       const context = [
         { role: "user" as const, content: "First message" },
         { role: "assistant" as const, content: "Response" },
         { role: "user" as const, content: "Current question" },
       ];
-      const prompt = (service as any).buildSystemPromptWithContext(
+      const prompt = await (service as any).buildSystemPromptWithContext(
         context,
         undefined,
         "question",
@@ -623,9 +639,9 @@ describe("AiAskService (supplemental)", () => {
   // buildSystemPromptForChat (private)
   // =========================================================================
   describe("buildSystemPromptForChat", () => {
-    it("returns a string prompt", () => {
+    it("returns a string prompt", async () => {
       const service = buildService();
-      const prompt = (service as any).buildSystemPromptForChat(
+      const prompt = await (service as any).buildSystemPromptForChat(
         "What is the weather?",
         undefined,
       );
@@ -633,9 +649,9 @@ describe("AiAskService (supplemental)", () => {
       expect(prompt.length).toBeGreaterThan(0);
     });
 
-    it("includes RAG context section when ragContext provided", () => {
+    it("includes RAG context section when ragContext provided", async () => {
       const service = buildService();
-      const prompt = (service as any).buildSystemPromptForChat(
+      const prompt = await (service as any).buildSystemPromptForChat(
         "Tell me about AI",
         "Some RAG context",
       );

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { ContentAnalysisService } from "../content-analysis.service";
 import { ChatFacade } from "@/modules/ai-harness/facade";
+import { OfficePolicyService } from "../../config/office-policy.service";
 import {
   ContentCategory,
   ContentComplexity,
@@ -12,6 +13,11 @@ import {
 const mockAiFacade = {
   chat: jest.fn(),
   embed: jest.fn(),
+};
+
+// ─── Mock OfficePolicyService（dual-read 直接回代码常量） ─────
+const mockOfficePolicy = {
+  prompt: jest.fn(async (_key: string, codeFallback: string) => codeFallback),
 };
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -32,6 +38,7 @@ describe("ContentAnalysisService", () => {
       providers: [
         ContentAnalysisService,
         { provide: ChatFacade, useValue: mockAiFacade },
+        { provide: OfficePolicyService, useValue: mockOfficePolicy },
       ],
     }).compile();
 
@@ -638,19 +645,22 @@ describe("ContentAnalysisService", () => {
 // ─── Helper ────────────────────────────────────────────
 
 async function runWithComplexity(complexity: "low" | "high") {
-  const service = new ContentAnalysisService({
-    chat: jest.fn().mockResolvedValue({
-      content: `\`\`\`json\n${JSON.stringify({
-        contentCategory: "informational",
-        complexity,
-        keyTopics: [],
-        entities: [],
-        visualizationOpportunities: [],
-        summary: "test",
-      })}\n\`\`\``,
-    }),
-    embed: jest.fn(),
-  } as unknown as ChatFacade);
+  const service = new ContentAnalysisService(
+    {
+      chat: jest.fn().mockResolvedValue({
+        content: `\`\`\`json\n${JSON.stringify({
+          contentCategory: "informational",
+          complexity,
+          keyTopics: [],
+          entities: [],
+          visualizationOpportunities: [],
+          summary: "test",
+        })}\n\`\`\``,
+      }),
+      embed: jest.fn(),
+    } as unknown as ChatFacade,
+    mockOfficePolicy as unknown as OfficePolicyService,
+  );
 
   return service.analyzeContent({ content: "test content with some words" });
 }

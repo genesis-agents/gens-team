@@ -16,6 +16,8 @@ import { Logger } from "@nestjs/common";
 import { AIModelType } from "@prisma/client";
 import { ResearchPlannerService } from "../research-planner.service";
 import { ChatFacade } from "@/modules/ai-harness/facade";
+import { ResearchStrategyPolicyService } from "../research-strategy-policy.service";
+import { STEP_COUNT_GUIDE } from "../prompt-locale";
 
 // ============================================================
 // Helpers
@@ -23,6 +25,11 @@ import { ChatFacade } from "@/modules/ai-harness/facade";
 
 const mockFacade = {
   chat: jest.fn(),
+};
+
+// dual-read DI mock：返回代码常量（等价 flag 关/DB 空）
+const mockStrategyPolicy = {
+  planStepCountGuide: jest.fn(),
 };
 
 function makePlanJson(steps: Array<{ type: string; query: string }> = []) {
@@ -51,11 +58,18 @@ describe("ResearchPlannerService", () => {
 
   beforeEach(async () => {
     mockFacade.chat.mockReset();
+    mockStrategyPolicy.planStepCountGuide
+      .mockReset()
+      .mockResolvedValue(STEP_COUNT_GUIDE);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ResearchPlannerService,
         { provide: ChatFacade, useValue: mockFacade },
+        {
+          provide: ResearchStrategyPolicyService,
+          useValue: mockStrategyPolicy,
+        },
       ],
     }).compile();
 

@@ -63,6 +63,8 @@ import { TeamMessageService } from "./team-message.service";
 import { TeamMemberService } from "./team-member.service";
 // ★ AI Engine 能力下沉：使用 AI Engine 的上下文初始化服务（通过 AIFacade 访问）
 import { RETRY_CONFIG, AGENT_SWITCH_CONFIG } from "../config";
+// L3 W1 策略数据化：审核判定前刷新 review pattern overlay（DB dual-read 快照）
+import { TeamsReviewPolicyService } from "../config/teams-review-policy.service";
 import {
   isRetryableError,
   isRateLimitError,
@@ -168,6 +170,8 @@ export class TeamMissionService implements OnModuleInit {
     // ★ P4 Knowledge Ontology: 加载已有子图 + 回写新事实（可选依赖）
     @Optional() private readonly ontologyService?: OntologyService,
     @Optional() private readonly ontologyBuilderSkill?: OntologyBuilderSkill,
+    // ★ L3 W1: 审核模式表 dual-read（@Optional 保零下降——缺省时纯代码常量）
+    @Optional() private readonly reviewPolicy?: TeamsReviewPolicyService,
   ) {}
 
   /**
@@ -2763,6 +2767,11 @@ export class TeamMissionService implements OnModuleInit {
           clearInterval(reviewHeartbeatTimer);
           reviewHeartbeatTimer = null;
         }
+      }
+
+      // ★ L3 W1: 判定前刷新审核模式 overlay（fail-open，服务内部吞异常不阻断审核）
+      if (this.reviewPolicy) {
+        await this.reviewPolicy.refreshReviewPatternOverlay();
       }
 
       // 解析审核结果（增强版，带置信度）

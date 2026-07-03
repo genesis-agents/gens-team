@@ -20,6 +20,8 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { SectionWriterService } from "../section-writer.service";
 import { ChatFacade, AIFacade } from "@/modules/ai-harness/facade";
 import { buildFiguresSummary } from "../evidence-summary.utils";
+import { InsightPromptPolicyService } from "../../../prompts/insight-prompt-policy.service";
+import { createInsightPromptPolicyMock } from "../../../prompts/__tests__/insight-prompt-policy.mock";
 import type {
   FigureReference,
   ExtractedFigure,
@@ -100,6 +102,10 @@ describe("图片管线业务仿真", () => {
         SectionWriterService,
         { provide: ChatFacade, useValue: mockAiFacade },
         { provide: AIFacade, useValue: mockEngineFacade },
+        {
+          provide: InsightPromptPolicyService,
+          useValue: createInsightPromptPolicyMock(),
+        },
       ],
     }).compile();
     service = module.get<SectionWriterService>(SectionWriterService);

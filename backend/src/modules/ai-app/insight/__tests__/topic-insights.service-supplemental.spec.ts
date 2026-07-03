@@ -34,6 +34,8 @@ import {
   LatexRepairService,
 } from "../services";
 import { ChatFacade } from "@/modules/ai-harness/facade";
+import { InsightPromptPolicyService } from "../prompts/insight-prompt-policy.service";
+import { createInsightPromptPolicyMock } from "../prompts/__tests__/insight-prompt-policy.mock";
 
 function buildMocks() {
   const mockPrisma = {
@@ -256,6 +258,10 @@ describe("TopicInsightsService (supplemental)", () => {
         {
           provide: LatexRepairService,
           useValue: { repairMarkdown: jest.fn() },
+        },
+        {
+          provide: InsightPromptPolicyService,
+          useValue: createInsightPromptPolicyMock(),
         },
       ],
     }).compile();

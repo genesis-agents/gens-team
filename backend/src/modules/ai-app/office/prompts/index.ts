@@ -5,9 +5,9 @@
  */
 
 // 内容分析提示词
+// （CONTENT_ANALYSIS_SYSTEM_PROMPT / CONTENT_ANALYSIS_USER_PROMPT 活跃版本
+//  在 content-analysis/content-analysis.prompts.ts，此处死副本已删）
 export {
-  CONTENT_ANALYSIS_SYSTEM_PROMPT,
-  CONTENT_ANALYSIS_USER_PROMPT,
   IMAGE_MATCHING_SYSTEM_PROMPT,
   READING_EXPERIENCE_SYSTEM_PROMPT,
 } from "./content-analysis.prompt";

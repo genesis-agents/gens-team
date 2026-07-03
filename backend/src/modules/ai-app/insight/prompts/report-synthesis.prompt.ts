@@ -497,10 +497,16 @@ EVENT 类型的执行摘要 fullText 必须采用以下结构：
  *
  * 根据语言动态注入写作标准和执行摘要格式，
  * 替代手动 .replace("{{languageInstruction}}", ...) 调用
+ *
+ * @param template 模板来源（W1 策略数据化：调用方经 InsightPromptPolicyService
+ *                 dual-read 传入；缺省 = 代码常量，行为不变）
  */
-export function renderSynthesisSystemPrompt(language: string): string {
+export function renderSynthesisSystemPrompt(
+  language: string,
+  template: string = REPORT_SYNTHESIS_SYSTEM_PROMPT,
+): string {
   const isEn = language.startsWith("en");
-  return renderPromptTemplate(REPORT_SYNTHESIS_SYSTEM_PROMPT, {
+  return renderPromptTemplate(template, {
     languageInstruction: getLanguageInstruction(language),
     headingHierarchy: isEn ? HEADING_HIERARCHY_EN : HEADING_HIERARCHY,
     narrativeStructure: isEn ? NARRATIVE_STRUCTURE_EN : NARRATIVE_STRUCTURE,

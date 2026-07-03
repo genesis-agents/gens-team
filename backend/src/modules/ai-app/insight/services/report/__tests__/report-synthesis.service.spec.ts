@@ -17,6 +17,8 @@ import { ReportEditorService } from "../report-editor.service";
 import { ReportAssemblerService } from "../report-assembler.service";
 import { ReportQualityGateService } from "../../quality/report-quality-gate.service";
 import { ReportQualityTraceService } from "../../quality/report-quality-trace.service";
+import { InsightPromptPolicyService } from "../../../prompts/insight-prompt-policy.service";
+import { createInsightPromptPolicyMock } from "../../../prompts/__tests__/insight-prompt-policy.mock";
 import type { ResearchTopic } from "@prisma/client";
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -173,6 +175,10 @@ describe("ReportSynthesisService", () => {
         { provide: ChatFacade, useValue: mockFacade },
         { provide: TeamFacade, useValue: mockFacade },
         { provide: ReportEditorService, useValue: mockReportEditor },
+        {
+          provide: InsightPromptPolicyService,
+          useValue: createInsightPromptPolicyMock(),
+        },
         {
           provide: ReportAssemblerService,
           useValue: {

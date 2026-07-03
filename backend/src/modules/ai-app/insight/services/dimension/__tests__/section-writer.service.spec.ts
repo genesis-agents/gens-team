@@ -13,6 +13,8 @@ import { SectionWriterService } from "../section-writer.service";
 import { ChatFacade, AIFacade } from "@/modules/ai-harness/facade";
 import { AIModelType } from "@prisma/client";
 import { InsufficientCreditsException } from "../../../types/research.exceptions";
+import { InsightPromptPolicyService } from "../../../prompts/insight-prompt-policy.service";
+import { createInsightPromptPolicyMock } from "../../../prompts/__tests__/insight-prompt-policy.mock";
 
 // ============================================================
 // Helpers
@@ -81,6 +83,10 @@ describe("SectionWriterService", () => {
         SectionWriterService,
         { provide: ChatFacade, useValue: mockAiFacade },
         { provide: AIFacade, useValue: mockEngineFacade },
+        {
+          provide: InsightPromptPolicyService,
+          useValue: createInsightPromptPolicyMock(),
+        },
       ],
     }).compile();
 

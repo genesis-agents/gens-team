@@ -15,6 +15,7 @@ import {
   resolveLanguage,
   REFLECTION_PROMPTS,
 } from "./prompt-locale";
+import { ResearchStrategyPolicyService } from "./research-strategy-policy.service";
 
 /**
  * 自我反思服务
@@ -26,7 +27,10 @@ import {
 export class SelfReflectionService {
   private readonly logger = new Logger(SelfReflectionService.name);
 
-  constructor(private readonly chatFacade: ChatFacade) {}
+  constructor(
+    private readonly chatFacade: ChatFacade,
+    private readonly strategyPolicy: ResearchStrategyPolicyService,
+  ) {}
 
   /**
    * 对当前搜索结果进行反思评估
@@ -45,7 +49,8 @@ export class SelfReflectionService {
     // 准备搜索结果摘要
     const resultsSummary = this.summarizeResults(searchRounds, lang);
 
-    const systemPrompt = this.buildReflectionPrompt(lang);
+    // L3 W1 策略数据化：反思 system prompt 走 PolicyConfig dual-read（DB 空/flag 关时逐字节同代码常量）
+    const systemPrompt = await this.strategyPolicy.reflectionSystemPrompt(lang);
     const userPrompt = this.buildUserPrompt(
       query,
       plan,
@@ -158,13 +163,6 @@ export class SelfReflectionService {
       domains.join(", "),
       topSnippets.join("\n"),
     );
-  }
-
-  /**
-   * 构建反思提示词
-   */
-  private buildReflectionPrompt(language: ResearchLanguage): string {
-    return REFLECTION_PROMPTS[language].systemPrompt;
   }
 
   /**

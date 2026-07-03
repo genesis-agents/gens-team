@@ -31,7 +31,8 @@ import {
   SEARCH_TIME_RANGE_VALUES,
 } from "@/common/search/search-time-range";
 // ★ 2026-05-13: route min-findings business-rule floor through typed runtime config
-import { loadPlaygroundRuntimeConfig } from "../../../runtime/playground-runtime.config";
+// ★ L3 W1 批 2c: 改经策略快照（DB overlay 叠加 env/profile；overlay 空 = 现状）
+import { getPlaygroundStrategyThresholds } from "../../../runtime/playground-strategy-policy";
 
 const Input = z.object({
   topic: z.string(),
@@ -446,7 +447,7 @@ export class ResearcherAgent extends AgentSpec<typeof Input, typeof Output> {
     // self-heal retries that the model couldn't satisfy. The profile
     // (`local-reasoning` / `local-quantized` → 3) and per-knob env var
     // (`MIN_FINDINGS_THRESHOLD`) both flow through here.
-    const minFindings = loadPlaygroundRuntimeConfig().minFindingsThreshold;
+    const minFindings = getPlaygroundStrategyThresholds().minFindingsThreshold;
     if (!Array.isArray(findings) || findings.length < minFindings) {
       issues.push(
         `findings.length=${findings.length} (要求 ≥${minFindings}，请用已搜到的工具结果补到至少 ${minFindings} 条)`,

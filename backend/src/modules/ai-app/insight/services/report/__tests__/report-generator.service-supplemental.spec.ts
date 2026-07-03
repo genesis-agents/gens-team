@@ -25,6 +25,8 @@ import { ReportGeneratorService } from "../report-generator.service";
 import { ReportAssemblerService } from "../report-assembler.service";
 import { ChatFacade } from "@/modules/ai-harness/facade";
 import { ReportQualityGateService } from "../../quality/report-quality-gate.service";
+import { InsightPromptPolicyService } from "../../../prompts/insight-prompt-policy.service";
+import { createInsightPromptPolicyMock } from "../../../prompts/__tests__/insight-prompt-policy.mock";
 import type { ResearchTopic } from "@prisma/client";
 import type {
   DimensionAnalysisInput,
@@ -168,6 +170,10 @@ async function buildModule(
     ReportGeneratorService,
     { provide: ChatFacade, useValue: mockFacade },
     { provide: ReportAssemblerService, useValue: mockAssembler },
+    {
+      provide: InsightPromptPolicyService,
+      useValue: createInsightPromptPolicyMock(),
+    },
   ];
 
   if (qualityGate) {

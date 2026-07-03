@@ -5,7 +5,7 @@
  * 这是最后一道防线，用于在输出前发现并报告质量问题
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import {
   PageOutline,
   PageContent,
@@ -19,6 +19,11 @@ import {
   SkillLayer,
   SKILL_LAYERS,
 } from "@/modules/ai-harness/facade";
+import {
+  OfficePolicyService,
+  OFFICE_POLICY_KEYS,
+  getOfficeStrategy,
+} from "../../config/office-policy.service";
 
 /**
  * 语义审核问题类型（与 checkpoint.types 中的 QualityIssue 区分）
@@ -74,6 +79,8 @@ export interface DiagnosticInfo {
 
 /**
  * 模板-内容语义规则
+ * L3 W1: 代码兜底常量，审核方法内经 getOfficeStrategy overlay dual-read
+ * （key: office.threshold.quality-audit-semantic-rules）
  */
 const TEMPLATE_CONTENT_RULES: Record<
   string,
@@ -145,6 +152,8 @@ const TEMPLATE_CONTENT_RULES: Record<
 
 /**
  * 图表类型-数据特征规则
+ * L3 W1: 代码兜底常量，审核方法内经 getOfficeStrategy overlay dual-read
+ * （key: office.threshold.chart-data-rules）
  */
 const CHART_DATA_RULES = {
   // 分类数据关键词（应该用 bar）
@@ -235,6 +244,10 @@ export class QualityAuditSkill implements ISkill<
 > {
   private readonly logger = new Logger(QualityAuditSkill.name);
 
+  constructor(
+    @Optional() private readonly officePolicy?: OfficePolicyService,
+  ) {}
+
   // ISkill interface 属性
   readonly id = "slides-quality-audit";
   readonly name = "质量审核";
@@ -287,6 +300,12 @@ export class QualityAuditSkill implements ISkill<
     }
 
     try {
+      // L3 W1: 审核方法为 sync（auditPage/auditAndFix 亦被直接调用），
+      // 在 async 入口刷新策略 overlay 快照（playground overlay 模式）
+      if (this.officePolicy) {
+        await this.officePolicy.refreshStrategyOverlays();
+      }
+
       // 如果仅审核，则不进行修复
       if (actualInput.auditOnly) {
         const audit = this.auditPage(
@@ -949,7 +968,11 @@ export class QualityAuditSkill implements ISkill<
   ): SemanticIssue[] {
     const issues: SemanticIssue[] = [];
     const templateType = pageOutline?.templateType;
-    const rules = TEMPLATE_CONTENT_RULES[templateType];
+    // L3 W1: 规则表经 overlay dual-read（overlay 空 = 与代码常量同引用）
+    const rules = getOfficeStrategy(
+      OFFICE_POLICY_KEYS.QUALITY_AUDIT_SEMANTIC_RULES,
+      TEMPLATE_CONTENT_RULES,
+    )[templateType];
 
     if (!rules) return issues;
 
@@ -1018,12 +1041,18 @@ export class QualityAuditSkill implements ISkill<
 
     const labelsText = labels.join(" ").toLowerCase();
 
-    // 检查分类数据误用折线图
-    const hasCategoryKeywords = CHART_DATA_RULES.categoryKeywords.some(
-      (keyword) => labelsText.includes(keyword.toLowerCase()),
+    // L3 W1: 规则经 overlay dual-read（overlay 空 = 与代码常量同引用）
+    const chartRules = getOfficeStrategy(
+      OFFICE_POLICY_KEYS.CHART_DATA_RULES,
+      CHART_DATA_RULES,
     );
-    const hasTimeKeywords = CHART_DATA_RULES.timeSeriesKeywords.some(
-      (keyword) => labelsText.includes(keyword.toLowerCase()),
+
+    // 检查分类数据误用折线图
+    const hasCategoryKeywords = chartRules.categoryKeywords.some((keyword) =>
+      labelsText.includes(keyword.toLowerCase()),
+    );
+    const hasTimeKeywords = chartRules.timeSeriesKeywords.some((keyword) =>
+      labelsText.includes(keyword.toLowerCase()),
     );
 
     if (usedChartType === "line" && hasCategoryKeywords && !hasTimeKeywords) {

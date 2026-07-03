@@ -147,8 +147,10 @@ import {
   IndustryReportSearchAdapter,
 } from "./services";
 import { TopicAccessGuard } from "./guards";
+import { InsightPromptPolicyService } from "./prompts/insight-prompt-policy.service";
 
 const services = [
+  InsightPromptPolicyService,
   TopicInsightsService,
   DataSourceRouterService,
   ReportSynthesisService,

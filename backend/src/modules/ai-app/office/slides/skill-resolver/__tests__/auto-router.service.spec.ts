@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { SlidesAutoRouterService } from "../auto-router.service";
 import { PresetLoader } from "../preset-loader.service";
 import { ChatFacade } from "@/modules/ai-harness/facade";
+import { OfficePolicyService } from "../../../config/office-policy.service";
 import type { Preset } from "../skill-policy.types";
 
 /**
@@ -29,6 +30,15 @@ describe("SlidesAutoRouterService", () => {
         SlidesAutoRouterService,
         { provide: ChatFacade, useValue: chat },
         { provide: PresetLoader, useValue: presetLoader },
+        {
+          // dual-read mock：直接回代码常量（零下降路径）
+          provide: OfficePolicyService,
+          useValue: {
+            prompt: jest.fn(
+              async (_key: string, codeFallback: string) => codeFallback,
+            ),
+          },
+        },
       ],
     }).compile();
 

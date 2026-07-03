@@ -70,8 +70,8 @@ import { AgentActivityType, AIModelType } from "@prisma/client";
 import {
   getCurrentDateString,
   getFreshnessRequirementDescription,
-  DIMENSION_RESEARCH_SYSTEM_PROMPT,
 } from "../../prompts/dimension-research.prompt";
+import { InsightPromptPolicyService } from "../../prompts/insight-prompt-policy.service";
 import {
   createEvidenceSummary,
   buildFiguresSummary,
@@ -176,6 +176,8 @@ export class DimensionMissionService {
     // ★ v4: 质量门控
     private readonly qualityGate: ReportQualityGateService,
     private readonly progress: DimensionProgressService,
+    // ★ L3 W1: prompt 模板 dual-read（DB 策略优先，代码常量兜底）
+    private readonly promptPolicy: InsightPromptPolicyService,
     // ★ Phase 5: 长研究上下文压缩
     @Optional() private readonly contextCompression?: ContextCompressionService,
     // ★ Batch 2: 跨维度事实提取
@@ -967,9 +969,11 @@ export class DimensionMissionService {
       this.promptCacheCoordinator &&
       !this.promptCacheCoordinator.hasPrefix(effectiveMissionId)
     ) {
+      // dual-read 后冻结进 per-mission prefix：mission 内字节级一致，
+      // DB 策略切换只影响后续新 mission（prompt cache 命中率不受影响）
       this.promptCacheCoordinator.createPrefix(
         effectiveMissionId,
-        DIMENSION_RESEARCH_SYSTEM_PROMPT,
+        await this.promptPolicy.dimensionResearch(),
         [], // no function-calling tools at this layer
       );
     }
