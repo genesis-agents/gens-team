@@ -157,7 +157,13 @@ teams.topology.debate-team
 
 **已自驱拍板**（有异议请推翻）：灰度捆绑接受——deep-insight 跨模块读 `playground.*`，开 playground 白名单同时点亮 marketplace 面（同产品两货架，预期行为）；独立止血靠 rollback 该 key。
 
-**残留风险如实声明**：8 key 中仅 live 路径角色的 soul 即时生效（其余 soul-inert = 编码统一 + 二期铺路）；模块级快照并发 mission last-write-wins（批 2c 同款已接受，per-mission clone 保 mission 内冻结）；DB 文本与代码内业务红线语义漂移无法机器校验——靠 changeReason + contentHash 溯源 + activate 前 golden eval 人工门。
+**残留风险如实声明**：8 key 中仅 live 路径角色的 soul 即时生效（efficacy 实测：仅 leader 经 plan/assess/signoff 三 primitive 消费 systemPrompt，其余 soul-inert = 编码统一 + 二期铺路）；模块级快照并发 mission last-write-wins（批 2c 同款已接受，per-mission clone 保 mission 内冻结）；DB 文本与代码内业务红线语义漂移无法机器校验——靠 changeReason + contentHash 溯源 + activate 前 golden eval 人工门。
+
+**insight 维护模式立牌**：insight 是菜单已摘的老代实现（真入口 agent-playground）。其 4 个 `insight.prompt.*` key 冻结（禁止新增），value 形状已上提契约；如未来复活，一次性转换路径 = 把 `*.prompt.ts` 模板包成 SkillDoc（补 frontmatter）走 canonical key，转换脚本届时按 backfill 脚本范式写。
+
+**拓扑数据面草案（留档，不实现）**：`TopologyPolicyValue = { schemaVersion: 1, roles: [{ roleId, minCount?, maxCount? }], steps: [{ id, dependsOn: string[] }] }`——只有依赖边与数量约束进 DB；ctxReads/ctxWrites/dbWrites/resetFields/rerunable 级联永远留代码。启动触发条件见 §八不做清单 #1。
+
+**落地状态（2026-07-02 批 3b 完成）**：步骤 1-7 已提交（`37dee663c` + backfill 脚本 `bd9352e2f`）；步骤 7 的 staging 灰度是部署后人工闸；步骤 8（评分落库附 PromptResolution 溯源）留 W2 开工首项，挂点 `getPlaygroundPromptResolution(roleId)` 已就绪。
 
 ## 九、待用户拍板的开放点
 
