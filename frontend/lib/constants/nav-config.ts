@@ -65,7 +65,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
     ],
   },
-  // 我的工作台：我的前沿库（前沿信息感知）/ 我的知识库 / 我的专家团（专家花名册 + 专家任务双 Tab）
+  // 我的工作台：信源库（前沿信息感知）/ 知识库 / 专家团（专家花名册 + 专家任务双 Tab）
   {
     labelKey: 'nav.sections.myWorkspace',
     items: [
