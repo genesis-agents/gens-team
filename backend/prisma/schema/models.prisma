@@ -8600,6 +8600,7 @@ enum NotificationType {
   KEY_REQUEST_APPROVED // 申请被批准，通知用户
   KEY_REQUEST_REJECTED // 申请被拒绝，通知用户
   KEY_GRANTED // admin 主动授权（无申请流程），通知被授权用户
+  KEY_AUTH_FAILED // BYOK key 连续鉴权失败被永久熔断（DEAD），通知 key 所属用户更换
 
   // AI 雷达通知（PR-DR1a 占位 + RADAR_MISSION_COMPLETE 老 caller 迁移示范；DR2 真启用 DAILY/WEEKLY/TIER3_INSTANT）
   RADAR_DAILY

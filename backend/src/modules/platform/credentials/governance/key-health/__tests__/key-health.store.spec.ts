@@ -1,6 +1,7 @@
 import { CacheService } from "@/common/cache";
 import {
   KeyHealthStore,
+  KEY_AUTH_DEAD_EVENT,
   buildPersonalKeyId,
   parseKeyId,
 } from "../key-health.store";
@@ -430,6 +431,71 @@ describe("KeyHealthStore", () => {
         noCacheStore.markFailure("a", authFailedClassified),
       ).resolves.toBeUndefined();
       await expect(noCacheStore.markSuccess("a")).resolves.toBeUndefined();
+    });
+  });
+
+  describe("auth-dead rising-edge event", () => {
+    let emit: jest.Mock;
+
+    beforeEach(() => {
+      emit = jest.fn();
+      store = new KeyHealthStore(cache, {
+        emit,
+      } as unknown as import("@nestjs/event-emitter").EventEmitter2);
+    });
+
+    it("emits KEY_AUTH_DEAD_EVENT exactly once when personal key crosses AUTH_DEAD_THRESHOLD", async () => {
+      const keyId = buildPersonalKeyId(userId, provider, "primary");
+      for (let i = 0; i < 5; i++) {
+        await store.markFailure(keyId, authFailedClassified);
+      }
+      const deadEmits = emit.mock.calls.filter(
+        ([event]) => event === KEY_AUTH_DEAD_EVENT,
+      );
+      expect(deadEmits).toHaveLength(1);
+      expect(deadEmits[0][1]).toEqual({
+        keyId,
+        userId,
+        provider,
+        label: "primary",
+        reason: "AUTH_FAILED",
+      });
+    });
+
+    it("re-emits after markSuccess (recovery) followed by another DEAD escalation", async () => {
+      const keyId = buildPersonalKeyId(userId, provider, "primary");
+      for (let i = 0; i < 3; i++) {
+        await store.markFailure(keyId, authFailedClassified);
+      }
+      await store.markSuccess(keyId);
+      for (let i = 0; i < 3; i++) {
+        await store.markFailure(keyId, authFailedClassified);
+      }
+      const deadEmits = emit.mock.calls.filter(
+        ([event]) => event === KEY_AUTH_DEAD_EVENT,
+      );
+      expect(deadEmits).toHaveLength(2);
+    });
+
+    it("does not emit for assigned/system keys (no owning user to notify)", async () => {
+      for (let i = 0; i < 3; i++) {
+        await store.markFailure("assigned:assignment-1", authFailedClassified);
+        await store.markFailure("system:OPENAI_API_KEY", authFailedClassified);
+      }
+      const deadEmits = emit.mock.calls.filter(
+        ([event]) => event === KEY_AUTH_DEAD_EVENT,
+      );
+      expect(deadEmits).toHaveLength(0);
+    });
+
+    it("does not emit on transient (below-threshold) auth failures", async () => {
+      const keyId = buildPersonalKeyId(userId, provider, "primary");
+      await store.markFailure(keyId, authFailedClassified);
+      await store.markFailure(keyId, authFailedClassified);
+      expect(emit).not.toHaveBeenCalledWith(
+        KEY_AUTH_DEAD_EVENT,
+        expect.anything(),
+      );
     });
   });
 });

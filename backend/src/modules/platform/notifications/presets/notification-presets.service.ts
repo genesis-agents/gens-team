@@ -374,6 +374,31 @@ export class NotificationPresetsService {
   }
 
   /**
+   * BYOK key 连续鉴权失败被永久熔断（DEAD），通知 key 所属用户更换密钥。
+   * 触发点在 KeyHealthStore 的「非 DEAD → DEAD」上升沿，天然一把 key 只发一次
+   * （恢复健康后再失效才会再次通知）。
+   */
+  async notifyKeyAuthFailed(params: {
+    userId: string;
+    provider: string;
+    keyLabel: string;
+  }) {
+    const { userId, provider, keyLabel } = params;
+
+    await this.notificationService.createNotification({
+      userId,
+      type: NotificationTypeDto.KEY_AUTH_FAILED,
+      title: "API Key 已失效",
+      message: `你的 ${provider} 密钥（${keyLabel}）连续鉴权失败，已被暂停使用。请检查密钥是否过期或被重置，并更新后重新测试连接。`,
+      actionUrl: "/me/ai?tab=keys",
+      actionLabel: "更新密钥",
+      relatedType: "user-api-key",
+      relatedId: `${provider}:${keyLabel}`,
+      metadata: { provider, keyLabel },
+    });
+  }
+
+  /**
    * 版本更新通知（替代旧的 VersionUpdateBanner 横幅）。
    *
    * 调用方（CI / admin 脚本 / admin endpoint）负责按 audience 解析用户 ID 列表：

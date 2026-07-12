@@ -1,6 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
 import { NotificationPresetsService } from "./presets/notification-presets.service";
+import {
+  KEY_AUTH_DEAD_EVENT,
+  type KeyAuthDeadEvent,
+} from "../credentials/governance/key-health/key-health.store";
 
 /**
  * 业务模块 emit 的"任务完成"事件 payload 标准。
@@ -106,6 +110,31 @@ export class NotificationEventListener {
     } catch (err) {
       this.log.warn(
         `Failed to persist notification for kind=${payload.kind} ref=${payload.refId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * BYOK key「非 DEAD → DEAD」上升沿（KeyHealthStore 发出，仅 personal key）。
+   * 转站内通知提醒用户更换密钥。上升沿语义已在 store 侧保证一把 key 只发一次。
+   */
+  @OnEvent(KEY_AUTH_DEAD_EVENT)
+  async handleKeyAuthDead(payload: KeyAuthDeadEvent): Promise<void> {
+    if (!payload?.userId || !payload?.provider) {
+      this.log.debug(
+        `Skipping ${KEY_AUTH_DEAD_EVENT}: missing userId/provider (keyId=${payload?.keyId})`,
+      );
+      return;
+    }
+    try {
+      await this.presets.notifyKeyAuthFailed({
+        userId: payload.userId,
+        provider: payload.provider,
+        keyLabel: payload.label,
+      });
+    } catch (err) {
+      this.log.warn(
+        `Failed to persist key-auth-dead notification for ${payload.provider}:${payload.label}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }

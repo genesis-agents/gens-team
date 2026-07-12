@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { CacheService } from "@/common/cache";
 import { ClassifiedError } from "./key-error-classifier";
 import { KEY_COOLDOWN_MS } from "./key-cooldown-policy";
@@ -21,6 +22,17 @@ import { KEY_COOLDOWN_MS } from "./key-cooldown-policy";
  */
 
 export type KeyHealthState = "HEALTHY" | "COOLDOWN" | "DEAD";
+
+/** 「非 DEAD → DEAD」上升沿领域事件（仅 personal key 发出），notifications 侧消费转站内通知 */
+export const KEY_AUTH_DEAD_EVENT = "key-health.auth-dead";
+
+export interface KeyAuthDeadEvent {
+  keyId: string;
+  userId: string;
+  provider: string;
+  label: string;
+  reason: string;
+}
 
 export interface KeyHealthRecord {
   readonly state: KeyHealthState;
@@ -149,7 +161,10 @@ function pickEarliestFiniteCooldown(
 export class KeyHealthStore {
   private readonly logger = new Logger(KeyHealthStore.name);
 
-  constructor(@Optional() private readonly cache?: CacheService) {}
+  constructor(
+    @Optional() private readonly cache?: CacheService,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
+  ) {}
 
   // ─────────────────────────── 核心健康操作 ───────────────────────────
 
@@ -288,6 +303,23 @@ export class KeyHealthStore {
         if (last === keyId) {
           await this.clearLastGood(parsed.userId, parsed.provider);
         }
+      }
+      // 「非 DEAD → DEAD」上升沿发领域事件（仅 personal key 有归属用户可通知）。
+      // prev.state 做边沿判断天然防刷屏：置 DEAD 后续 markFailure 不再发；
+      // markSuccess（Test Connection 成功）归 HEALTHY 后再失效才会再次发。
+      if (
+        prev.state !== "DEAD" &&
+        parsed?.type === "personal" &&
+        parsed.userId &&
+        parsed.provider
+      ) {
+        this.eventEmitter?.emit(KEY_AUTH_DEAD_EVENT, {
+          keyId,
+          userId: parsed.userId,
+          provider: parsed.provider,
+          label: parsed.label ?? "default",
+          reason: classified.reason,
+        } satisfies KeyAuthDeadEvent);
       }
     }
   }

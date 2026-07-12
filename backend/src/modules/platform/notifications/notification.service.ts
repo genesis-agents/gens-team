@@ -38,6 +38,7 @@ const VALID_NOTIFICATION_TYPES: Record<NotificationTypeDto, NotificationType> =
     [NotificationTypeDto.KEY_REQUEST_APPROVED]: "KEY_REQUEST_APPROVED",
     [NotificationTypeDto.KEY_REQUEST_REJECTED]: "KEY_REQUEST_REJECTED",
     [NotificationTypeDto.KEY_GRANTED]: "KEY_GRANTED",
+    [NotificationTypeDto.KEY_AUTH_FAILED]: "KEY_AUTH_FAILED",
     // PR-DR1a RADAR_* 同步（R3 arch P0 整改）
     [NotificationTypeDto.RADAR_DAILY]: "RADAR_DAILY",
     [NotificationTypeDto.RADAR_WEEKLY]: "RADAR_WEEKLY",
