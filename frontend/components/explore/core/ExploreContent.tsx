@@ -924,12 +924,18 @@ function HomeContent() {
       resource,
       articleTextContent,
       setAiSummary,
-      setAiLoading
+      setAiLoading,
+      aiModel
     );
   };
 
   const generateInsights = async (resource: Resource) => {
-    await generateInsightsHelper(resource, articleTextContent, setAiInsights);
+    await generateInsightsHelper(
+      resource,
+      articleTextContent,
+      setAiInsights,
+      aiModel
+    );
   };
 
   // Handle article loaded from ReaderView

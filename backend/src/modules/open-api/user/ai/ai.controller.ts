@@ -51,11 +51,15 @@ interface SummaryRequest {
   content: string;
   max_length?: number;
   language?: string;
+  /** 用户在阅读页选中的模型；缺省时走 CHAT_FAST tier 自动选型 */
+  model?: string;
 }
 
 interface InsightsRequest {
   content: string;
   language?: string;
+  /** 用户在阅读页选中的模型；缺省时走 CHAT_FAST tier 自动选型 */
+  model?: string;
 }
 
 @ApiTags("AI Core")
@@ -949,7 +953,7 @@ JSON output:`;
   @Post("summary")
   @UseGuards(OptionalJwtAuthGuard)
   async summary(@Body() body: SummaryRequest, @Req() req: Request) {
-    const { content, language = "zh" } = body;
+    const { content, language = "zh", model = "" } = body;
 
     if (!content || content.trim().length === 0) {
       throw new BadRequestException("Content is required");
@@ -961,10 +965,14 @@ JSON output:`;
 
     const executeSummary = async () => {
       try {
-        // ★ 使用 AIFacade 获取 CHAT_FAST tier 模型
-        const fastModel = await this.aiFacade.getDefaultModelByType(
-          AIModelType.CHAT_FAST,
-        );
+        // ★ 优先使用用户选中的模型（与 quick-action / simple-chat 对齐），
+        //   未传或找不到时 fallback 到 CHAT_FAST tier 自动选型
+        const selectedModel = model
+          ? await this.aiFacade.getModelById(model)
+          : null;
+        const fastModel =
+          selectedModel ??
+          (await this.aiFacade.getDefaultModelByType(AIModelType.CHAT_FAST));
         // 如果没有 CHAT_FAST，fallback 到默认 CHAT
         const modelConfig =
           fastModel || (await this.aiFacade.getDefaultTextModel());
@@ -973,7 +981,7 @@ JSON output:`;
         }
 
         this.logger.log(
-          `[Summary] Using model: ${modelConfig.displayName} (${modelConfig.modelId}) - Tier: CHAT_FAST`,
+          `[Summary] Using model: ${modelConfig.displayName} (${modelConfig.modelId}) - ${selectedModel ? "user-selected" : "Tier: CHAT_FAST"}`,
         );
 
         const prompt =
@@ -995,7 +1003,7 @@ JSON output:`;
           summary: result.content,
           model: result.model,
           model_used: modelConfig.modelId,
-          tier: "CHAT_FAST",
+          tier: selectedModel ? "USER_SELECTED" : "CHAT_FAST",
         };
       } catch (error) {
         if (error instanceof HttpException) {
@@ -1025,7 +1033,7 @@ JSON output:`;
   @Post("insights")
   @UseGuards(OptionalJwtAuthGuard)
   async insights(@Body() body: InsightsRequest, @Req() req: Request) {
-    const { content, language = "zh" } = body;
+    const { content, language = "zh", model = "" } = body;
 
     if (!content || content.trim().length === 0) {
       throw new BadRequestException("Content is required");
@@ -1037,10 +1045,14 @@ JSON output:`;
 
     const executeInsights = async () => {
       try {
-        // ★ 使用 AIFacade 获取 CHAT_FAST tier 模型
-        const fastModel = await this.aiFacade.getDefaultModelByType(
-          AIModelType.CHAT_FAST,
-        );
+        // ★ 优先使用用户选中的模型（与 quick-action / simple-chat 对齐），
+        //   未传或找不到时 fallback 到 CHAT_FAST tier 自动选型
+        const selectedModel = model
+          ? await this.aiFacade.getModelById(model)
+          : null;
+        const fastModel =
+          selectedModel ??
+          (await this.aiFacade.getDefaultModelByType(AIModelType.CHAT_FAST));
         const modelConfig =
           fastModel || (await this.aiFacade.getDefaultTextModel());
         if (!modelConfig) {
@@ -1048,7 +1060,7 @@ JSON output:`;
         }
 
         this.logger.log(
-          `[Insights] Using model: ${modelConfig.displayName} (${modelConfig.modelId}) - Tier: CHAT_FAST`,
+          `[Insights] Using model: ${modelConfig.displayName} (${modelConfig.modelId}) - ${selectedModel ? "user-selected" : "Tier: CHAT_FAST"}`,
         );
 
         const prompt = `You are a JSON-only API. Extract key insights from the following content.
@@ -1081,7 +1093,7 @@ JSON output:`;
           insights: jsonContent,
           model: result.model,
           model_used: modelConfig.modelId,
-          tier: "CHAT_FAST",
+          tier: selectedModel ? "USER_SELECTED" : "CHAT_FAST",
         };
       } catch (error) {
         if (error instanceof HttpException) {

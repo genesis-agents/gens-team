@@ -39,7 +39,8 @@ export async function generateSummary(
   resource: Resource,
   articleTextContent: string,
   setAiSummary: (summary: string) => void,
-  setAiLoading: (loading: boolean) => void
+  setAiLoading: (loading: boolean) => void,
+  aiModel?: string
 ): Promise<void> {
   if (!resource) return;
 
@@ -73,6 +74,7 @@ export async function generateSummary(
         content: content,
         max_length: 200,
         language: 'zh',
+        model: aiModel || '',
       }),
     });
 
@@ -115,7 +117,8 @@ export async function generateSummary(
 export async function generateInsights(
   resource: Resource,
   articleTextContent: string,
-  setAiInsights: (insights: AIInsight[]) => void
+  setAiInsights: (insights: AIInsight[]) => void,
+  aiModel?: string
 ): Promise<void> {
   if (!resource) return;
 
@@ -144,6 +147,7 @@ export async function generateInsights(
       body: JSON.stringify({
         content: content,
         language: 'zh',
+        model: aiModel || '',
       }),
     });
 

@@ -20,7 +20,7 @@ const API_URL = getBackendUrl();
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { content, language = 'zh' } = body;
+    const { content, language = 'zh', model = '' } = body;
 
     // BYOK: Forward Authorization header so backend can use user's personal API key
     const authHeader = request.headers.get('authorization');
@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         content,
         language,
+        model,
       }),
     });
 

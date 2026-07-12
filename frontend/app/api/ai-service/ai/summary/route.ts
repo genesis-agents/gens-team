@@ -20,7 +20,7 @@ const API_URL = getBackendUrl();
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { content, max_length = 200, language = 'zh' } = body;
+    const { content, max_length = 200, language = 'zh', model = '' } = body;
 
     // Forward request to NestJS backend
     // BYOK: Forward Authorization header so backend can use user's personal API key
@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
         content,
         max_length,
         language,
+        model,
       }),
     });
 

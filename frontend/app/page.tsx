@@ -1353,6 +1353,7 @@ function HomeContent() {
           content: content,
           max_length: 200,
           language: 'zh',
+          model: aiModel || '',
         }),
       });
 
@@ -1411,6 +1412,7 @@ function HomeContent() {
         body: JSON.stringify({
           content: content,
           language: 'zh',
+          model: aiModel || '',
         }),
       });
 
