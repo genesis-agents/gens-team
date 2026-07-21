@@ -11,16 +11,28 @@ import type { PlaygroundReportCompletedPayload } from "../../../playground/integ
 type ImportManagerMock = {
   importWithMetadata: jest.Mock;
 };
+type TaggingMock = {
+  tagResource: jest.Mock;
+};
 
 function makeListener(): {
   listener: ReportCitationImportListener;
   importManager: ImportManagerMock;
+  tagging: TaggingMock;
 } {
   const importManager: ImportManagerMock = {
-    importWithMetadata: jest.fn().mockResolvedValue({ id: "res-1" }),
+    importWithMetadata: jest
+      .fn()
+      .mockResolvedValue({ id: "res-1", resourceId: "res-1" }),
   };
-  const listener = new ReportCitationImportListener(importManager as never);
-  return { listener, importManager };
+  const tagging: TaggingMock = {
+    tagResource: jest.fn().mockResolvedValue(true),
+  };
+  const listener = new ReportCitationImportListener(
+    importManager as never,
+    tagging as never,
+  );
+  return { listener, importManager, tagging };
 }
 
 function makePayload(
@@ -63,6 +75,39 @@ describe("ReportCitationImportListener", () => {
     });
     expect(metadata.publishedDate).toBeInstanceOf(Date);
     expect(skipDup).toBe(true);
+  });
+
+  it("导入成功后按 resourceId 调 classify 打标", async () => {
+    const { listener, tagging } = makeListener();
+    await listener.handleReportCompleted(
+      makePayload([
+        {
+          url: "https://semianalysis.com/p/gpu",
+          sourceType: "industry",
+          credibilityScore: 90,
+        },
+      ]),
+    );
+    expect(tagging.tagResource).toHaveBeenCalledTimes(1);
+    expect(tagging.tagResource).toHaveBeenCalledWith("res-1");
+  });
+
+  it("打标失败不污染导入计数（.catch 兜底，导入仍算成功）", async () => {
+    const { listener, importManager, tagging } = makeListener();
+    tagging.tagResource.mockRejectedValueOnce(new Error("classify down"));
+    await expect(
+      listener.handleReportCompleted(
+        makePayload([
+          {
+            url: "https://reuters.com/a",
+            sourceType: "news",
+            credibilityScore: 85,
+          },
+        ]),
+      ),
+    ).resolves.toBeUndefined();
+    expect(importManager.importWithMetadata).toHaveBeenCalledTimes(1);
+    expect(tagging.tagResource).toHaveBeenCalledTimes(1);
   });
 
   it("分级闸门：低分（<70）与 blog/community/other 一律跳过", async () => {

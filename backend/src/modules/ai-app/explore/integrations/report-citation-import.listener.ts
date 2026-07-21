@@ -22,6 +22,7 @@ import { OnEvent } from "@nestjs/event-emitter";
 import type { ResourceType } from "@prisma/client";
 import { ImportManagerService } from "../ingestion/config/services/import-manager.service";
 import type { ParsedUrlMetadata } from "../ingestion/config/services/metadata-extractor.service";
+import { ResourceTaggingService } from "./resource-tagging.service";
 import {
   PLAYGROUND_REPORT_COMPLETED_EVENT,
   type PlaygroundReportCompletedPayload,
@@ -64,7 +65,10 @@ export interface CitationImportStats {
 export class ReportCitationImportListener {
   private readonly logger = new Logger(ReportCitationImportListener.name);
 
-  constructor(private readonly importManager: ImportManagerService) {}
+  constructor(
+    private readonly importManager: ImportManagerService,
+    private readonly tagging: ResourceTaggingService,
+  ) {}
 
   @OnEvent(PLAYGROUND_REPORT_COMPLETED_EVENT, { async: true })
   async handleReportCompleted(
@@ -123,13 +127,23 @@ export class ReportCitationImportListener {
     let failed = 0;
     for (const citation of selected) {
       try {
-        await this.importManager.importWithMetadata(
+        const result = await this.importManager.importWithMetadata(
           citation.url,
           this.resolveResourceType(citation),
           this.buildMetadata(citation, missionId),
           true, // skipDuplicateWarning：批量后台导入，跳过逐条重复度指标计算
         );
         imported++;
+        // ★ 2026-07-21: 导入后 classify-only 打标（写 UI 展示字段 categories）。
+        //   幂等 skip-if-tagged、非致命——批量回填可重跑，成本可控。await 保证
+        //   批量场景标签落库（实时事件路径同样是后台，await 无碍）。
+        const resourceId =
+          (result as { resourceId?: string; id?: string })?.resourceId ??
+          (result as { id?: string })?.id;
+        if (resourceId) {
+          // .catch 兜底：打标失败绝不污染导入计数（tagResource 已内部吞错，双保险）
+          await this.tagging.tagResource(resourceId).catch(() => false);
+        }
       } catch (err) {
         failed++;
         this.logger.warn(
