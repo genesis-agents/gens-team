@@ -1295,13 +1295,23 @@ function HomeContent() {
     setAiLoading(true);
 
     try {
-      // Use article text content if available (from Reader Mode), otherwise fall back to abstract
-      const mainContent = articleTextContent || selectedResource.abstract || '';
+      // 正文优先级：阅读模式提取的 HTML 正文 → PDF 提取正文 → 摘要兜底。
+      // ★ 2026-07-21：补上 pdfText —— 原先漏了它，PDF 论文点摘要/洞察/方法一律
+      //   落到"内容尚未加载"提示（且 PDF 无阅读模式可切，文案误导）。
+      const mainContent =
+        articleTextContent || pdfText || selectedResource.abstract || '';
 
       // Don't call AI with insufficient content - need at least 50 chars beyond the title
       if (mainContent.length < 50) {
-        const warningMessage =
-          '内容尚未加载完成，请先切换到「阅读模式」等待文章内容加载后再试。';
+        // PDF 正文异步提取中 / HTML 需切阅读模式 —— 文案按资源类型区分，避免
+        // 对 PDF 论文误导用户去点不存在的「阅读模式」。
+        const isPdf =
+          selectedResource.type === 'PAPER' ||
+          !!selectedResource.pdfUrl ||
+          (selectedResource.sourceUrl ?? '').toLowerCase().endsWith('.pdf');
+        const warningMessage = isPdf
+          ? t('explore.quickActions.pdfExtracting')
+          : t('explore.quickActions.contentNotLoaded');
         if (action === 'summary') {
           setAiSummary(warningMessage);
         }

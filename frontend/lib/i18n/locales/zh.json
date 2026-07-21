@@ -807,7 +807,9 @@
       "title": "快速操作",
       "summary": "摘要",
       "insights": "要点",
-      "methods": "方法"
+      "methods": "方法",
+      "contentNotLoaded": "内容尚未加载完成，请先切换到「阅读模式」等待文章内容加载后再试。",
+      "pdfExtracting": "正在提取 PDF 正文，请稍候几秒后再试。"
     },
     "insights": {
       "title": "AI 洞察",

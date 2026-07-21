@@ -807,7 +807,9 @@
       "title": "Quick Actions:",
       "summary": "Summary",
       "insights": "Insights",
-      "methods": "Methods"
+      "methods": "Methods",
+      "contentNotLoaded": "Content is still loading. Switch to Reader mode and wait for the article to load, then try again.",
+      "pdfExtracting": "Extracting PDF text, please try again in a few seconds."
     },
     "insights": {
       "title": "AI Insights",
