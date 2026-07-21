@@ -462,7 +462,22 @@ export async function runWriterStage(
     const modelTrail = Array.from(modelIds);
     const writerGenerationMs =
       writerStartTs && writerEndTs ? writerEndTs - writerStartTs : wallTimeMs;
+    // ★ 2026-07-21: 精选行业源域名→信誉分（tool_configs.industry-report），
+    //   传给 assembler 覆盖 citation 启发式（semianalysis 等白名单源 90 分而非 65）。
+    //   取失败不阻断装配（fail-soft）。
+    let curatedSources:
+      | ReadonlyArray<{ domain: string; credibilityScore: number }>
+      | undefined;
+    try {
+      curatedSources =
+        await deps.industrySourceRegistry?.getCuratedDomainScores();
+    } catch (err) {
+      deps.log.warn(
+        `[s8 ${missionId}] load curated sources failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     reportArtifact = deps.reportAssembler.assemble({
+      curatedSources,
       topic: input.topic,
       language: input.language,
       styleProfile: input.styleProfile,

@@ -27,6 +27,9 @@ import { RateLimitMiddleware } from "./middleware/rate-limit.middleware";
 
 // Policy Data Service
 import { PolicyDataService } from "./categories/information/policy";
+// ★ 2026-07-21: 精选行业源配置读取口（IndustryReportSearchTool + citation
+//   credibility 覆盖链共用）
+import { IndustrySourceRegistryService } from "./categories/information/industry";
 // ★ Phase 3: 工具并发 + 中间件
 import { ToolConcurrencyService } from "./concurrency/tool-concurrency.service";
 import { PermissionMiddleware } from "./middleware/permission.middleware";
@@ -101,6 +104,8 @@ const toolExecutorFactory = {
 
     // Policy Data Service
     PolicyDataService,
+    // ★ 2026-07-21: 精选行业源 registry
+    IndustrySourceRegistryService,
     // ★ Phase 3: 工具并发 + 中间件
     ToolConcurrencyService,
     PermissionMiddleware,
@@ -120,6 +125,7 @@ const toolExecutorFactory = {
     ToolPipeline,
     ToolExecutor,
     PolicyDataService,
+    IndustrySourceRegistryService,
     HumanApprovalPrimitiveService,
     ...ALL_TOOL_PROVIDERS,
     ALL_TOOLS_TOKEN, // Export token for AiEngineModule injection

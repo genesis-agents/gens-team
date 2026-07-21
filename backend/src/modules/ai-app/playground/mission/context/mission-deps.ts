@@ -52,7 +52,9 @@ import type {
   OntologyService,
   OntologyBuilderSkill,
   ToolRegistry,
+  IndustrySourceRegistryService,
 } from "@/modules/ai-engine/facade";
+import type { EventEmitter2 } from "@nestjs/event-emitter";
 import type { CreditsService } from "../../../../platform/credits/credits.service";
 import type { RuntimeEnvironmentService } from "@/modules/ai-harness/facade";
 import type { PostmortemClassifierService } from "@/modules/ai-harness/facade";
@@ -186,4 +188,15 @@ export interface MissionDeps
   readonly ontologyBuilderSkill?: OntologyBuilderSkill;
   /** Phase 2: tool registry（OntologyBuilderSkill.setToolRegistry 必须）。 */
   readonly toolRegistry?: ToolRegistry;
+  /**
+   * ★ 2026-07-21: 精选行业源 registry（s8 装配前取域名→信誉映射传给
+   * ReportArtifactAssembler.curatedSources，白名单分覆盖 citation 启发式）。
+   */
+  readonly industrySourceRegistry?: IndustrySourceRegistryService;
+  /**
+   * ★ 2026-07-21: 应用级事件总线（@nestjs/event-emitter，AppModule forRoot 全局）。
+   * s11 成功终态后 fire-and-forget emit playground.report.completed，
+   * explore 侧监听把合格 citations 导入公共信源库。与 mission 内部 EventBus 无关。
+   */
+  readonly appEvents?: EventEmitter2;
 }

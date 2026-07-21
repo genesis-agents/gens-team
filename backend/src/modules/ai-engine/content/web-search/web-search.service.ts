@@ -1073,12 +1073,9 @@ export class SearchService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Parse site: operators from query and convert to Tavily's include_domains
-    const sitePattern = /\bsite:([^\s]+)/gi;
-    const extractedDomains: string[] = [];
-    let match: RegExpExecArray | null;
-    while ((match = sitePattern.exec(query)) !== null) {
-      extractedDomains.push(match[1]);
-    }
+    // ★ 2026-07-21: 复用 extractSiteDomains（原地内联的 [^\s]+ 会把
+    //   "(site:a OR site:b)" 末尾的右括号吸进最后一个域名，include_domains 失效）
+    const extractedDomains = this.extractSiteDomains(query);
     let tavilyQuery = query
       .replace(/\bsite:[^\s]+/gi, "")
       .replace(/\bOR\b/g, "")
@@ -1129,10 +1126,12 @@ export class SearchService implements OnModuleInit, OnModuleDestroy {
     );
 
     // Apply comprehensive ranking algorithm
+    // ★ 2026-07-21: tavilyQuery 已剥掉 site:，preferred domains 显式传入
     const rankedResults = this.rankSearchResults(
       rawResults,
       tavilyQuery,
       maxResults,
+      extractedDomains,
     );
 
     this.logger.debug(
@@ -1154,14 +1153,58 @@ export class SearchService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 从 query 中提取 site: 定向域名（[^\s)]+ 排除右括号，
+   * 兼容 "(site:a OR site:b) query" 形态）
+   */
+  private extractSiteDomains(query: string): string[] {
+    const sitePattern = /\bsite:([^\s)]+)/gi;
+    const domains: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = sitePattern.exec(query)) !== null) {
+      domains.push(match[1]);
+    }
+    return domains;
+  }
+
+  /**
+   * 域名是否命中 preferred 集合（精确或子域名匹配）
+   */
+  private isPreferredDomain(
+    domain: string,
+    preferred: ReadonlySet<string>,
+  ): boolean {
+    if (preferred.size === 0 || !domain) return false;
+    const d = domain.toLowerCase().replace(/^www\./, "");
+    if (preferred.has(d)) return true;
+    for (const p of preferred) {
+      if (d.endsWith(`.${p}`)) return true;
+    }
+    return false;
+  }
+
+  /**
    * Comprehensive ranking algorithm based on industry best practices
    * Factors: Relevance, Freshness, Quality, Diversity
+   *
+   * ★ 2026-07-21: preferredDomains —— 调用方经 site: 定向点名的域名
+   * （industry-report-search 等白名单工具）。语义：
+   *   1) 质量分按高权威域名对待（否则 semianalysis 等白名单源不在静态
+   *      highAuthorityDomains 里，排序永远吃亏被 top-N 截断挤出）；
+   *   2) 豁免 applyDiversityFilter 的同域 2 条上限（调用方显式要这些域，
+   *      不该被通用降噪规则砍掉）。
+   * Serper / DDG 路径 query 仍含 site:，不传参时从 query 自动解析。
    */
   private rankSearchResults(
     results: WebSearchResult[],
     query: string,
     maxResults: number,
+    preferredDomains?: string[],
   ): WebSearchResult[] {
+    const preferred: ReadonlySet<string> = new Set(
+      (preferredDomains ?? this.extractSiteDomains(query)).map((d) =>
+        d.toLowerCase().replace(/^www\./, ""),
+      ),
+    );
     const queryTerms = query
       .toLowerCase()
       .split(/\s+/)
@@ -1176,7 +1219,7 @@ export class SearchService implements OnModuleInit, OnModuleDestroy {
       finalScore += relevanceScore * 0.4;
 
       // 2. Quality Score (30% weight) - Domain authority, content length
-      const qualityScore = this.calculateQualityScore(result);
+      const qualityScore = this.calculateQualityScore(result, preferred);
       finalScore += qualityScore * 0.3;
 
       // 3. Freshness Score (20% weight) - Recent content preferred
@@ -1197,7 +1240,11 @@ export class SearchService implements OnModuleInit, OnModuleDestroy {
     scoredResults.sort((a, b) => (b.score || 0) - (a.score || 0));
 
     // Apply diversity filter - ensure variety across domains
-    const diverseResults = this.applyDiversityFilter(scoredResults, maxResults);
+    const diverseResults = this.applyDiversityFilter(
+      scoredResults,
+      maxResults,
+      preferred,
+    );
 
     return diverseResults;
   }
@@ -1246,8 +1293,13 @@ export class SearchService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Calculate quality score based on domain authority
+   * ★ 2026-07-21: preferred（site: 点名）域名按高权威对待，
+   *   让配置化白名单源（semianalysis / stratechery 等）真正影响排序
    */
-  private calculateQualityScore(result: WebSearchResult): number {
+  private calculateQualityScore(
+    result: WebSearchResult,
+    preferred?: ReadonlySet<string>,
+  ): number {
     let score = 50; // Base score
     const domain = result.domain || "";
 
@@ -1322,7 +1374,10 @@ export class SearchService implements OnModuleInit, OnModuleDestroy {
       "tripadvisor",
     ];
 
-    if (highAuthorityDomains.some((d) => domain.includes(d))) {
+    if (
+      (preferred && this.isPreferredDomain(domain, preferred)) ||
+      highAuthorityDomains.some((d) => domain.includes(d))
+    ) {
       score += 40;
     } else if (mediumAuthorityDomains.some((d) => domain.includes(d))) {
       score += 20;
@@ -1384,10 +1439,13 @@ export class SearchService implements OnModuleInit, OnModuleDestroy {
   /**
    * Apply diversity filter to ensure variety across domains
    * Limits results from same domain while maintaining top results
+   * ★ 2026-07-21: preferred（site: 点名）域名豁免同域上限——调用方显式
+   *   限定在这些域内检索时，2 条/域会把定向结果砍到几乎为空
    */
   private applyDiversityFilter(
     results: WebSearchResult[],
     maxResults: number,
+    preferred?: ReadonlySet<string>,
   ): WebSearchResult[] {
     const domainCounts = new Map<string, number>();
     const maxPerDomain = 2; // Maximum results from same domain
@@ -1399,7 +1457,10 @@ export class SearchService implements OnModuleInit, OnModuleDestroy {
       const domain = result.domain || "unknown";
       const currentCount = domainCounts.get(domain) || 0;
 
-      if (currentCount < maxPerDomain) {
+      if (
+        currentCount < maxPerDomain ||
+        (preferred && this.isPreferredDomain(domain, preferred))
+      ) {
         diverseResults.push(result);
         domainCounts.set(domain, currentCount + 1);
       }

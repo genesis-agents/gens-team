@@ -7,3 +7,8 @@ export type {
   IndustryReportSearchOutput,
   IndustryReportItem,
 } from "./industry-report-search.tool";
+export { IndustrySourceRegistryService } from "./industry-source-registry.service";
+export type {
+  IndustryReportSourceConfig,
+  CuratedDomainScore,
+} from "./industry-source-registry.service";

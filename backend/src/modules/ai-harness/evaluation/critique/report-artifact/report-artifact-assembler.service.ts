@@ -140,6 +140,14 @@ export interface AssembleInput {
   totalTokens: { prompt: number; completion: number; total: number };
   costCents: number;
   modelTrail: string[];
+  /**
+   * ★ 2026-07-21: 精选行业源域名→信誉分（tool_configs.industry-report，
+   * 由调用方经 engine IndustrySourceRegistryService 取好传入，保持本 assembler
+   * 纯代码/同步）。buildCitations 用它覆盖启发式：白名单分析师源
+   * （semianalysis / stratechery 等）不再被 TLD 正则打成默认 65 分。
+   * credibilityScore 为 0-1。
+   */
+  curatedSources?: ReadonlyArray<{ domain: string; credibilityScore: number }>;
 }
 
 @Injectable()
@@ -1309,6 +1317,26 @@ export class ReportArtifactAssembler {
     }
     const finalUrls = deduplicated.map((e) => e.url);
 
+    // ★ 2026-07-21: 精选源域名 → 信誉分查表（白名单覆盖启发式）
+    const curatedByDomain = new Map<string, number>();
+    for (const s of input.curatedSources ?? []) {
+      if (s.domain) {
+        curatedByDomain.set(
+          s.domain.toLowerCase().replace(/^www\./, ""),
+          s.credibilityScore,
+        );
+      }
+    }
+    const matchCurated = (domain: string | null): number | undefined => {
+      if (!domain || curatedByDomain.size === 0) return undefined;
+      const d = domain.toLowerCase().replace(/^www\./, "");
+      if (curatedByDomain.has(d)) return curatedByDomain.get(d);
+      for (const [cd, score] of curatedByDomain) {
+        if (d.endsWith(`.${cd}`)) return score;
+      }
+      return undefined;
+    };
+
     const citations: ArtifactCitation[] = finalUrls.map((url, idx) => {
       const num = idx + 1;
       const domain = extractDomain(url);
@@ -1333,8 +1361,30 @@ export class ReportArtifactAssembler {
             ? richPublishedAt
             : undefined,
         accessedAt: new Date().toISOString(),
-        sourceType: this.inferSourceType(domain, url),
-        credibilityScore: this.scoreCredibility(domain, url),
+        // ★ 2026-07-21: 白名单精选源覆盖启发式——命中时信誉分取两者较大值
+        //   （semianalysis 0.9 → 90，不再是启发式默认 65），类型上启发式弱信号
+        //   （industry/blog/other 兜底分支）归为 industry；强信号（gov/academic/
+        //   news/community）保留。
+        sourceType: (() => {
+          const heuristic = this.inferSourceType(domain, url);
+          const curated = matchCurated(domain);
+          if (
+            curated !== undefined &&
+            (heuristic === "industry" ||
+              heuristic === "blog" ||
+              heuristic === "other")
+          ) {
+            return "industry" as const;
+          }
+          return heuristic;
+        })(),
+        credibilityScore: (() => {
+          const heuristic = this.scoreCredibility(domain, url);
+          const curated = matchCurated(domain);
+          return curated !== undefined
+            ? Math.max(heuristic, Math.round(curated * 100))
+            : heuristic;
+        })(),
         occurrences: [],
       };
     });
@@ -1394,8 +1444,10 @@ export class ReportArtifactAssembler {
     // 1) TLD 强信号优先
     if (/\.gov(\.|$)/.test(domain)) return "gov";
     if (/\.edu(\.|$)/.test(domain)) return "academic";
+    // ★ 2026-07-21: +doi —— semantic-scholar 工具 URL 改回落 doi.org 后，
+    //   DOI 链接必须归 academic（否则落 default industry/65）
     if (
-      /(arxiv|nature|science|nih|pubmed|scholar|openalex|ssrn|biorxiv)\./.test(
+      /(arxiv|nature|science|nih|pubmed|scholar|openalex|ssrn|biorxiv|doi)\./.test(
         domain,
       )
     )
@@ -1436,7 +1488,8 @@ export class ReportArtifactAssembler {
     // TLD 强信号
     if (/\.gov(\.|$)/.test(domain)) return 95;
     if (/\.edu(\.|$)/.test(domain)) return 90;
-    if (/(arxiv|nature|science|nih|pubmed|biorxiv|ssrn)\./.test(domain))
+    // ★ 2026-07-21: +doi（与 inferSourceType 对齐）
+    if (/(arxiv|nature|science|nih|pubmed|biorxiv|ssrn|doi)\./.test(domain))
       return 92;
     if (/(reuters|bloomberg|economist|wsj|nytimes|ft\.com|bbc)\./.test(domain))
       return 85;

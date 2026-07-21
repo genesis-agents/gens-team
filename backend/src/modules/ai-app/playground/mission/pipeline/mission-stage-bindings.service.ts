@@ -47,7 +47,9 @@ import {
   OntologyService,
   OntologyBuilderSkill,
   ToolRegistry,
+  IndustrySourceRegistryService,
 } from "@/modules/ai-engine/facade";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { CreditsService } from "../../../../platform/credits/credits.service";
 import { PostmortemClassifierService } from "@/modules/ai-harness/facade";
 // ★ DI 注入 → runtime import（非 import type），见上文 emitDecoratorMetadata 说明。
@@ -115,6 +117,10 @@ export class MissionStageBindingsService extends BusinessTeamStageBindingsFramew
     @Optional() private readonly ontologyService?: OntologyService,
     @Optional() private readonly ontologyBuilderSkill?: OntologyBuilderSkill,
     @Optional() private readonly toolRegistry?: ToolRegistry,
+    // ★ 2026-07-21: citation 白名单信誉传导 + 报告完成事件（B 桥）
+    @Optional()
+    private readonly industrySourceRegistry?: IndustrySourceRegistryService,
+    @Optional() private readonly appEvents?: EventEmitter2,
   ) {
     super(MissionStageBindingsService.name);
   }
@@ -176,6 +182,9 @@ export class MissionStageBindingsService extends BusinessTeamStageBindingsFramew
       ontologyService: this.ontologyService,
       ontologyBuilderSkill: this.ontologyBuilderSkill,
       toolRegistry: this.toolRegistry,
+      // ★ 2026-07-21: citation 白名单信誉传导 + 报告完成事件（B 桥）
+      industrySourceRegistry: this.industrySourceRegistry,
+      appEvents: this.appEvents,
       // ★ 2026-05-06 (A-6): markStageDegraded — stage 内部软失败上报。
       //   stage 调用方显式传 stepId（PLAYGROUND_PIPELINE.steps[i].id），让前端按
       //   stepId 映射到 SystemStageId 后挂到对应 todo 的 narrativeLog 显示警告。

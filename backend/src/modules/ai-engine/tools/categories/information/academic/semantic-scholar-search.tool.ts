@@ -418,6 +418,17 @@ export class SemanticScholarSearchTool extends BaseTool<
    * 解析单篇论文 API 响应
    */
   private parsePaper(item: SemanticScholarApiPaper): SemanticScholarPaper {
+    const arxivId = item.externalIds?.ArXiv;
+    const doi = item.externalIds?.DOI;
+    // ★ 2026-07-21: URL 优先回落论文原始出处（arXiv → DOI → S2 页面）。
+    //   此前一律用 item.url（semanticscholar.org 聚合页），一次检索 10-100 篇
+    //   全落同一域名，最终报告参考文献被单域灌水，且读者拿不到原文链接。
+    const url = arxivId
+      ? `https://arxiv.org/abs/${arxivId}`
+      : doi
+        ? `https://doi.org/${doi}`
+        : (item.url ??
+          `https://www.semanticscholar.org/paper/${item.paperId ?? ""}`);
     return {
       paperId: item.paperId ?? "",
       title: item.title ?? "",
@@ -425,11 +436,9 @@ export class SemanticScholarSearchTool extends BaseTool<
       abstract: item.abstract ?? "",
       year: item.year ?? 0,
       citationCount: item.citationCount ?? 0,
-      url:
-        item.url ??
-        `https://www.semanticscholar.org/paper/${item.paperId ?? ""}`,
-      arxivId: item.externalIds?.ArXiv,
-      doi: item.externalIds?.DOI,
+      url,
+      arxivId,
+      doi,
     };
   }
 

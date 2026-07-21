@@ -199,9 +199,46 @@ describe("SemanticScholarSearchTool", () => {
       expect(paper?.abstract).toBe("This paper explores...");
       expect(paper?.year).toBe(2024);
       expect(paper?.citationCount).toBe(42);
-      expect(paper?.url).toBe("https://www.semanticscholar.org/paper/abc123");
+      // ★ 2026-07-21: URL 优先回落论文原始出处 —— 有 arxivId 时用 arXiv 链接，
+      //   不再一律落 semanticscholar.org（参考文献单域灌水修复）
+      expect(paper?.url).toBe("https://arxiv.org/abs/2401.12345");
       expect(paper?.arxivId).toBe("2401.12345");
       expect(paper?.doi).toBe("10.1234/test");
+    });
+
+    it("★ 2026-07-21 URL 回落顺序：无 arXiv 有 DOI → doi.org；两者皆无 → 原 url/S2 页", async () => {
+      mockPolicyDataService.getApiKey.mockResolvedValue(null);
+      mockPolicyDataService.httpGet.mockResolvedValue(
+        makeMockApiResponse({
+          data: [
+            {
+              paperId: "doi-only",
+              title: "DOI Only Paper",
+              authors: [],
+              externalIds: { DOI: "10.5555/doi-only" },
+            },
+            {
+              paperId: "no-ids",
+              title: "No External Ids",
+              authors: [],
+              url: "https://www.semanticscholar.org/paper/no-ids",
+            },
+            {
+              paperId: "bare",
+              title: "Bare Paper",
+              authors: [],
+            },
+          ],
+        }),
+      );
+
+      const result = await tool.execute({ query: "fallbacks" }, makeContext());
+      const papers = result.data?.papers ?? [];
+      expect(papers[0]?.url).toBe("https://doi.org/10.5555/doi-only");
+      expect(papers[1]?.url).toBe(
+        "https://www.semanticscholar.org/paper/no-ids",
+      );
+      expect(papers[2]?.url).toBe("https://www.semanticscholar.org/paper/bare");
     });
 
     it("should search papers with API key and pass x-api-key header", async () => {

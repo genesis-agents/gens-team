@@ -12,7 +12,6 @@
  */
 
 import { Injectable, Logger } from "@nestjs/common";
-import { getToolIdAliases } from "@/common/ai/tool-id-aliases";
 import { BaseTool } from "../../../base/base-tool";
 import { ToolRegistry } from "../../../registry/tool.registry";
 import {
@@ -20,7 +19,9 @@ import {
   JSONSchema,
   ToolCategory,
 } from "../../../abstractions/tool.interface";
-import { PrismaService } from "@/common/prisma/prisma.service";
+// ★ 2026-07-21: 源配置读取抽到 IndustrySourceRegistryService（与 citation
+//   credibility 覆盖链共用同一份缓存），本工具不再自持 cache / prisma。
+import { IndustrySourceRegistryService } from "./industry-source-registry.service";
 import {
   resolveEffectiveTimeRange,
   SEARCH_TIME_RANGE_VALUES,
@@ -70,16 +71,6 @@ export interface IndustryReportSearchOutput {
   error?: string;
 }
 
-interface IndustryReportSourceConfig {
-  id: string;
-  name: string;
-  domain: string;
-  category: string;
-  credibilityScore: number;
-  enabled: boolean;
-  topicTypes: string[];
-}
-
 // ============================================================================
 // Tool Implementation
 // ============================================================================
@@ -90,9 +81,6 @@ export class IndustryReportSearchTool extends BaseTool<
   IndustryReportSearchOutput
 > {
   private readonly logger = new Logger(IndustryReportSearchTool.name);
-  private cachedSources: IndustryReportSourceConfig[] | null = null;
-  private cacheExpiry = 0;
-  private static readonly CACHE_TTL_MS = 5 * 60 * 1000;
 
   readonly id = "industry-report-search";
   readonly sideEffect = "none" as const;
@@ -108,6 +96,14 @@ export class IndustryReportSearchTool extends BaseTool<
 
   /** 嵌套 web-search 子预算（< defaultTimeout，留处理余量）；超时降级为空，任务继续。 */
   private static readonly NESTED_WEB_SEARCH_TIMEOUT_MS = 26000;
+
+  /**
+   * ★ 2026-07-21: site: 过滤最多取 8 个域名（按 credibilityScore 降序）。
+   * 原 slice(0,5) 按数组原始顺序截断，白名单加源后高信誉源可能被挤出；
+   * Tavily 路径会把 site: 整体转成 include_domains 不受串长影响，
+   * Serper（Google）8 个 site: OR 仍在查询词数限制内。
+   */
+  private static readonly SITE_FILTER_MAX_SOURCES = 8;
 
   readonly inputSchema: JSONSchema = {
     type: "object",
@@ -162,7 +158,7 @@ export class IndustryReportSearchTool extends BaseTool<
   };
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly sourceRegistry: IndustrySourceRegistryService,
     private readonly toolRegistry: ToolRegistry,
   ) {
     super();
@@ -179,7 +175,7 @@ export class IndustryReportSearchTool extends BaseTool<
     );
 
     try {
-      const sources = await this.getEnabledSources(topicType);
+      const sources = await this.sourceRegistry.getEnabledSources(topicType);
       if (sources.length === 0) {
         return {
           success: false,
@@ -190,9 +186,12 @@ export class IndustryReportSearchTool extends BaseTool<
         };
       }
 
-      // 取前 5 个域名拼 site: query（避免 query 过长）
-      const top5 = sources.slice(0, 5);
-      const siteFilter = top5.map((s) => `site:${s.domain}`).join(" OR ");
+      // ★ 2026-07-21: 按 credibilityScore 降序取前 N 个域名拼 site: query，
+      //   保证 semianalysis / stratechery 等高信誉分析师源始终进定向查询。
+      const curated = [...sources]
+        .sort((a, b) => b.credibilityScore - a.credibilityScore)
+        .slice(0, IndustryReportSearchTool.SITE_FILTER_MAX_SOURCES);
+      const siteFilter = curated.map((s) => `site:${s.domain}`).join(" OR ");
       const siteQuery = `(${siteFilter}) ${query}`;
 
       const webSearchTool = this.toolRegistry.tryGet("web-search");
@@ -200,7 +199,7 @@ export class IndustryReportSearchTool extends BaseTool<
         return {
           success: false,
           items: [],
-          sourcesQueried: top5.length,
+          sourcesQueried: curated.length,
           error:
             "web-search tool not registered (required by industry-report-search).",
         };
@@ -237,7 +236,7 @@ export class IndustryReportSearchTool extends BaseTool<
         return {
           success: false,
           items: [],
-          sourcesQueried: top5.length,
+          sourcesQueried: curated.length,
           error: `行业研报检索超时：内部 web-search 超过 ${IndustryReportSearchTool.NESTED_WEB_SEARCH_TIMEOUT_MS}ms 未返回（来源检索慢，已降级为空，任务继续）`,
         };
       }
@@ -247,7 +246,7 @@ export class IndustryReportSearchTool extends BaseTool<
         return {
           success: false,
           items: [],
-          sourcesQueried: top5.length,
+          sourcesQueried: curated.length,
           error: result.error?.message ?? "web-search returned no data",
         };
       }
@@ -301,13 +300,13 @@ export class IndustryReportSearchTool extends BaseTool<
       });
 
       this.logger.log(
-        `[doExecute] industry-report-search: ${items.length} items across ${top5.length} curated sources`,
+        `[doExecute] industry-report-search: ${items.length} items across ${curated.length} curated sources`,
       );
 
       return {
         success: true,
         items,
-        sourcesQueried: top5.length,
+        sourcesQueried: curated.length,
       };
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -319,72 +318,5 @@ export class IndustryReportSearchTool extends BaseTool<
         error: `Industry Report 搜索失败: ${errMsg}`,
       };
     }
-  }
-
-  private async getEnabledSources(
-    topicType?: string,
-  ): Promise<IndustryReportSourceConfig[]> {
-    if (this.cachedSources && Date.now() < this.cacheExpiry) {
-      return this.applyTopicTypeFilter(this.cachedSources, topicType);
-    }
-
-    try {
-      this.cachedSources = await this.loadConfiguredSources();
-    } catch (err) {
-      this.logger.warn(
-        `Failed to load industry-report sources: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      this.cachedSources = [];
-    }
-    this.cacheExpiry = Date.now() + IndustryReportSearchTool.CACHE_TTL_MS;
-    return this.applyTopicTypeFilter(this.cachedSources, topicType);
-  }
-
-  /**
-   * topicType 过滤 fail-soft：
-   *   - 如果 topicType 为空 → 返回所有 enabled
-   *   - 如果 topicType 命中至少 1 个 source → 返回过滤后的子集
-   *   - 如果 topicType 不在任何 source 的 topicTypes 数组里 → fallback 返回所有
-   *     enabled（不让一个 LLM-invented topicType 把整个工具变废）
-   *
-   * 2026-05-04 修：原实现 topicType 不命中时返回 []，触发"No enabled industry
-   * report sources configured"误报，让 mission researcher 子调用失败。实际
-   * DB 里 18 sources 全 enabled，LLM 传了一个非 TECHNOLOGY/COMPANY/MACRO/EVENT
-   * 的 topicType（如 GENERIC）就全过滤掉。fail-soft 改回 enabled 全集。
-   */
-  private applyTopicTypeFilter(
-    sources: IndustryReportSourceConfig[],
-    topicType?: string,
-  ): IndustryReportSourceConfig[] {
-    const enabled = sources.filter((s) => s.enabled);
-    if (!topicType) return enabled;
-    const matched = enabled.filter((s) => s.topicTypes.includes(topicType));
-    if (matched.length > 0) return matched;
-    if (enabled.length > 0) {
-      this.logger.warn(
-        `[industry-report] topicType="${topicType}" matched 0 sources; fallback to all ${enabled.length} enabled`,
-      );
-      return enabled;
-    }
-    return [];
-  }
-
-  private async loadConfiguredSources(): Promise<IndustryReportSourceConfig[]> {
-    for (const toolId of getToolIdAliases(this.id)) {
-      const cfg = await this.prisma.toolConfig.findUnique({
-        where: { toolId },
-      });
-      const config = cfg?.config as
-        | { sources?: IndustryReportSourceConfig[] }
-        | undefined
-        | null;
-      const sources = config?.sources ?? [];
-
-      if (sources.length > 0) {
-        return sources;
-      }
-    }
-
-    return [];
   }
 }

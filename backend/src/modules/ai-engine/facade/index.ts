@@ -149,6 +149,10 @@ export type {
 
 // ★ Registry classes — engine-owned registries only
 export { ToolRegistry } from "../tools/registry/tool.registry";
+// ★ 2026-07-21: 精选行业源配置（tool_configs.industry-report）唯一读取口——
+//   harness assembler / app 装配链用它把白名单信誉分传导到 citation
+export { IndustrySourceRegistryService } from "../tools/categories/information/industry";
+export type { CuratedDomainScore } from "../tools/categories/information/industry";
 // ★ 默认检索工具集（唯一真相源）—— 各 app 工具解析层引用，避免硬编码 web-search
 export {
   DEFAULT_RETRIEVAL_TOOL_IDS,

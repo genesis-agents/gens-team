@@ -1253,3 +1253,85 @@ describe("PR-7 rebuildSectionTreePublic + figure.sectionId 重映射（mission 8
     expect(newSections[0].figureIds).toContain("fig-d1-0");
   });
 });
+
+describe("★ 2026-07-21 curatedSources 白名单信誉覆盖（citation 管道修复）", () => {
+  function makeService() {
+    return new ReportArtifactAssembler(makeQualityGate() as never);
+  }
+
+  function makeInputWithAnalystSources() {
+    const input = makeBaseInput();
+    input.researcherResults[0].findings.push({
+      claim: "GPU supply constrained",
+      evidence: "Foundry analysis",
+      source: "https://semianalysis.com/p/gpu-shortage",
+    });
+    input.writerReport.citations = [
+      "https://semianalysis.com/p/gpu-shortage",
+      "https://arxiv.org/ai",
+      "https://random-blog.example.com/post",
+    ];
+    return input;
+  }
+
+  it("命中白名单的分析师源：credibility 取 registry 分（90），弱信号类型归 industry", () => {
+    const service = makeService();
+    const artifact = service.assemble({
+      ...makeInputWithAnalystSources(),
+      curatedSources: [{ domain: "semianalysis.com", credibilityScore: 0.9 }],
+    });
+    const cite = artifact.citations.find((c) =>
+      c.url.includes("semianalysis.com"),
+    );
+    expect(cite).toBeDefined();
+    expect(cite!.credibilityScore).toBe(90); // 不再是启发式默认 65
+    expect(cite!.sourceType).toBe("industry");
+  });
+
+  it("未传 curatedSources：semianalysis 走启发式（industry/65），行为向后兼容", () => {
+    const service = makeService();
+    const artifact = service.assemble(makeInputWithAnalystSources());
+    const cite = artifact.citations.find((c) =>
+      c.url.includes("semianalysis.com"),
+    );
+    expect(cite!.credibilityScore).toBe(65);
+    expect(cite!.sourceType).toBe("industry");
+  });
+
+  it("白名单不覆盖强信号：arxiv 仍是 academic/92（即使被误配进白名单且分更低）", () => {
+    const service = makeService();
+    const artifact = service.assemble({
+      ...makeInputWithAnalystSources(),
+      curatedSources: [{ domain: "arxiv.org", credibilityScore: 0.7 }],
+    });
+    const cite = artifact.citations.find((c) => c.url.includes("arxiv.org"));
+    expect(cite!.sourceType).toBe("academic");
+    expect(cite!.credibilityScore).toBe(92); // max(92, 70) = 92
+  });
+
+  it("白名单匹配子域名（newsletter.semianalysis.com）", () => {
+    const service = makeService();
+    const input = makeBaseInput();
+    input.writerReport.citations = [
+      "https://newsletter.semianalysis.com/p/foo",
+    ];
+    const artifact = service.assemble({
+      ...input,
+      curatedSources: [{ domain: "semianalysis.com", credibilityScore: 0.9 }],
+    });
+    const cite = artifact.citations.find((c) =>
+      c.url.includes("newsletter.semianalysis.com"),
+    );
+    expect(cite!.credibilityScore).toBe(90);
+  });
+
+  it("doi.org 归为 academic/92（semantic-scholar URL 回落 DOI 后不再落 default）", () => {
+    const service = makeService();
+    const input = makeBaseInput();
+    input.writerReport.citations = ["https://doi.org/10.1000/xyz123"];
+    const artifact = service.assemble(input);
+    const cite = artifact.citations.find((c) => c.url.includes("doi.org"));
+    expect(cite!.sourceType).toBe("academic");
+    expect(cite!.credibilityScore).toBe(92);
+  });
+});

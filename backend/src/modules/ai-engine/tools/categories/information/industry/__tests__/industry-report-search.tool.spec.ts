@@ -1,16 +1,18 @@
 /**
  * IndustryReportSearchTool Unit Tests
  *
- * 隔离 PrismaService + ToolRegistry，验证 BaseTool 全 lifecycle：
+ * 隔离 PrismaService + ToolRegistry（源加载走真实 IndustrySourceRegistryService
+ * + PrismaService mock），验证 BaseTool 全 lifecycle：
  *   - 输入校验 / metadata
  *   - 成功路径：源命中 → site: query 拼装 → web-search 委托 → 元数据回填
  *   - 失败路径：DB 0 源 / web-search 缺席 / web-search 失败
- *   - topicType 过滤 / 5 源截断 / domain 匹配 credibility
+ *   - topicType 过滤 / 8 源截断（按信誉降序）/ domain 匹配 credibility
  *   - 5 分钟内存缓存
  */
 
 import { Test, TestingModule } from "@nestjs/testing";
 import { IndustryReportSearchTool } from "../industry-report-search.tool";
+import { IndustrySourceRegistryService } from "../industry-source-registry.service";
 import { ToolRegistry } from "../../../../registry/tool.registry";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { ToolContext } from "../../../../abstractions/tool.interface";
@@ -129,6 +131,7 @@ describe("IndustryReportSearchTool", () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         IndustryReportSearchTool,
+        IndustrySourceRegistryService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: ToolRegistry, useValue: registryMock },
       ],
@@ -155,7 +158,7 @@ describe("IndustryReportSearchTool", () => {
   });
 
   describe("success path", () => {
-    it("calls web-search with site:domain prefix from top 5 enabled sources", async () => {
+    it("calls web-search with site:domain prefix from enabled sources (top 8 by credibility)", async () => {
       const webSearch = makeWebSearchTool([]);
       registryMock.tryGet.mockReturnValue(webSearch);
 
@@ -166,14 +169,43 @@ describe("IndustryReportSearchTool", () => {
       expect(callArg.query).toContain("site:semianalysis.com");
       expect(callArg.query).toContain("site:stratechery.com");
       expect(callArg.query).toContain("site:ark-invest.com");
-      // 第 4 个 enabled 是 src-4 (disabled-source 被跳过)
       expect(callArg.query).toContain("site:src4.example.com");
       expect(callArg.query).toContain("site:src5.example.com");
-      // 不应有第 6 个 — 上限 5
-      expect(callArg.query).not.toContain("site:src6.example.com");
+      // ★ 2026-07-21: 上限提到 8 —— 6 个 enabled 全部入选
+      expect(callArg.query).toContain("site:src6.example.com");
       // 不应包含 disabled
       expect(callArg.query).not.toContain("disabled.example.com");
       expect(callArg.query).toContain("AI infrastructure");
+      // ★ 按 credibilityScore 降序：semianalysis(0.9) 排第一
+      expect(callArg.query.indexOf("site:semianalysis.com")).toBeLessThan(
+        callArg.query.indexOf("site:stratechery.com"),
+      );
+    });
+
+    it("caps site: filter at 8 domains sorted by credibility desc", async () => {
+      const manySources = Array.from({ length: 12 }, (_, i) => ({
+        id: `bulk-${i}`,
+        name: `Bulk${i}`,
+        domain: `bulk${i}.example.com`,
+        category: "x",
+        enabled: true,
+        credibilityScore: 0.5 + i * 0.02, // bulk11 最高
+        topicTypes: ["TECHNOLOGY"],
+      }));
+      prismaMock.toolConfig.findUnique.mockResolvedValue({
+        config: { sources: manySources },
+      });
+      const webSearch = makeWebSearchTool([]);
+      registryMock.tryGet.mockReturnValue(webSearch);
+
+      await tool.execute({ query: "AI" }, makeContext());
+
+      const callArg = webSearch.execute.mock.calls[0][0];
+      const matched = callArg.query.match(/site:/g) ?? [];
+      expect(matched).toHaveLength(8);
+      // 信誉最高的 bulk11 必在，最低的 bulk0 必不在
+      expect(callArg.query).toContain("site:bulk11.example.com");
+      expect(callArg.query).not.toContain("site:bulk0.example.com");
     });
 
     it("populates source name + credibilityScore from matching domain", async () => {
@@ -254,7 +286,8 @@ describe("IndustryReportSearchTool", () => {
       const data = r.data as { success: boolean; sourcesQueried: number };
 
       expect(data.success).toBe(true);
-      expect(data.sourcesQueried).toBe(5);
+      // ★ 2026-07-21: 上限 8 —— 6 个 enabled 全部入选
+      expect(data.sourcesQueried).toBe(6);
       expect(prismaMock.toolConfig.findUnique).toHaveBeenNthCalledWith(1, {
         where: { toolId: "industry-report-search" },
       });
