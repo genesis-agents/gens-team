@@ -22,6 +22,7 @@ export interface TranscriptResponse {
   videoId: string;
   title: string;
   transcript: TranscriptSegment[]; // 始终返回原始字幕（完整片段数组）
+  language?: string; // 原始字幕的实际语言。仅缓存命中时可知（来自缓存行）；新抓取路径英语优先、无法保证实际语言，故不填
   translatedTranscript?: TranscriptSegment[]; // 已保存的翻译（可能稀疏，仅供 bilingual 通道使用）
   targetLanguage?: string; // 翻译目标语言（如果有翻译）
   hasTranslation?: boolean; // 是否已有翻译
@@ -156,6 +157,7 @@ export class YoutubeService {
           videoId,
           title: cached.title ?? `YouTube Video ${videoId}`,
           transcript: originalTranscript,
+          language: cached.language,
           translatedTranscript,
           targetLanguage: cached.targetLanguage ?? undefined,
           hasTranslation,

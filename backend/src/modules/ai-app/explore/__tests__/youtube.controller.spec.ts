@@ -14,13 +14,15 @@ const MOCK_TRANSCRIPT = {
     { text: "We're no strangers to love", start: 0, duration: 3 },
     { text: "You know the rules and so do I", start: 3, duration: 3 },
   ],
+  language: "en",
   hasTranslation: false,
 };
 
+// 翻译数据走 translatedTranscript 侧通道（可能稀疏），transcript 始终是原始字幕
 const MOCK_TRANSCRIPT_WITH_TRANSLATION = {
   ...MOCK_TRANSCRIPT,
   hasTranslation: true,
-  transcript: [
+  translatedTranscript: [
     {
       text: "We're no strangers to love",
       start: 0,
@@ -128,54 +130,38 @@ describe("YoutubeController", () => {
   // ── getSubtitles ─────────────────────────────────────────────────────────────
 
   describe("POST /youtube/subtitles", () => {
-    it("should return aligned bilingual subtitles with native Chinese", async () => {
-      const chineseTranscript = {
+    it("should use cached transcript as native Chinese when cache language is zh", async () => {
+      const zhTranscript = {
         videoId: "dQw4w9WgXcQ",
         title: "Rick Astley",
         transcript: [{ text: "我们对爱并不陌生", start: 0, duration: 3 }],
+        language: "zh-Hans",
+        hasTranslation: false,
       };
 
-      youtubeService.getTranscript
-        .mockResolvedValueOnce(MOCK_TRANSCRIPT) // English
-        .mockResolvedValueOnce(chineseTranscript); // Native Chinese
-
+      youtubeService.getTranscript.mockResolvedValue(zhTranscript);
       pdfGeneratorService.alignTranscripts.mockReturnValue(MOCK_ALIGNED);
-      youtubeService.getTranslationStatus.mockResolvedValue({
-        hasTranslation: false,
-      });
 
       const result = await controller.getSubtitles({
         videoId: "dQw4w9WgXcQ",
       });
 
+      // 只允许一次 getTranscript 调用——不得再用 lang="zh" 二次探测
+      expect(youtubeService.getTranscript).toHaveBeenCalledTimes(1);
+      expect(pdfGeneratorService.alignTranscripts).toHaveBeenCalledWith(
+        zhTranscript.transcript,
+        zhTranscript.transcript,
+      );
       expect(result.videoId).toBe("dQw4w9WgXcQ");
-      expect(result.title).toBe(MOCK_TRANSCRIPT.title);
       expect(result.english).toEqual(MOCK_ALIGNED.english);
       expect(result.chinese).toEqual(MOCK_ALIGNED.chinese);
+      expect(result.hasTranslation).toBe(true);
     });
 
-    it("should fall back to saved translations when no native Chinese subtitles", async () => {
-      youtubeService.getTranscript
-        .mockResolvedValueOnce(MOCK_TRANSCRIPT) // English
-        .mockRejectedValueOnce(new Error("No Chinese subtitles")) // Native Chinese fails
-        .mockResolvedValueOnce(MOCK_TRANSCRIPT_WITH_TRANSLATION); // Cached with translations
-
-      youtubeService.getTranslationStatus.mockResolvedValue({
-        hasTranslation: true,
-      });
-      pdfGeneratorService.alignTranscripts.mockReturnValue(MOCK_ALIGNED);
-
-      const result = await controller.getSubtitles({ videoId: "dQw4w9WgXcQ" });
-
-      expect(result.videoId).toBe("dQw4w9WgXcQ");
-      expect(pdfGeneratorService.alignTranscripts).toHaveBeenCalled();
-    });
-
-    it("should return empty chinese array when no translations available", async () => {
-      youtubeService.getTranscript
-        .mockResolvedValueOnce(MOCK_TRANSCRIPT) // English
-        .mockRejectedValueOnce(new Error("No Chinese")); // Native Chinese fails
-
+    it("must NOT present cached English transcript as Chinese (regression 2026-07)", async () => {
+      // 历史 bug：缓存查询不区分语言，getTranscript(videoId, "zh") 命中英文缓存后
+      // 被当"原生中文"返回，前端把英文当译文预加载，按需 AI 翻译被跳过。
+      youtubeService.getTranscript.mockResolvedValue(MOCK_TRANSCRIPT); // language: "en"
       youtubeService.getTranslationStatus.mockResolvedValue({
         hasTranslation: false,
       });
@@ -186,7 +172,54 @@ describe("YoutubeController", () => {
 
       const result = await controller.getSubtitles({ videoId: "dQw4w9WgXcQ" });
 
+      expect(pdfGeneratorService.alignTranscripts).toHaveBeenCalledWith(
+        MOCK_TRANSCRIPT.transcript,
+        [], // 中文侧必须为空，不得回填英文
+      );
       expect(result.chinese).toEqual([]);
+      expect(result.hasTranslation).toBe(false);
+    });
+
+    it("must NOT trust a zh language label when content is not Chinese (poisoned cache row)", async () => {
+      // 旧版 zh 探测竞态下 saveToCache 会把英文字幕以 language="zh" 落库，
+      // 此时应忽略标签、走 translatedTranscript 兜底
+      youtubeService.getTranscript.mockResolvedValue({
+        ...MOCK_TRANSCRIPT_WITH_TRANSLATION,
+        language: "zh",
+      });
+      pdfGeneratorService.alignTranscripts.mockReturnValue(MOCK_ALIGNED);
+
+      const result = await controller.getSubtitles({ videoId: "dQw4w9WgXcQ" });
+
+      expect(pdfGeneratorService.alignTranscripts).toHaveBeenCalledWith(
+        MOCK_TRANSCRIPT_WITH_TRANSLATION.transcript,
+        [
+          { text: "我们对爱并不陌生", start: 0, duration: 3 },
+          { text: "你知道规则，我也是", start: 3, duration: 3 },
+        ],
+      );
+      expect(result.hasTranslation).toBe(true);
+    });
+
+    it("should fall back to saved AI translations when cache is not Chinese", async () => {
+      youtubeService.getTranscript.mockResolvedValue(
+        MOCK_TRANSCRIPT_WITH_TRANSLATION,
+      );
+      pdfGeneratorService.alignTranscripts.mockReturnValue(MOCK_ALIGNED);
+
+      const result = await controller.getSubtitles({ videoId: "dQw4w9WgXcQ" });
+
+      // 中文侧来自 translatedTranscript 的 translatedText 字段
+      expect(youtubeService.getTranscript).toHaveBeenCalledTimes(1);
+      expect(pdfGeneratorService.alignTranscripts).toHaveBeenCalledWith(
+        MOCK_TRANSCRIPT_WITH_TRANSLATION.transcript,
+        [
+          { text: "我们对爱并不陌生", start: 0, duration: 3 },
+          { text: "你知道规则，我也是", start: 3, duration: 3 },
+        ],
+      );
+      expect(result.chinese).toEqual(MOCK_ALIGNED.chinese);
+      expect(result.hasTranslation).toBe(true);
     });
 
     it("should throw BadRequestException for empty videoId", async () => {

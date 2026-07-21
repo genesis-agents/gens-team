@@ -97,78 +97,61 @@ export class YoutubeController {
         "en",
       );
 
-      // Try to get Chinese subtitles - first try native, then saved translations
+      // 中文侧字幕来源（按优先级）：
+      // 1. 缓存的原始字幕本身就是中文（language 以 zh 开头，仅缓存命中时可知）
+      // 2. 已保存的 AI 翻译（translatedTranscript，可能稀疏，随第一次 getTranscript 一并返回）
+      //
+      // 不再调 getTranscript(videoId, "zh") 探测原生中文：缓存查询不区分语言，
+      // 英文缓存会被原样当"原生中文"返回；且抓取层各免费路径实际英语优先、
+      // saveToCache 还会把"请求语言"当"实际语言"落库反向毒化缓存。
+      // 历史 bug（2026-07）：前端把英文当译文预加载进 translations map，
+      // 按需 AI 翻译因"已有译文"被跳过，翻译功能整体失效。
       let chineseTranscript: {
         videoId: string;
         title: string;
         transcript: Array<{ text: string; start: number; duration: number }>;
+      } = {
+        videoId: cleanVideoId,
+        title: englishTranscript.title,
+        transcript: [],
       };
 
-      // Strategy 1: Try native Chinese subtitles from YouTube
-      try {
-        chineseTranscript = await this.youtubeService.getTranscript(
-          cleanVideoId,
-          "zh",
-        );
-        if (chineseTranscript.transcript.length > 0) {
-          this.logger.log(
-            `Found native Chinese subtitles for ${cleanVideoId} (${chineseTranscript.transcript.length} segments)`,
-          );
-        }
-      } catch (error) {
-        this.logger.debug(
-          `Native Chinese subtitles not available for ${cleanVideoId}: ${error}`,
-        );
+      // language 标签之外再做内容校验：旧版 zh 探测存在竞态时会把英文字幕以
+      // language="zh" 落库（saveToCache 记录的是请求语言），只信标签会复发同一 bug
+      const cjkPattern = /[\u3400-\u4dbf\u4e00-\u9fff]/;
+      const contentIsChinese = englishTranscript.transcript
+        .slice(0, 20)
+        .some((seg) => cjkPattern.test(seg.text));
+
+      if (englishTranscript.language?.startsWith("zh") && contentIsChinese) {
         chineseTranscript = {
           videoId: cleanVideoId,
           title: englishTranscript.title,
-          transcript: [],
+          transcript: englishTranscript.transcript,
         };
-      }
-
-      // Strategy 2: If no native Chinese, check for saved AI translations
-      if (chineseTranscript.transcript.length === 0) {
         this.logger.log(
-          `No native Chinese subtitles, checking for saved translations for ${cleanVideoId}`,
+          `Cached transcript for ${cleanVideoId} is native Chinese (${englishTranscript.transcript.length} segments)`,
         );
-        const translationStatus =
-          await this.youtubeService.getTranslationStatus(cleanVideoId);
-
-        if (translationStatus.hasTranslation) {
-          // Fetch the full transcript with translations。getTranscript 现在 transcript 始终
-          // 是原始英文字幕（完整），翻译数据在 translatedTranscript 字段里（可能稀疏）。
-          const cachedTranscript = await this.youtubeService.getTranscript(
-            cleanVideoId,
-            "en",
-          );
-
-          if (
-            cachedTranscript.hasTranslation &&
-            cachedTranscript.translatedTranscript
-          ) {
-            // Build Chinese transcript from translatedText fields in the translation array
-            chineseTranscript = {
-              videoId: cleanVideoId,
-              title: cachedTranscript.title,
-              transcript: cachedTranscript.translatedTranscript
-                .filter((seg) => seg.translatedText)
-                .map((seg) => ({
-                  text: seg.translatedText!,
-                  start: seg.start,
-                  duration: seg.duration,
-                })),
-            };
-
-            this.logger.log(
-              `Using saved AI translations for ${cleanVideoId} (${chineseTranscript.transcript.length} segments)`,
-            );
-          }
-        } else {
-          this.logger.warn(
-            `No Chinese subtitles or saved translations available for ${cleanVideoId}. ` +
-              `User needs to translate the content in the viewer first.`,
-          );
-        }
+      } else if (englishTranscript.translatedTranscript?.length) {
+        chineseTranscript = {
+          videoId: cleanVideoId,
+          title: englishTranscript.title,
+          transcript: englishTranscript.translatedTranscript
+            .filter((seg) => seg.translatedText)
+            .map((seg) => ({
+              text: seg.translatedText!,
+              start: seg.start,
+              duration: seg.duration,
+            })),
+        };
+        this.logger.log(
+          `Using saved AI translations for ${cleanVideoId} (${chineseTranscript.transcript.length} segments)`,
+        );
+      } else {
+        this.logger.log(
+          `No Chinese subtitles or saved translations available for ${cleanVideoId}. ` +
+            `User needs to translate the content in the viewer first.`,
+        );
       }
 
       // Align transcripts

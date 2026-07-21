@@ -115,6 +115,7 @@ describe("YoutubeService", () => {
         videoId: "abc123",
         title: "Test Video",
         transcript: mockSegments,
+        language: "en",
         translatedTranscript: null,
         targetLanguage: null,
         expiresAt: futureExpiry,
@@ -125,6 +126,9 @@ describe("YoutubeService", () => {
       expect(result.videoId).toBe("abc123");
       expect(result.title).toBe("Test Video");
       expect(result.transcript).toEqual(mockSegments);
+      // 缓存命中必须透出缓存行的实际语言——bilingual 通道靠它区分
+      // "缓存本来就是中文" 和 "英文缓存被误当中文"（2026-07 回归）
+      expect(result.language).toBe("en");
       expect(result.hasTranslation).toBe(false);
     });
 

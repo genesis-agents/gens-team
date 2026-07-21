@@ -1014,12 +1014,19 @@ function YouTubeTLDWContent() {
         const saved = await fetchSavedTranslation(videoId, config.apiBaseUrl);
         if (cancelled || !saved || saved.length === 0) return;
 
+        // 防御：历史上后端曾把英文缓存当中文返回（getSubtitles 语言判定 bug）。
+        // 英文一旦占住 translations map，按需 AI 翻译会因"已有译文"被永久跳过，
+        // 所以预加载只接受真正含 CJK 字符的段。
+        const cjkPattern = /[\u3400-\u4dbf\u4e00-\u9fff]/;
+        const savedChinese = saved.filter((seg) => cjkPattern.test(seg.text));
+        if (savedChinese.length === 0) return;
+
         // Match each saved chinese segment to merged index by closest start time
         const startToIndex = new Map<number, number>();
         mergedTranscript.forEach((m, i) => startToIndex.set(m.start, i));
 
         const next = new Map<number, string>();
-        for (const seg of saved) {
+        for (const seg of savedChinese) {
           // exact match first
           if (startToIndex.has(seg.start)) {
             next.set(startToIndex.get(seg.start)!, seg.text);
