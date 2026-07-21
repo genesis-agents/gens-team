@@ -10,9 +10,9 @@
     "frontend/lib/design/tokens.ts"
   ],
   "totals": {
-    "all": 1948,
+    "all": 1950,
     "byLayer": {
-      "engine": 551,
+      "engine": 553,
       "frontend": 249,
       "harness": 1092,
       "platform": 56
@@ -29,7 +29,7 @@
       "engine/routing": 8,
       "engine/safety": 24,
       "engine/skills": 29,
-      "engine/tools": 50,
+      "engine/tools": 52,
       "frontend/animations": 16,
       "frontend/badges": 4,
       "frontend/cards": 31,
@@ -4134,6 +4134,14 @@
       "import": "import { CongressGovTool } from \"@/modules/ai-engine/facade\";"
     },
     {
+      "name": "CuratedDomainScore",
+      "kind": "type",
+      "layer": "engine",
+      "domain": "tools",
+      "source": "backend/src/modules/ai-engine/tools/categories/information/industry/index.ts",
+      "import": "import { CuratedDomainScore } from \"@/modules/ai-engine/facade\";"
+    },
+    {
       "name": "DEFAULT_RETRIEVAL_TOOL_IDS",
       "kind": "value",
       "layer": "engine",
@@ -4228,6 +4236,14 @@
       "domain": "tools",
       "source": "backend/src/modules/ai-engine/tools/search-fusion/index.ts",
       "import": "import { IndexedItem } from \"@/modules/ai-engine/facade\";"
+    },
+    {
+      "name": "IndustrySourceRegistryService",
+      "kind": "value",
+      "layer": "engine",
+      "domain": "tools",
+      "source": "backend/src/modules/ai-engine/tools/categories/information/industry/index.ts",
+      "import": "import { IndustrySourceRegistryService } from \"@/modules/ai-engine/facade\";"
     },
     {
       "name": "JSONSchema",
