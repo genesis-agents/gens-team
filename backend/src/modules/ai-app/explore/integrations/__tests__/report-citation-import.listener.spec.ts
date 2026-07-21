@@ -42,7 +42,12 @@ function makePayload(
     missionId: "mission-001",
     userId: "user-001",
     topic: "GPU 供应链",
-    citations,
+    // ★ 未显式给 title 的 citation 注入默认真实标题，让"真实标题"闸门放行
+    //   （裸域名标题的挡门单独用例覆盖）
+    citations: citations.map((c) => ({
+      title: c.title ?? "A Real Article Title",
+      ...c,
+    })),
   };
 }
 
@@ -235,5 +240,62 @@ describe("ReportCitationImportListener", () => {
     const { listener, importManager } = makeListener();
     await listener.handleReportCompleted(makePayload([]));
     expect(importManager.importWithMetadata).not.toHaveBeenCalled();
+  });
+
+  it("真实标题闸门：裸域名/域名标题/空标题一律挡下（不入库）", async () => {
+    const { listener, importManager } = makeListener();
+    await listener.handleReportCompleted({
+      missionId: "m",
+      userId: "u",
+      citations: [
+        {
+          url: "https://www.mckinsey.com/industries/semiconductors/x",
+          title: "mckinsey.com", // 裸域名标题
+          domain: "mckinsey.com",
+          sourceType: "industry",
+          credibilityScore: 90,
+        },
+        {
+          url: "https://hai.stanford.edu/ai-index/2026",
+          title: "hai.stanford.edu", // 裸域名标题
+          domain: "hai.stanford.edu",
+          sourceType: "academic",
+          credibilityScore: 92,
+        },
+        {
+          url: "https://www.whitehouse.gov/x",
+          title: "www.whitehouse.gov", // 等于 domain（带 www）
+          domain: "whitehouse.gov",
+          sourceType: "gov",
+          credibilityScore: 95,
+        },
+        {
+          url: "https://reuters.com/x",
+          title: "   ", // 空白标题
+          domain: "reuters.com",
+          sourceType: "news",
+          credibilityScore: 85,
+        },
+      ],
+    });
+    expect(importManager.importWithMetadata).not.toHaveBeenCalled();
+  });
+
+  it("真实标题闸门：有真实标题的引用正常放行", async () => {
+    const { listener, importManager } = makeListener();
+    await listener.handleReportCompleted({
+      missionId: "m",
+      userId: "u",
+      citations: [
+        {
+          url: "https://www.mckinsey.com/industries/semiconductors/x",
+          title: "The State of AI in Semiconductors", // 真实标题
+          domain: "mckinsey.com",
+          sourceType: "industry",
+          credibilityScore: 90,
+        },
+      ],
+    });
+    expect(importManager.importWithMetadata).toHaveBeenCalledTimes(1);
   });
 });

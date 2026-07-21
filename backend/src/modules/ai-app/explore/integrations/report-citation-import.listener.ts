@@ -49,6 +49,28 @@ const SOURCE_TYPE_TO_RESOURCE_TYPE: Partial<
 const PAPER_URL_PATTERN =
   /(arxiv\.org|doi\.org|ieee\.org|acm\.org|springer|sciencedirect|nature\.com|pubmed|biorxiv|ssrn\.com|openreview\.net)/i;
 
+/** 裸主机名/域名模式（无空格、以 TLD 结尾），如 mckinsey.com / hai.stanford.edu */
+const BARE_HOSTNAME_PATTERN = /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i;
+
+/**
+ * ★ 2026-07-21：判断 citation 是否有"真实标题"。
+ * 报告里一部分分析师/政府源（mckinsey / hai.stanford / whitehouse 等）的
+ * citation 只有 URL、title 回落成域名、snippet 为空——导入后信源库卡片显示
+ * 一串裸域名，无标题无内容。这类引用挡在门外，不入库。
+ */
+function hasRealTitle(citation: ReportCitationSnapshot): boolean {
+  const title = citation.title?.trim();
+  if (!title) return false;
+  // 标题就是裸域名（无空格 + 域名形状）→ 非真实标题
+  if (BARE_HOSTNAME_PATTERN.test(title)) return false;
+  // 标题恰好等于 domain（含/不含 www.）→ 非真实标题
+  const domain = (citation.domain ?? "").toLowerCase().replace(/^www\./, "");
+  if (domain && title.toLowerCase().replace(/^www\./, "") === domain) {
+    return false;
+  }
+  return true;
+}
+
 /** importCitations 结果统计（backfill 汇总复用） */
 export interface CitationImportStats {
   /** 实际导入（dryRun 时为"将导入"）条数 */
@@ -99,7 +121,9 @@ export class ReportCitationImportListener {
         !!c.url &&
         (c.credibilityScore ?? 0) >= MIN_CREDIBILITY_SCORE &&
         !!c.sourceType &&
-        c.sourceType in SOURCE_TYPE_TO_RESOURCE_TYPE,
+        c.sourceType in SOURCE_TYPE_TO_RESOURCE_TYPE &&
+        // ★ 2026-07-21：必须有真实标题，挡掉裸域名/无标题的半成品引用
+        hasRealTitle(c),
     );
     const gated = citations.length - eligible.length;
     if (eligible.length === 0) {
