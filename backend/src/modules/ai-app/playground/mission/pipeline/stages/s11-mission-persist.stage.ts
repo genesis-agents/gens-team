@@ -24,6 +24,11 @@ import { extractSubstantiveSectionText } from "../../artifacts/report-artifact-s
 import type { MissionTerminalIntent } from "@/modules/ai-harness/facade";
 import type { PlaygroundTerminalExtra } from "../../lifecycle/mission-store.service";
 import type { SkillContext } from "@/modules/ai-engine/facade";
+import {
+  PLAYGROUND_REPORT_COMPLETED_EVENT,
+  type PlaygroundReportCompletedPayload,
+  type ReportCitationSnapshot,
+} from "../../../integrations/playground-events";
 
 // ★ 假完成防御：chapter content guard 阈值常量
 const MIN_CHAPTER_CHARS = 500; // 单章最小内容长度（字符数）
@@ -51,6 +56,8 @@ interface PersistInput {
       }>;
       /** 报告全文 markdown，sections 通过 startOffset/endOffset slice 取章节内容 */
       content?: { fullMarkdown: string };
+      /** ★ 2026-07-21: 引用表（成功终态后投影进 report.completed 事件） */
+      citations?: Array<ReportCitationSnapshot & { index?: number }>;
     };
     reviewScore?: number;
     trajectoryStored?: number;
@@ -377,6 +384,15 @@ async function runPersistInner(
           // ★ Phase 2 (2026-06-15): 成功终态 → fire-and-forget 本体回写
           //   仅在依赖就绪时执行（@Optional 注入），不阻塞、不抛错。
           void triggerOntologyWriteback(missionId, reportPayload, deps);
+
+          // ★ 2026-07-21: 成功终态 → fire-and-forget 发布报告完成事件，
+          //   explore 侧监听把合格 citations 分级导入公共信源库。
+          emitReportCompletedEvent(
+            missionId,
+            userId,
+            result.reportArtifact,
+            deps,
+          );
         },
       });
     }
@@ -397,6 +413,46 @@ async function runPersistInner(
         );
       });
     throw err;
+  }
+}
+
+/**
+ * ★ 2026-07-21: 成功终态后把 citations 投影进应用级事件（引用→信源库桥）。
+ * 同步 emit（EventEmitter2 监听方各自 async 处理），绝不抛错、绝不阻塞终态路径；
+ * v1 旧报告（无 citations）或 appEvents 未注入时静默 skip。
+ */
+function emitReportCompletedEvent(
+  missionId: string,
+  userId: string,
+  reportArtifact: PersistInput["result"]["reportArtifact"],
+  deps: MissionDeps,
+): void {
+  if (!deps.appEvents) return;
+  const citations = (reportArtifact?.citations ?? []).filter((c) => c?.url);
+  if (citations.length === 0) return;
+  try {
+    const payload: PlaygroundReportCompletedPayload = {
+      missionId,
+      userId,
+      topic: reportArtifact?.metadata?.topic,
+      citations: citations.map((c) => ({
+        url: c.url,
+        title: c.title,
+        domain: c.domain,
+        snippet: c.snippet,
+        publishedAt: c.publishedAt,
+        sourceType: c.sourceType,
+        credibilityScore: c.credibilityScore,
+      })),
+    };
+    deps.appEvents.emit(PLAYGROUND_REPORT_COMPLETED_EVENT, payload);
+    deps.log.log(
+      `[s11 ${missionId}] emitted ${PLAYGROUND_REPORT_COMPLETED_EVENT} with ${payload.citations.length} citations`,
+    );
+  } catch (err) {
+    deps.log.warn(
+      `[s11 ${missionId}] emit ${PLAYGROUND_REPORT_COMPLETED_EVENT} failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 

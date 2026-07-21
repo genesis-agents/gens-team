@@ -24,6 +24,8 @@ export interface ParsedUrlMetadata {
   wordCount?: number;
   contentHash?: string;
   pdfUrl?: string; // 论文PDF URL或PDF链接
+  /** ★ 2026-07-21: 引用→信源库导入桥溯源——来源 Insight mission id（随 _raw 落 rawData） */
+  sourceMissionId?: string;
 }
 
 export interface ValidationResult {

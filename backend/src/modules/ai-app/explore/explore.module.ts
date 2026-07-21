@@ -12,6 +12,9 @@ import { SystemSettingModule } from "../../../common/settings/system-setting.mod
 import { ToolKeyResolverModule } from "../../platform/credentials/resolution/tool-key-resolver/tool-key-resolver.module";
 import { ExploreContentSourceProvider } from "./integrations/explore-content-source.provider";
 import { ExploreSearchTool } from "./integrations/explore-search.tool";
+// ★ 2026-07-21: 引用→公共信源库导入桥（监听 playground.report.completed）
+import { ReportCitationImportListener } from "./integrations/report-citation-import.listener";
+import { IngestionConfigModule } from "./ingestion/config/config.module";
 
 /**
  * Explore Module
@@ -23,6 +26,8 @@ import { ExploreSearchTool } from "./integrations/explore-search.tool";
     BrowserModule,
     SystemSettingModule,
     ToolKeyResolverModule,
+    // ★ 2026-07-21: ReportCitationImportListener 需要 ImportManagerService
+    IngestionConfigModule,
   ],
   controllers: [
     YoutubeController,
@@ -38,6 +43,8 @@ import { ExploreSearchTool } from "./integrations/explore-search.tool";
     ExploreContentSourceProvider,
     // 前沿库检索工具 → 注册进全局 ToolRegistry（DEFAULT_RETRIEVAL_TOOL_IDS 成员）
     ExploreSearchTool,
+    // ★ 2026-07-21: Insight 报告引用 → 公共信源库分级导入（事件消费端）
+    ReportCitationImportListener,
   ],
   exports: [
     YoutubeService,
