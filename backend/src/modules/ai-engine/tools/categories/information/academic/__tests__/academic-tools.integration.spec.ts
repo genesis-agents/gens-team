@@ -571,8 +571,10 @@ describe("SemanticScholarSearchTool (extended coverage)", () => {
   });
 
   it("should parse paper with no url (construct from paperId)", async () => {
+    // ★ 2026-07-21: URL 优先回落论文原始出处 —— makePaper 带 ArXiv externalId
+    //   时优先 arxiv.org；连 externalIds 也没有才回落 S2 paperId 页
     mockPolicy.httpGet.mockResolvedValue(
-      makeApiResponse([makePaper({ url: undefined })]),
+      makeApiResponse([makePaper({ url: undefined, externalIds: undefined })]),
     );
 
     const result = await tool.execute({ query: "test" }, makeContext());
