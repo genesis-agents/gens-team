@@ -14,6 +14,9 @@ import { ExploreContentSourceProvider } from "./integrations/explore-content-sou
 import { ExploreSearchTool } from "./integrations/explore-search.tool";
 // ★ 2026-07-21: 引用→公共信源库导入桥（监听 playground.report.completed）
 import { ReportCitationImportListener } from "./integrations/report-citation-import.listener";
+// ★ 2026-07-21: 存量报告引用回填（管理端点，一次性运维）
+import { ReportCitationBackfillService } from "./integrations/report-citation-backfill.service";
+import { ReportCitationBackfillController } from "./integrations/report-citation-backfill.controller";
 import { IngestionConfigModule } from "./ingestion/config/config.module";
 
 /**
@@ -33,6 +36,7 @@ import { IngestionConfigModule } from "./ingestion/config/config.module";
     YoutubeController,
     YoutubeVideosController,
     YoutubeAiChatController,
+    ReportCitationBackfillController,
   ],
   providers: [
     YoutubeService,
@@ -45,6 +49,8 @@ import { IngestionConfigModule } from "./ingestion/config/config.module";
     ExploreSearchTool,
     // ★ 2026-07-21: Insight 报告引用 → 公共信源库分级导入（事件消费端）
     ReportCitationImportListener,
+    // ★ 2026-07-21: 存量报告引用回填服务
+    ReportCitationBackfillService,
   ],
   exports: [
     YoutubeService,

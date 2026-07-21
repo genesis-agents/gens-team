@@ -48,6 +48,18 @@ const SOURCE_TYPE_TO_RESOURCE_TYPE: Partial<
 const PAPER_URL_PATTERN =
   /(arxiv\.org|doi\.org|ieee\.org|acm\.org|springer|sciencedirect|nature\.com|pubmed|biorxiv|ssrn\.com|openreview\.net)/i;
 
+/** importCitations 结果统计（backfill 汇总复用） */
+export interface CitationImportStats {
+  /** 实际导入（dryRun 时为"将导入"）条数 */
+  imported: number;
+  /** 导入失败条数 */
+  failed: number;
+  /** 被分级闸门挡下条数 */
+  gated: number;
+  /** 因单 mission 上限被截断条数 */
+  capped: number;
+}
+
 @Injectable()
 export class ReportCitationImportListener {
   private readonly logger = new Logger(ReportCitationImportListener.name);
@@ -59,56 +71,76 @@ export class ReportCitationImportListener {
     payload: PlaygroundReportCompletedPayload,
   ): Promise<void> {
     try {
-      const eligible = (payload.citations ?? []).filter(
-        (c) =>
-          !!c.url &&
-          (c.credibilityScore ?? 0) >= MIN_CREDIBILITY_SCORE &&
-          !!c.sourceType &&
-          c.sourceType in SOURCE_TYPE_TO_RESOURCE_TYPE,
-      );
-      if (eligible.length === 0) {
-        this.logger.debug(
-          `[${payload.missionId}] no citations passed the import gate (${payload.citations?.length ?? 0} total)`,
-        );
-        return;
-      }
-
-      const selected = [...eligible]
-        .sort((a, b) => (b.credibilityScore ?? 0) - (a.credibilityScore ?? 0))
-        .slice(0, MAX_IMPORTS_PER_MISSION);
-      if (eligible.length > selected.length) {
-        this.logger.warn(
-          `[${payload.missionId}] citation import capped at ${MAX_IMPORTS_PER_MISSION}, dropped ${eligible.length - selected.length} lower-credibility entries`,
-        );
-      }
-
-      let imported = 0;
-      let failed = 0;
-      for (const citation of selected) {
-        try {
-          await this.importManager.importWithMetadata(
-            citation.url,
-            this.resolveResourceType(citation),
-            this.buildMetadata(citation, payload.missionId),
-            true, // skipDuplicateWarning：批量后台导入，跳过逐条重复度指标计算
-          );
-          imported++;
-        } catch (err) {
-          failed++;
-          this.logger.warn(
-            `[${payload.missionId}] import citation failed (${citation.url}): ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
-      this.logger.log(
-        `[${payload.missionId}] citation import done: ${imported} imported, ${failed} failed, ${(payload.citations?.length ?? 0) - eligible.length} gated out`,
-      );
+      await this.importCitations(payload.missionId, payload.citations ?? []);
     } catch (err) {
       // 监听器兜底：任何异常都不外抛（事件消费失败不影响 mission / 其他监听方）
       this.logger.error(
         `[${payload?.missionId ?? "unknown"}] citation import listener failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+  }
+
+  /**
+   * 分级闸门 + 类型映射 + 30 条截断 + 幂等导入的核心链路。
+   * ★ 2026-07-21 (backfill): 从 handleReportCompleted 抽出，供存量报告回填
+   * 服务复用；dryRun 只统计不写库。
+   */
+  async importCitations(
+    missionId: string,
+    citations: ReportCitationSnapshot[],
+    opts: { dryRun?: boolean } = {},
+  ): Promise<CitationImportStats> {
+    const eligible = citations.filter(
+      (c) =>
+        !!c.url &&
+        (c.credibilityScore ?? 0) >= MIN_CREDIBILITY_SCORE &&
+        !!c.sourceType &&
+        c.sourceType in SOURCE_TYPE_TO_RESOURCE_TYPE,
+    );
+    const gated = citations.length - eligible.length;
+    if (eligible.length === 0) {
+      this.logger.debug(
+        `[${missionId}] no citations passed the import gate (${citations.length} total)`,
+      );
+      return { imported: 0, failed: 0, gated, capped: 0 };
+    }
+
+    const selected = [...eligible]
+      .sort((a, b) => (b.credibilityScore ?? 0) - (a.credibilityScore ?? 0))
+      .slice(0, MAX_IMPORTS_PER_MISSION);
+    const capped = eligible.length - selected.length;
+    if (capped > 0) {
+      this.logger.warn(
+        `[${missionId}] citation import capped at ${MAX_IMPORTS_PER_MISSION}, dropped ${capped} lower-credibility entries`,
+      );
+    }
+
+    if (opts.dryRun) {
+      return { imported: selected.length, failed: 0, gated, capped };
+    }
+
+    let imported = 0;
+    let failed = 0;
+    for (const citation of selected) {
+      try {
+        await this.importManager.importWithMetadata(
+          citation.url,
+          this.resolveResourceType(citation),
+          this.buildMetadata(citation, missionId),
+          true, // skipDuplicateWarning：批量后台导入，跳过逐条重复度指标计算
+        );
+        imported++;
+      } catch (err) {
+        failed++;
+        this.logger.warn(
+          `[${missionId}] import citation failed (${citation.url}): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    this.logger.log(
+      `[${missionId}] citation import done: ${imported} imported, ${failed} failed, ${gated} gated out`,
+    );
+    return { imported, failed, gated, capped };
   }
 
   private resolveResourceType(citation: ReportCitationSnapshot): ResourceType {
