@@ -67,11 +67,7 @@ import {
 } from '../utils/utils';
 import { Base64Image } from '../resources/Base64Image';
 import { getSourceName, getSourceBadgeColor } from '../utils/resourceHelpers';
-import {
-  saveAIAnalysisToDatabase,
-  generateSummary as generateSummaryHelper,
-  generateInsights as generateInsightsHelper,
-} from '../utils/aiHelpers';
+import { saveAIAnalysisToDatabase } from '../utils/aiHelpers';
 import { useBookmarks } from '../hooks/useBookmarks';
 import { usePDFText } from '../hooks/usePDFText';
 import { useI18n } from '@/lib/i18n/i18n-context';
@@ -386,14 +382,14 @@ function HomeContent() {
       // For non-YouTube resources, show in detail view
       setSelectedResource(resource);
       setViewMode('detail');
-      // Clear previous AI data and article content
+      // ★ 2026-07-21：清空上一篇的 AI 结果（含 methodology），默认不自动生成。
+      //   摘要/洞察/方法改由用户点 Quick Action 按需触发——既避免"右侧一直显示
+      //   上一篇内容"的 stale bug，又不无谓消耗 token。
       setAiMessages([]);
       setAiSummary(null);
       setAiInsights([]);
+      setAiMethodology([]);
       setArticleTextContent('');
-      // Auto-generate summary and insights (same as handleResourceClick)
-      generateSummary(resource);
-      generateInsights(resource);
     };
 
     // First try to find in current resources
@@ -791,14 +787,14 @@ function HomeContent() {
 
     setSelectedResource(resource);
     setViewMode('detail');
-    // Clear previous AI data and article content
+    // ★ 2026-07-21：清空上一篇的 AI 结果（含 methodology），默认不自动生成。
+    //   摘要/洞察/方法改由用户点 Quick Action 按需触发——既避免"右侧一直显示
+    //   上一篇内容"的 stale bug，又不无谓消耗 token。
     setAiMessages([]);
     setAiSummary(null);
     setAiInsights([]);
+    setAiMethodology([]);
     setArticleTextContent('');
-    // Auto-generate summary and insights
-    generateSummary(resource);
-    generateInsights(resource);
   };
 
   const handleBackToList = () => {
@@ -916,26 +912,6 @@ function HomeContent() {
     } catch (error) {
       logger.error('Failed to fetch resource:', error);
     }
-  };
-
-  // AI Functions - using imported helpers with local state
-  const generateSummary = async (resource: Resource) => {
-    await generateSummaryHelper(
-      resource,
-      articleTextContent,
-      setAiSummary,
-      setAiLoading,
-      aiModel
-    );
-  };
-
-  const generateInsights = async (resource: Resource) => {
-    await generateInsightsHelper(
-      resource,
-      articleTextContent,
-      setAiInsights,
-      aiModel
-    );
   };
 
   // Handle article loaded from ReaderView

@@ -500,6 +500,7 @@ export function ExploreProvider({ children }: { children: ReactNode }) {
       setAiMessages([]);
       setAiSummary(null);
       setAiInsights([]);
+      setAiMethodology([]); // ★ 2026-07-21：切换文章清空 methodology，防显示上一篇
       setArticleTextContent('');
     },
     [router]
@@ -606,6 +607,7 @@ export function ExploreProvider({ children }: { children: ReactNode }) {
       setAiMessages([]);
       setAiSummary(null);
       setAiInsights([]);
+      setAiMethodology([]); // ★ 2026-07-21：切换文章清空 methodology，防显示上一篇
       setArticleTextContent('');
     };
 
