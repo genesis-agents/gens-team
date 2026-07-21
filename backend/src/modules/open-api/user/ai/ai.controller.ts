@@ -909,6 +909,14 @@ JSON output:`;
             creativity: "medium",
             outputLength: "short",
           },
+          // ★ 2026-07-21 护栏误杀修复：reader 快捷动作（摘要/洞察/方法）对的是
+          //   已入库的外部文章语料（新闻/研报/论文），正则护栏易报 warning 后升级
+          //   LLM moderation 误判 harmful/injection 而整条 block（实测 ChinAI
+          //   newsletter 摘要被拦，同内容洞察却过——升级层 fail-closed 误报）。
+          //   trustedInternal=true：正则护栏 + PII 照跑，仅"疑似但不确定"不升级、
+          //   不 block。与 figure-relevance 同源修复（非用户攻击面：无工具、无系统
+          //   机密，输出仅回给主动点摘要的本人）。
+          trustedInternal: true,
         });
 
         // Try to parse JSON for methodology and insights
@@ -997,6 +1005,9 @@ JSON output:`;
             creativity: "low",
             outputLength: "short",
           },
+          // ★ 2026-07-21 护栏误杀修复：reader 摘要对已入库外部文章语料，
+          //   trustedInternal=true 避免 LLM moderation 误判 block（详见 quick-action 同注）。
+          trustedInternal: true,
         });
 
         return {
@@ -1085,6 +1096,9 @@ JSON output:`;
             creativity: "deterministic",
             outputLength: "short",
           },
+          // ★ 2026-07-21 护栏误杀修复：reader 洞察对已入库外部文章语料，
+          //   trustedInternal=true 避免 LLM moderation 误判 block（详见 quick-action 同注）。
+          trustedInternal: true,
         });
 
         const jsonContent = this.extractJsonArray(result.content);
