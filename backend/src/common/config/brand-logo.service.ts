@@ -73,11 +73,10 @@ export class BrandLogoService {
   }
 
   /**
-   * Default fallback logo — Game-of-Life state-transition formula (wide).
-   * g(n, s) → {0, 1}：邻居 n + 当前态 s → 下一态。
-   * 矩形 130×26 让公式占满，editorial ink + amber 突出 {0,1}。
+   * Default fallback logo — `gens.team` wordmark (wide).
+   * 矩形 110×26 让字标占满，editorial ink。
    */
-  private readonly DEFAULT_LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 130 26"><text x="65" y="20" text-anchor="middle" textLength="118" lengthAdjust="spacingAndGlyphs" font-family="Georgia, 'Times New Roman', serif" font-size="22" fill="#18181b"><tspan font-style="italic">g(n,s)</tspan> → {<tspan fill="#D97706" font-style="italic" font-weight="700">0,1</tspan>}</text></svg>`;
+  private readonly DEFAULT_LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 26"><text x="55" y="20" text-anchor="middle" textLength="100" lengthAdjust="spacingAndGlyphs" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="700" fill="#18181b">gens.team</text></svg>`;
 
   /** Get brand name for watermarks and footers */
   getBrandName(): string {
