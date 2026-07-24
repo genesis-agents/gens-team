@@ -7,6 +7,12 @@ import { Logger } from "@nestjs/common";
 // Mock global fetch
 global.fetch = jest.fn();
 
+// assertUrlSafe 内部做真实 dns.lookup（SSRF 防护），全量并行跑测试时 DNS 会超时 flake
+jest.mock("../../../../ai-engine/facade", () => ({
+  ...jest.requireActual("../../../../ai-engine/facade"),
+  assertUrlSafe: jest.fn().mockResolvedValue(undefined),
+}));
+
 describe("WebhookDispatcherService", () => {
   let service: WebhookDispatcherService;
   let prismaService: jest.Mocked<PrismaService>;
