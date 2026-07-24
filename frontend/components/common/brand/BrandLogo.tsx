@@ -27,10 +27,10 @@ function GlyphIconCompact({ className }: { className?: string }) {
     >
       <text
         x="16"
-        y="24"
+        y="20"
         textAnchor="middle"
         fontFamily="Georgia, 'Times New Roman', serif"
-        fontSize="26"
+        fontSize="24"
         fontStyle="italic"
         fill="#4f46e5"
       >
@@ -63,7 +63,7 @@ export function BrandLogo({
   return (
     <div className={`inline-flex items-end gap-1.5 ${className}`}>
       <span
-        className="logo-shimmer text-[16px] font-bold leading-none tracking-[0.03em]"
+        className="logo-shimmer text-[16px] font-bold leading-tight tracking-[0.03em]"
         style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
       >
         {config.brand.name}
