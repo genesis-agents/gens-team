@@ -1,4 +1,4 @@
-# GenesisPod Agent SDK 范式改造方案 v5.1（评审收敛版）
+# gens.team Agent SDK 范式改造方案 v5.1（评审收敛版）
 
 **版本：** 5.1
 **日期：** 2026-05-04
@@ -2861,7 +2861,7 @@ PluginLoader 区分两类来源，启动期信任级别不同：
 | `node_modules/@genesis/plugins-*/` 官方第三方       | 需签名                 | manifest.signature 必须非空 + 公钥锁定校验             | 强制签名 + audit log |
 | `node_modules/<其他>/genesis-plugin-*` 非官方第三方 | 不受信                 | 默认拒绝加载，需 `PLUGIN_TRUST_MODE=permissive` 才允许 | 拒绝加载             |
 
-- 公钥固化在 `src/plugins/core/security/trusted-keys.json`（含 GenesisPod 官方公钥）
+- 公钥固化在 `src/plugins/core/security/trusted-keys.json`（含 gens.team 官方公钥）
 - 环境变量 `PLUGIN_TRUST_MODE`：
   - `strict`（生产推荐）：所有外部 plugin 强制签名
   - `permissive`（开发用）：未签名外部 plugin 可加载，但启动期 logger.warn

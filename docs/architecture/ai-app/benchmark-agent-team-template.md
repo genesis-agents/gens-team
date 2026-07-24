@@ -8,7 +8,7 @@
 
 ## 1. 背景
 
-`agent-playground` 经过 Rev 5 boundary audit + Stage 0/1 实施后,成为 GenesisPod MissionPipeline 派 Agent Team 的 **canonical reference implementation**。本 doc 把"如何用同一架构骨架写新 team"固化为可重复的拷贝指南。
+`agent-playground` 经过 Rev 5 boundary audit + Stage 0/1 实施后,成为 gens.team MissionPipeline 派 Agent Team 的 **canonical reference implementation**。本 doc 把"如何用同一架构骨架写新 team"固化为可重复的拷贝指南。
 
 不是这个 doc 范围的内容:
 

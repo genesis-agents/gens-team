@@ -1,4 +1,4 @@
-# GenesisPod - API 完整参考
+# gens.team - API 完整参考
 
 **Base URL**: `http://localhost:4000/api/v1`
 **认证**: 开发环境无需认证，生产环境将使用 JWT

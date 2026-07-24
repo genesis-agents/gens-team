@@ -1,4 +1,4 @@
-# GenesisPod 文档
+# gens.team 文档
 
 > 本目录以当前代码为准，历史方案统一放入 `_archive/`。
 

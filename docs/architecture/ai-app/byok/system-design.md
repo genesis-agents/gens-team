@@ -1,4 +1,4 @@
-# GenesisPod BYOK（Bring Your Own Key）系统设计文档
+# gens.team BYOK（Bring Your Own Key）系统设计文档
 
 > **版本**: v1.0
 > **创建时间**: 2026-04-20
@@ -32,7 +32,7 @@
 
 ### 1.1 本文档的目标
 
-把 GenesisPod 现有「所有用户共享系统 Key」的模式，改造为：
+把 gens.team 现有「所有用户共享系统 Key」的模式，改造为：
 
 - **普通用户**：必须使用自己的 API Key（BYOK 模式）或管理员分配的 Key
 - **管理员**：继续使用系统 Secret Manager 中的 Key
@@ -163,7 +163,7 @@ KeyResolver 解析 Key
 
 #### 场景
 
-Alice 通过 Google OAuth 注册了 GenesisPod，登录后第一次进入主界面。她从未配置过 Key。
+Alice 通过 Google OAuth 注册了 gens.team，登录后第一次进入主界面。她从未配置过 Key。
 
 #### UI 流程
 
@@ -175,7 +175,7 @@ Alice 通过 Google OAuth 注册了 GenesisPod，登录后第一次进入主界�
 [强制重定向] /settings/api-keys/onboarding
    ↓ 页面内容：
    │  ┌─────────────────────────────────────┐
-   │  │ 欢迎来到 GenesisPod                 │
+   │  │ 欢迎来到 gens.team                 │
    │  │ 为了使用 AI 功能，请配置你的 API Key │
    │  │                                      │
    │  │ [选项 1] 我有 API Key → 配置 Key    │
@@ -2357,7 +2357,7 @@ catch (error) {
 {
   "byok": {
     "onboarding": {
-      "title": "Welcome to GenesisPod",
+      "title": "Welcome to gens.team",
       "subtitle": "To use AI features, please configure an API key",
       "optionHaveKey": "I have my own API Key",
       "optionNeedKey": "I need a Key assigned",

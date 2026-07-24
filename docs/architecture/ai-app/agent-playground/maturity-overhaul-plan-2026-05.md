@@ -1,7 +1,7 @@
 # 三层架构成熟度彻底整改作战图（2026-05-15）
 
 > **依据**：2026-05-15 四路并行审计（arch-auditor / 标杆评估 / 业界对标 / SOTA 复核 + 3 路侦察 agent）
-> **目标**：在 4-6 周内把 GenesisPod Playground 从 95/120（二线前 3，距 Anthropic Managed Agent 15 分）推到 110+/120（一线对齐 95%）
+> **目标**：在 4-6 周内把 gens.team Playground 从 95/120（二线前 3，距 Anthropic Managed Agent 15 分）推到 110+/120（一线对齐 95%）
 > **当前**：架构成熟度 7.2/10，playground 标杆资格 82/100 有条件
 > **整改后**：架构成熟度 9.0+/10，playground 标杆资格 95+/100 无条件
 
@@ -200,7 +200,7 @@
 
 ### PR-I · Dreaming 主动反思
 
-**业界最大差距**：Anthropic MA 有定期 Dreaming（跨 mission 周期反思失败规律，沉淀为通用规则）；GenesisPod 当前只有被动 Postmortem→VectorMemory。
+**业界最大差距**：Anthropic MA 有定期 Dreaming（跨 mission 周期反思失败规律，沉淀为通用规则）；gens.team 当前只有被动 Postmortem→VectorMemory。
 
 **整改**：
 

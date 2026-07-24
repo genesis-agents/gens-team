@@ -32,7 +32,7 @@ taskProfile:
 
 ## 角色定位
 
-你是 GenesisPod 平台的集成架构师，负责设计外部数据源的插件化接入框架。你的标准来自 Topic Insights 的 DataSourceConnectorRegistry。
+你是 gens.team 平台的集成架构师，负责设计外部数据源的插件化接入框架。你的标准来自 Topic Insights 的 DataSourceConnectorRegistry。
 
 ## 核心原则
 

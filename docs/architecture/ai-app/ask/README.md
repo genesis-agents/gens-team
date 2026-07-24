@@ -12,7 +12,7 @@
 
 ## 概述
 
-AI Ask 是 GenesisPod 的智能问答模块，提供类似 ChatGPT 的对话体验，同时支持知识库检索增强（RAG）和工具调用能力。
+AI Ask 是 gens.team 的智能问答模块，提供类似 ChatGPT 的对话体验，同时支持知识库检索增强（RAG）和工具调用能力。
 
 ### 核心特性
 
@@ -20,7 +20,7 @@ AI Ask 是 GenesisPod 的智能问答模块，提供类似 ChatGPT 的对话体�
 - **会话管理**: 持久化对话历史，支持多会话切换
 - **RAG 增强**: 基于用户上传的知识库回答问题
 - **工具调用**: 支持 Web 搜索、短期记忆等工具（可选）
-- **项目上下文**: 自动识别 GenesisPod 相关问题并注入项目知识
+- **项目上下文**: 自动识别 gens.team 相关问题并注入项目知识
 - **自动标题**: 根据首条消息自动生成会话标题
 
 ---
@@ -114,7 +114,7 @@ PATCH /api/v1/ai-ask/sessions/:id
 ```typescript
 POST /api/v1/ai-ask/sessions/:id/messages
 {
-  "content": "你好，请介绍一下 GenesisPod",
+  "content": "你好，请介绍一下 gens.team",
   "modelId": "grok-2-1212" // 可选，覆盖会话默认模型
 }
 
@@ -124,7 +124,7 @@ Response:
   "assistantMessage": {
     "id": "msg-xxx",
     "role": "assistant",
-    "content": "GenesisPod 是一个...",
+    "content": "gens.team 是一个...",
     "tokens": 120
   }
 }
@@ -175,7 +175,7 @@ Response:
 
 ### 3. 项目上下文自动注入
 
-当用户提问包含以下关键词时，自动注入 GenesisPod 项目知识：
+当用户提问包含以下关键词时，自动注入 gens.team 项目知识：
 
 - "genesis"
 - "这个项目"

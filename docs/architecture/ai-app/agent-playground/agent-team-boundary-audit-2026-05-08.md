@@ -506,7 +506,7 @@ The correct strategy is therefore:
 - **Stage 2:** only after entry condition **1A 或 1B** 满足(Rev 5 — added 兜底)且 Stage 1 已稳定,lift wrapper _mechanisms_(not literal value tables)to **the right sediment zone**(Z2 for checkpoint / Z1 for orphan-cleanup invocation / Z3 for progress wrapper / Z3 组合 Z1 for rerun)。
 - **Always:** business semantics — including `STAGE_NUMBER` / `CHECKPOINT_AT` literal values — stay in `ai-app`。
 
-That is the correct boundary direction for making `agent-playground` the benchmark Agent Team for GenesisPod,**canonical import surface 分层声明(Rev 5)**:
+That is the correct boundary direction for making `agent-playground` the benchmark Agent Team for gens.team,**canonical import surface 分层声明(Rev 5)**:
 
 - **app 的 `services/` 层** 可直接 import 5 个 sediment zone(Z3 + Z4 主轨,带 Z1 / Z2 / Z5 作为 foundational 原语 — 详见 §2.5 实际拓扑,非经 Z3/Z4 中转);
 - **app 的 `agents/` / `skills/` 层** 仅走 `@/modules/ai-harness/facade`(R8 / §6.5 强制) — 防止 mission 概念逆向污染 agent/role primitive;

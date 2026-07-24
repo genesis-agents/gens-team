@@ -10,7 +10,7 @@
 
 ## 概述
 
-AI Image 是 GenesisPod 的图像生成和处理模块，提供从文本到图像的全流程服务，支持品牌一致性管理和专业信息图生成。
+AI Image 是 gens.team 的图像生成和处理模块，提供从文本到图像的全流程服务，支持品牌一致性管理和专业信息图生成。
 
 ### 核心特性
 
@@ -129,7 +129,7 @@ POST /api/v1/ai-image/generate
 ```typescript
 POST /api/v1/ai-image/brand-kits
 {
-  "name": "GenesisPod 品牌",
+  "name": "gens.team 品牌",
   "primaryColor": "#3B82F6", // 主色
   "secondaryColor": "#10B981", // 辅色
   "accentColor": "#F59E0B", // 强调色
@@ -144,7 +144,7 @@ POST /api/v1/ai-image/brand-kits
 Response:
 {
   "id": "brand-xxx",
-  "name": "GenesisPod 品牌",
+  "name": "gens.team 品牌",
   "colors": {
     "primary": "#3B82F6",
     "secondary": "#10B981",

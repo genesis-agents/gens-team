@@ -17,7 +17,7 @@
 
 ### 1.1 目标
 
-把 `ai-app/agent-playground` 改造成 GenesisPod 所有 Agent Team 业务的**标杆 app**：
+把 `ai-app/agent-playground` 改造成 gens.team 所有 Agent Team 业务的**标杆 app**：
 
 1. App 自身架构清晰：4 层（edge / mission / lifecycle / roles+agents）。
 2. 所有可下沉能力归位到 `ai-engine` / `ai-harness` 正确聚合。
