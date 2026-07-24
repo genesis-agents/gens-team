@@ -3632,7 +3632,7 @@
       },
       "external": {
         "title": "External MCP Servers",
-        "description": "Connect to external MCP servers to extend GenesisPod capabilities",
+        "description": "Connect to external MCP servers to extend gens.team capabilities",
         "tab": "External",
         "addServer": "Add Server",
         "editServer": "Edit Server",
@@ -3701,7 +3701,7 @@
     },
     "publicApi": {
       "title": "Public API",
-      "description": "External REST API for integrating GenesisPod capabilities",
+      "description": "External REST API for integrating gens.team capabilities",
       "capabilities": "Capabilities",
       "status": "Service Status",
       "openclawConfig": "OpenClaw Config"
@@ -4991,7 +4991,7 @@
   },
   "byok": {
     "onboarding": {
-      "title": "Welcome to GenesisPod",
+      "title": "Welcome to gens.team",
       "subtitle": "Configure a Provider API Key or request one from the admin before using AI features.",
       "haveKeyTitle": "I have my own API Key",
       "haveKeyDesc": "Use your own OpenAI / Claude / Gemini Key. No quota limits; costs billed to your Provider account.",

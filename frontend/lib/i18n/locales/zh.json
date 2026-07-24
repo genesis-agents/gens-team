@@ -3632,7 +3632,7 @@
       },
       "external": {
         "title": "外部 MCP 服务器",
-        "description": "连接外部 MCP 服务器以扩展 GenesisPod 能力",
+        "description": "连接外部 MCP 服务器以扩展 gens.team 能力",
         "tab": "外部服务器",
         "addServer": "添加服务器",
         "editServer": "编辑服务器",
@@ -3701,7 +3701,7 @@
     },
     "publicApi": {
       "title": "公开 API",
-      "description": "外部 REST API，用于集成 GenesisPod 能力",
+      "description": "外部 REST API，用于集成 gens.team 能力",
       "capabilities": "能力列表",
       "status": "服务状态",
       "openclawConfig": "OpenClaw 配置"
@@ -4991,7 +4991,7 @@
   },
   "byok": {
     "onboarding": {
-      "title": "欢迎使用 GenesisPod",
+      "title": "欢迎使用 gens.team",
       "subtitle": "使用 AI 功能前，请配置一个 Provider 的 API Key，或向管理员申请分配。",
       "haveKeyTitle": "我有自己的 API Key",
       "haveKeyDesc": "使用你自己的 OpenAI / Claude / Gemini Key。无配额限制，费用由你自己的 Provider 账号承担。",

@@ -24,7 +24,7 @@ jobs:
         with:
           # Stores who signed, in a separate branch of this repo.
           path-to-signatures: "signatures/cla.json"
-          path-to-document: "https://github.com/genesis-agents/GenesisPod/blob/main/CLA.md"
+          path-to-document: "https://github.com/genesis-agents/gens-team/blob/main/CLA.md"
           branch: "cla-signatures"
           allowlist: genesis-agents,dependabot[bot]
           custom-pr-sign-comment: "I have read the CLA Document and I hereby sign the CLA"

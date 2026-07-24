@@ -4,8 +4,8 @@
  */
 
 // ==================== 核心品牌配置（环境变量优先）====================
-const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME || 'GenesisPod';
-const BRAND_FULL_NAME = process.env.NEXT_PUBLIC_BRAND_FULL_NAME || 'GenesisPod';
+const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME || 'gens.team';
+const BRAND_FULL_NAME = process.env.NEXT_PUBLIC_BRAND_FULL_NAME || 'gens.team';
 const BRAND_SUBTITLE = process.env.NEXT_PUBLIC_BRAND_SUBTITLE || '';
 const BRAND_TAGLINE =
   process.env.NEXT_PUBLIC_BRAND_TAGLINE || 'AI-Powered Research Platform';
@@ -76,14 +76,14 @@ export const config = {
     /** 默认邮件发送者 */
     emailFrom:
       process.env.NEXT_PUBLIC_BRAND_EMAIL_FROM ||
-      `${BRAND_NAME} <noreply@${BRAND_NAME.toLowerCase()}.ai>`,
+      `${BRAND_NAME} <noreply@gens.team>`,
     /** 联系邮箱 */
     contactEmail:
       process.env.NEXT_PUBLIC_BRAND_CONTACT_EMAIL || 'hello@gens.team',
     /** GitHub Issues URL */
     githubIssuesUrl:
       process.env.NEXT_PUBLIC_BRAND_GITHUB_ISSUES_URL ||
-      'https://github.com/genesis-agents/GenesisPod/issues',
+      'https://github.com/genesis-agents/gens-team/issues',
   },
 
   // ==================== Railway URL 配置 ====================

@@ -4,8 +4,8 @@
  */
 
 // ==================== 核心品牌配置（环境变量优先）====================
-const BRAND_NAME = process.env.BRAND_NAME || "GenesisPod";
-const BRAND_FULL_NAME = process.env.BRAND_FULL_NAME || "GenesisPod";
+const BRAND_NAME = process.env.BRAND_NAME || "gens.team";
+const BRAND_FULL_NAME = process.env.BRAND_FULL_NAME || "gens.team";
 const BRAND_SUBTITLE = process.env.BRAND_SUBTITLE || "";
 const RAILWAY_DOMAIN = process.env.RAILWAY_DOMAIN || "genesis-ai";
 
@@ -25,7 +25,7 @@ export const APP_CONFIG = {
     /** HTTP User-Agent（API 调用） */
     userAgent: `${BRAND_NAME}-AI-Engine/1.0`,
     /** 网页抓取 User-Agent（浏览器兼容格式，避免被网站拒绝） */
-    botUserAgent: `Mozilla/5.0 (compatible; ${BRAND_NAME}Bot/1.0; +https://gens.team)`,
+    botUserAgent: `Mozilla/5.0 (compatible; GensBot/1.0; +https://gens.team)`,
     /** Webhook User-Agent */
     webhookUserAgent: `${BRAND_NAME}-Webhook/1.0`,
     /** 默认邮件发送者 */

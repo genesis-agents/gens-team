@@ -13,7 +13,7 @@
 
 FROM alpine:3.20
 
-LABEL org.opencontainers.image.source="https://github.com/genesis-agents/GenesisPod"
+LABEL org.opencontainers.image.source="https://github.com/genesis-agents/gens-team"
 LABEL org.opencontainers.image.description="GenesisPod on-prem installer (extracts compose + scripts to host)"
 LABEL org.opencontainers.image.licenses="Proprietary"
 

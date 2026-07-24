@@ -6,17 +6,17 @@ interface BrandLogoProps {
   variant?: 'icon' | 'full';
   iconClassName?: string;
   className?: string;
-  /** 渲染在 GENESIS 字标右侧（baseline 对齐） */
+  /** 渲染在品牌字标右侧（baseline 对齐） */
   nameAddon?: React.ReactNode;
   /**
-   * 渲染为 GENESIS 字标右侧的小角标（如 v40.11.0）。
+   * 渲染为品牌字标右侧的小角标（如 v40.11.0）。
    * 传 null 显式隐藏；传 undefined 走默认 config.brand.subtitle。
    */
   subtitle?: React.ReactNode;
 }
 
-/** Compact 方形图标：单 italic `f` 居中。折叠 sidebar / favicon tab 等小尺寸场合用。 */
-function FormulaIconCompact({ className }: { className?: string }) {
+/** Compact 方形图标：单 italic `g` 居中。折叠 sidebar / favicon tab 等小尺寸场合用。 */
+function GlyphIconCompact({ className }: { className?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -34,40 +34,39 @@ function FormulaIconCompact({ className }: { className?: string }) {
         fontStyle="italic"
         fill="#4f46e5"
       >
-        f
+        g
       </text>
     </svg>
   );
 }
 
-/** Wide 矩形图标：完整公式 f(n,s) → {0,1}。展开 sidebar / 登录 hero 等大尺寸场合用。
- *  viewBox 高度收紧到 26（公式实际只占 22 高，padding 上下 2px），
+/** Wide 矩形图标：italic `gens.` 字标。展开 sidebar / 登录 hero 等大尺寸场合用。
+ *  viewBox 高度收紧到 26（字标实际只占 22 高，padding 上下 2px），
  *  让 fontSize 22 在画布上占比 ≈85%，配合更高的 iconClassName 渲染像素更大。 */
-function FormulaIconWide({ className }: { className?: string }) {
+function WordmarkIconWide({ className }: { className?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 130 26"
+      viewBox="0 0 60 26"
       className={className}
-      aria-label={`${config.brand.name} formula`}
+      aria-label={`${config.brand.name} wordmark`}
       role="img"
     >
       <text
-        x="65"
+        x="30"
         y="20"
         textAnchor="middle"
-        textLength="118"
+        textLength="52"
         lengthAdjust="spacingAndGlyphs"
         fontFamily="Georgia, 'Times New Roman', serif"
         fontSize="22"
+        fontStyle="italic"
         fill="#4f46e5"
       >
-        <tspan fontStyle="italic">f(n,s)</tspan>
-        {' → {'}
-        <tspan fill="#0ea5e9" fontStyle="italic" fontWeight="700">
-          0,1
+        gens
+        <tspan fill="#0ea5e9" fontWeight="700">
+          .
         </tspan>
-        {'}'}
       </text>
     </svg>
   );
@@ -83,7 +82,7 @@ export function BrandLogo({
   const isFull = variant === 'full';
 
   // variant 自适应默认尺寸
-  const Icon = isFull ? FormulaIconWide : FormulaIconCompact;
+  const Icon = isFull ? WordmarkIconWide : GlyphIconCompact;
   const defaultIconClass = isFull ? 'h-[18px] w-auto' : 'h-8 w-8';
   const finalIconClass = iconClassName ?? defaultIconClass;
 

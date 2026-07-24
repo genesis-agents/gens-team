@@ -20,7 +20,7 @@ https://railway.com/project/2521515b-3ddd-4c1e-9fb2-7f2bbe744982
 ### 3. 部署后端
 
 1. 点击 **+ New** → **GitHub Repo**
-2. 选择 `genesis-agents/GenesisPod`
+2. 选择 `genesis-agents/gens-team`
 3. 配置：
    - **Root Directory**: `backend`
    - **Branch**: `main`
@@ -35,7 +35,7 @@ https://railway.com/project/2521515b-3ddd-4c1e-9fb2-7f2bbe744982
 ### 4. 部署前端
 
 1. 点击 **+ New** → **GitHub Repo**
-2. 选择 `genesis-agents/GenesisPod`
+2. 选择 `genesis-agents/gens-team`
 3. 配置：
    - **Root Directory**: `frontend`
    - **Branch**: `main`

@@ -130,7 +130,7 @@ npm run test:quick          # 测试失败
 
 ### 每日检查
 
-- [ ] 查看 [Actions](https://github.com/genesis-agents/GenesisPod/actions) 页面
+- [ ] 查看 [Actions](https://github.com/genesis-agents/gens-team/actions) 页面
 - [ ] 检查失败的 workflow
 - [ ] 检查 Smoke Tests 结果
 

@@ -177,7 +177,7 @@ bash .claude/hooks/install-hooks.sh
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/genesis-agents/GenesisPod.git
+git clone https://github.com/genesis-agents/gens-team.git
 cd genesis-ai
 
 # 2. 安装 Git Hooks
@@ -339,7 +339,7 @@ Closes #123
 
 ## 联系和反馈
 
-- **Issues：** [GitHub Issues](https://github.com/genesis-agents/GenesisPod/issues)
+- **Issues：** [GitHub Issues](https://github.com/genesis-agents/gens-team/issues)
 - **讨论：** 创建 Issue 标签为 `question` 或 `standard`
 - **贡献：** 参考 [CONTRIBUTING.md](../../docs/CONTRIBUTING.md)
 
