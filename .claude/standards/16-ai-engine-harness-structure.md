@@ -152,7 +152,7 @@ agents · runner · teams · handoffs · memory · protocols · evaluation · gu
 | -------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
 | **agents**     | WHAT agents are                                  | core / base / registry / domain / **subagents** / dev-tools                                      |
 | **runner**     | HOW they run                                     | loop / executor / tool-invoker / tool-routing / context / **scheduler**                          |
-| **teams**      | GenesisPod 团队业务模式                          | abstractions / base / profile / factory / registry / orchestrator / services / **collaboration** |
+| **teams**      | gens.team 团队业务模式                           | abstractions / base / profile / factory / registry / orchestrator / services / **collaboration** |
 | **handoffs**   | Agent 切换（OpenAI 标准词）                      | pattern + registry                                                                               |
 | **memory**     | WHAT they remember                               | vector / working / checkpoint / event-store / stores / consolidation / indexing                  |
 | **protocols**  | HOW they communicate（**仅 5 个 agent 层协议**） | a2a / ipc / events / realtime / journal（**MCP 不在此**）                                        |
@@ -416,7 +416,7 @@ xxx-spawner.ts       派生器
 .tool.ts             Tool 实现类
 .agent.ts            Agent 实现类
 .skill.ts            Skill 实现类
-.stage.ts            Pipeline 阶段（GenesisPod 特有）
+.stage.ts            Pipeline 阶段（gens.team 特有）
 ```
 
 ### 工具/原语
@@ -468,7 +468,7 @@ xxx-spawner.ts       派生器
 | 协议          | mcp                        | mcp               | (built-in)      | (built-in)        | (none) |
 | 生命周期      | hooks                      | lifecycle         | callbacks       | (built-in)        | (none) |
 
-GenesisPod 选词：取业界共识的最常见词，且每个名字单一概念，杜绝同名歧义。
+gens.team 选词：取业界共识的最常见词，且每个名字单一概念，杜绝同名歧义。
 
 ---
 

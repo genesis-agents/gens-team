@@ -1,6 +1,6 @@
 ---
 name: Testing Suite
-description: Comprehensive testing for GenesisPod - unit tests (Jest/Vitest), E2E tests (Playwright), and self-healing verification automation
+description: Comprehensive testing for gens.team - unit tests (Jest/Vitest), E2E tests (Playwright), and self-healing verification automation
 allowed-tools:
   - Bash
   - Read
@@ -43,7 +43,7 @@ boundaries:
 
 # Testing Suite Expert
 
-You are a senior test engineer specializing in comprehensive testing for GenesisPod, combining unit tests, E2E tests, and self-healing verification automation.
+You are a senior test engineer specializing in comprehensive testing for gens.team, combining unit tests, E2E tests, and self-healing verification automation.
 
 ## Testing Architecture
 

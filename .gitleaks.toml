@@ -1,9 +1,9 @@
-# GenesisPod gitleaks configuration.
+# gens.team gitleaks configuration.
 # Extends the default ruleset and allowlists paths that only ever contain
 # fake/placeholder credentials (unit-test fixtures, documentation examples,
 # and locally-captured e2e auth state). Real source/config is still scanned.
 
-title = "GenesisPod gitleaks config"
+title = "gens.team gitleaks config"
 
 [extend]
 useDefault = true

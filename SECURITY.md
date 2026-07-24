@@ -13,7 +13,7 @@
 Report privately via one of:
 
 - GitHub **Security Advisories** → "Report a vulnerability" (preferred)
-- Email: **hello@gens.team** (subject: `GenesisPod security`)
+- Email: **hello@gens.team** (subject: `gens.team security`)
 
 Please include: affected version/commit, reproduction steps, impact, and any
 proof-of-concept. We aim to acknowledge within **72 hours** and to provide a
@@ -26,7 +26,7 @@ Older versions are best-effort only.
 
 ### Handling secrets (important for self-hosters)
 
-GenesisPod uses BYOK (bring-your-own-key) and a secrets module. When deploying:
+gens.team uses BYOK (bring-your-own-key) and a secrets module. When deploying:
 
 - **Never commit real secrets.** Use `.env` (git-ignored) from `.env.example`.
 - Rotate any key that has ever appeared in a shell history, log, or commit.
@@ -44,7 +44,7 @@ GenesisPod uses BYOK (bring-your-own-key) and a secrets module. When deploying:
 请通过以下任一私密渠道上报：
 
 - GitHub **Security Advisories** → "Report a vulnerability"（首选）
-- 邮箱：**hello@gens.team**（主题：`GenesisPod security`）
+- 邮箱：**hello@gens.team**（主题：`gens.team security`）
 
 请附上：受影响版本 / commit、复现步骤、影响范围，以及任何 PoC。我们力争在
 **72 小时**内确认，并在分级后给出修复时间表。
@@ -55,7 +55,7 @@ GenesisPod uses BYOK (bring-your-own-key) and a secrets module. When deploying:
 
 ### 密钥处理（自托管者必读）
 
-GenesisPod 使用 BYOK（自带密钥）与 secrets 模块。部署时：
+gens.team 使用 BYOK（自带密钥）与 secrets 模块。部署时：
 
 - **绝不提交真实密钥。** 基于 `.env.example` 使用被 git 忽略的 `.env`。
 - 任何曾出现在 shell 历史、日志或 commit 中的密钥都必须轮换。

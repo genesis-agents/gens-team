@@ -1,6 +1,6 @@
 # Admin UI 设计规范
 
-> GenesisPod 后台管理界面（`/admin/*`）的视觉一致性规范，基线参考 `/admin/data-management`。任何新增或重构的 admin 页面必须遵循本规范，否则视为视觉债务。
+> gens.team 后台管理界面（`/admin/*`）的视觉一致性规范，基线参考 `/admin/data-management`。任何新增或重构的 admin 页面必须遵循本规范，否则视为视觉债务。
 
 **版本**: 1.1
 **最后更新**: 2026-05-11

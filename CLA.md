@@ -2,7 +2,7 @@
 
 [English](#english) · [中文](#中文)
 
-> **Why this exists:** GenesisPod is dual-licensed (AGPL-3.0 + commercial).
+> **Why this exists:** gens.team is dual-licensed (AGPL-3.0 + commercial).
 > To keep offering a commercial license, the project maintainer must hold (or
 > be licensed to sublicense) the rights to **all** contributed code. This CLA
 > grants those rights while letting you keep ownership of your contribution.
@@ -19,7 +19,7 @@ By making a Contribution to this project, You agree to the terms below.
 "Contribution" means any work of authorship submitted by You to the project.
 
 1. **Copyright license.** You grant the project maintainer (the owner of the
-   GenesisPod repository) and recipients of software distributed by the project
+   gens.team repository) and recipients of software distributed by the project
    a perpetual, worldwide,
    non-exclusive, royalty-free, irrevocable copyright license to reproduce,
    prepare derivative works of, publicly display, publicly perform, sublicense,
@@ -57,7 +57,7 @@ By making a Contribution to this project, You agree to the terms below.
 当你向本项目提交贡献（Contribution），即表示你同意以下条款。
 "你"指版权所有者或经其授权的实体；"贡献"指你提交给本项目的任何著作成果。
 
-1. **著作权许可。** 你授予项目维护者（GenesisPod 仓库的所有者）及本项目所分发软件的
+1. **著作权许可。** 你授予项目维护者（gens.team 仓库的所有者）及本项目所分发软件的
    接收者一份永久、全球、非独占、免版税、不可撤销的著作权许可，可复制、制作衍生
    作品、公开展示、公开表演、再许可和分发你的贡献及其衍生作品。
 

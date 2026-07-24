@@ -22,7 +22,7 @@
 
 ### 统一 PostgreSQL 策略
 
-GenesisPod 采用**统一的 PostgreSQL 架构**，已移除 MongoDB、Neo4j、Qdrant：
+gens.team 采用**统一的 PostgreSQL 架构**，已移除 MongoDB、Neo4j、Qdrant：
 
 | 数据类型   | 存储方式            | 说明               |
 | ---------- | ------------------- | ------------------ |

@@ -1,8 +1,8 @@
-# Contributing to GenesisPod / 贡献指南
+# Contributing to gens.team / 贡献指南
 
 [English](#english) · [中文](#中文)
 
-First: thank you. GenesisPod aims to be a best-in-class, fully open multi-agent
+First: thank you. gens.team aims to be a best-in-class, fully open multi-agent
 AI platform, and that only happens with a healthy contributor community.
 
 ---

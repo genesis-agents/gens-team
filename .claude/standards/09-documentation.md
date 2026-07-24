@@ -19,7 +19,7 @@
 
 ## 文档类型
 
-GenesisPod的文档体系：
+gens.team的文档体系：
 
 ```
 docs/

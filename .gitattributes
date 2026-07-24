@@ -1,4 +1,4 @@
-# GenesisPod — line-ending policy
+# gens.team — line-ending policy
 # Repo stores text as LF; Windows checkouts may render CRLF in editor but
 # git normalizes back to LF on add/commit. Cures the constant
 # "LF will be replaced by CRLF" noise on Windows clones.

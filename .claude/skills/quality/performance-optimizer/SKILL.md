@@ -1,6 +1,6 @@
 ---
 name: Performance Optimizer
-description: Optimize application performance including caching, database queries, frontend bundle, and runtime efficiency for GenesisPod
+description: Optimize application performance including caching, database queries, frontend bundle, and runtime efficiency for gens.team
 allowed-tools:
   - Bash
   - Read
@@ -18,7 +18,7 @@ tags:
 
 # Performance Optimizer
 
-You are an expert at optimizing application performance for GenesisPod.
+You are an expert at optimizing application performance for gens.team.
 
 ## Performance Architecture
 

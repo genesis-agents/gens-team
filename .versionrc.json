@@ -1,5 +1,5 @@
 {
-  "header": "# Changelog\n\nGenesisPod 版本变更记录。\n",
+  "header": "# Changelog\n\ngens.team 版本变更记录。\n",
   "types": [
     { "type": "feat", "section": "Features" },
     { "type": "fix", "section": "Bug Fixes" },

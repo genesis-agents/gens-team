@@ -1,6 +1,6 @@
 # Quality Skills
 
-> Testing, code review, and performance optimization for GenesisPod.
+> Testing, code review, and performance optimization for gens.team.
 
 ## Skills Overview
 

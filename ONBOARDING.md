@@ -1,4 +1,4 @@
-# GenesisPod — 团队上手 & 工程边界
+# gens.team — 团队上手 & 工程边界
 
 > 给新同事 / 新 agent 的「先读这一篇」。目标：5 分钟知道项目是什么、代码放哪、**哪些边界有机器闸门守着（别去撞）**。
 > 深规范在 `.claude/standards/`，行为红线在 `.claude/CLAUDE.md`，前端组件索引在 `frontend/components/COMPONENTS.md`。

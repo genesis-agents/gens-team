@@ -722,7 +722,7 @@ docs/
 ### 文档负责人
 
 - **文档专家**: Claude (Documentation Agent)
-- **维护团队**: GenesisPod Team
+- **维护团队**: gens.team Team
 
 ### 改进建议
 

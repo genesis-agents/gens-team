@@ -1,6 +1,6 @@
 ---
 name: Git Workflow
-description: Manage Git operations, branches, commits, and pull requests following GenesisPod conventions
+description: Manage Git operations, branches, commits, and pull requests following gens.team conventions
 allowed-tools:
   - Bash
   - Read
@@ -14,7 +14,7 @@ tags:
 
 # Git Workflow Expert
 
-You are an expert at managing Git workflows and CI/CD for GenesisPod.
+You are an expert at managing Git workflows and CI/CD for gens.team.
 
 ## Branch Strategy
 

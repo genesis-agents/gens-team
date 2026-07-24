@@ -1,6 +1,6 @@
 <div align="center">
 
-# GenesisPod
+# gens.team
 
 **开源、企业级的 AI 深度研究、内容生产与多 Agent 协作平台。**
 
@@ -15,9 +15,9 @@
 
 ---
 
-## GenesisPod 是什么？
+## gens.team 是什么？
 
-GenesisPod 是一个全栈平台，用于在生产环境中构建和运行 **AI 研究与多 Agent 工作流**。
+gens.team 是一个全栈平台，用于在生产环境中构建和运行 **AI 研究与多 Agent 工作流**。
 它在一个严格分层、**架构受治理**的后端之上，提供了完整的产品面——深度研究、多
 Agent 编排、文档/PPT 生成、长文写作、RAG 与知识图谱。
 
@@ -26,7 +26,7 @@ Agent 编排、文档/PPT 生成、长文写作、RAG 与知识图谱。
 ### 为什么又一个 AI 平台？
 
 差异点是**可被验证的架构纪律**。多数 Agent 框架在一年内就退化成交叉引用的乱麻。
-GenesisPod 通过三道独立门禁——ESLint 规则、jest 架构 spec 套件、pre-push + CI 合并
+gens.team 通过三道独立门禁——ESLint 规则、jest 架构 spec 套件、pre-push + CI 合并
 门禁——强制其 5 层边界（`open-api → ai-app → ai-harness → ai-engine → platform`），
 让代码库在增长时仍保持结构清晰。架构合规度是**每次 push 都机器校验**的，而不是
 wiki 里一张会与现实脱节的图。
@@ -120,7 +120,7 @@ AI 服务 `http://localhost:5000`。
 
 ## 许可证
 
-GenesisPod 采用**双重授权**：
+gens.team 采用**双重授权**：
 
 - **[AGPL-3.0](./LICENSE)** 用于开源与自托管。注意：AGPL 把网络使用视为分发——
   若你把修改版跑成服务，必须公开你的源码改动。
