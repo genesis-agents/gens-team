@@ -40,33 +40,34 @@ function GlyphIconCompact({ className }: { className?: string }) {
   );
 }
 
-/** Wide 矩形图标：italic `gens.` 字标。展开 sidebar / 登录 hero 等大尺寸场合用。
- *  viewBox 高度收紧到 26（字标实际只占 22 高，padding 上下 2px），
+/** Wide 矩形图标：完整公式 g(n,s) → {0,1}。展开 sidebar / 登录 hero 等大尺寸场合用。
+ *  viewBox 高度收紧到 26（公式实际只占 22 高，padding 上下 2px），
  *  让 fontSize 22 在画布上占比 ≈85%，配合更高的 iconClassName 渲染像素更大。 */
-function WordmarkIconWide({ className }: { className?: string }) {
+function FormulaIconWide({ className }: { className?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 60 26"
+      viewBox="0 0 130 26"
       className={className}
-      aria-label={`${config.brand.name} wordmark`}
+      aria-label={`${config.brand.name} formula`}
       role="img"
     >
       <text
-        x="30"
+        x="65"
         y="20"
         textAnchor="middle"
-        textLength="52"
+        textLength="118"
         lengthAdjust="spacingAndGlyphs"
         fontFamily="Georgia, 'Times New Roman', serif"
         fontSize="22"
-        fontStyle="italic"
         fill="#4f46e5"
       >
-        gens
-        <tspan fill="#0ea5e9" fontWeight="700">
-          .
+        <tspan fontStyle="italic">g(n,s)</tspan>
+        {' → {'}
+        <tspan fill="#0ea5e9" fontStyle="italic" fontWeight="700">
+          0,1
         </tspan>
+        {'}'}
       </text>
     </svg>
   );
@@ -82,7 +83,7 @@ export function BrandLogo({
   const isFull = variant === 'full';
 
   // variant 自适应默认尺寸
-  const Icon = isFull ? WordmarkIconWide : GlyphIconCompact;
+  const Icon = isFull ? FormulaIconWide : GlyphIconCompact;
   const defaultIconClass = isFull ? 'h-[18px] w-auto' : 'h-8 w-8';
   const finalIconClass = iconClassName ?? defaultIconClass;
 
