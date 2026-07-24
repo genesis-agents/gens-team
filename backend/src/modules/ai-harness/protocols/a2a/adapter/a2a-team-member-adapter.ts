@@ -1,6 +1,6 @@
 /**
  * A2A Team Member Adapter
- * 将外部 A2A Agent 包装为 ITeamMember，使其能够加入 GenesisPod Teams
+ * 将外部 A2A Agent 包装为 ITeamMember，使其能够加入 gens.team Teams
  */
 
 import { Logger } from "@nestjs/common";
@@ -60,7 +60,7 @@ class ExternalA2ARole implements IRole {
     // External agents cannot be leaders or access internal resources
     this.limitations = [
       "Cannot act as team leader",
-      "Cannot access internal GenesisPod resources directly",
+      "Cannot access internal gens.team resources directly",
       "Communication via A2A protocol only",
     ];
 

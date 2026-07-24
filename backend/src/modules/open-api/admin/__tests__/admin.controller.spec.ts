@@ -734,7 +734,7 @@ describe("AdminController", () => {
 
   describe("getSiteSettings()", () => {
     it("should return site settings", async () => {
-      const site = { siteName: "GenesisPod" };
+      const site = { siteName: "gens.team" };
       mockAdminService.getSiteSettings.mockResolvedValue(site);
 
       const result = await controller.getSiteSettings();

@@ -27,8 +27,8 @@ jest.mock("../tool-timeout", () => ({
 jest.mock("../../../../../../common/config/app.config", () => ({
   APP_CONFIG: {
     brand: {
-      name: "GenesisPod",
-      fullName: "GenesisPod AI",
+      name: "gens.team",
+      fullName: "gens.team AI",
     },
   },
 }));

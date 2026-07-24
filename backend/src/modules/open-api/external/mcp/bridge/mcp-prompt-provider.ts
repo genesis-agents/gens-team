@@ -1,11 +1,11 @@
 /**
  * MCP Prompt Provider
  *
- * 将 GenesisPod 的 AI 能力暴露为 MCP Prompts（可复用的提示模板），
+ * 将 gens.team 的 AI 能力暴露为 MCP Prompts（可复用的提示模板），
  * 让外部 AI 工具可以直接获取预构建的提示词。
  *
  * MCP Prompts 是用户驱动的模板（不同于 Tools 是模型驱动的）。
- * 典型用例: 用户在 Claude Code 中选择一个 GenesisPod prompt 来执行特定任务。
+ * 典型用例: 用户在 Claude Code 中选择一个 gens.team prompt 来执行特定任务。
  */
 
 import { Injectable, Logger } from "@nestjs/common";
@@ -72,7 +72,7 @@ export class MCPPromptProvider implements IMCPPromptProvider {
       name: "deep-research",
       description:
         "Generate a deep research request with structured planning. " +
-        "Use this to leverage GenesisPod's multi-stage research pipeline.",
+        "Use this to leverage gens.team's multi-stage research pipeline.",
       arguments: [
         {
           name: "topic",
@@ -116,7 +116,7 @@ export class MCPPromptProvider implements IMCPPromptProvider {
     this.templates.set("content-analysis", {
       name: "content-analysis",
       description:
-        "Analyze content with multiple dimensions using GenesisPod's analysis engine.",
+        "Analyze content with multiple dimensions using gens.team's analysis engine.",
       arguments: [
         { name: "content", description: "Content to analyze", required: true },
         {

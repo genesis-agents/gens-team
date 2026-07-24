@@ -38,7 +38,7 @@ describe("WechatMpPublishTool", () => {
       const tool = new WechatMpPublishTool(null);
       expect(
         tool.validateInput({
-          title: "GenesisPod 周报 #12",
+          title: "gens.team 周报 #12",
           content: "<p>正文</p>",
           digest: "本周回顾",
           coverImageUrl: "https://example.com/cover.jpg",

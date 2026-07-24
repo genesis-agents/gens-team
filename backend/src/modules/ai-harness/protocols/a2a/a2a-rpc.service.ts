@@ -1,7 +1,7 @@
 /**
  * A2A v0.3 JSON-RPC Service
  *
- * 2026-05-01 (PR-X-P): GenesisPod 对外 A2A 接口的 JSON-RPC 2.0 入口处理。
+ * 2026-05-01 (PR-X-P): gens.team 对外 A2A 接口的 JSON-RPC 2.0 入口处理。
  * 对齐 Google A2A v0.3 / Anthropic A2A SDK 标准。
  *
  * 支持的方法:

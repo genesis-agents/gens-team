@@ -1,14 +1,14 @@
 /**
  * MCP Server Module
  *
- * 将 GenesisPod 暴露为完整 MCP Server，支持:
+ * 将 gens.team 暴露为完整 MCP Server，支持:
  * - Tools: 精选工具 (curated) + 动态桥接 (Registry 自动发现)
  * - Resources: 知识库、能力摘要、工具/技能/Agent 列表
  * - Prompts: 可复用提示模板 (研究、分析、辩论、写作)
  * - Streaming: SSE 进度推送 (接入 Engine EventEmitter)
  * - Session: 完整生命周期管理 + 权限策略
  *
- * 让外部 AI 工具（Claude Code、Cursor、OpenClaw 等）调用 GenesisPod 能力
+ * 让外部 AI 工具（Claude Code、Cursor、OpenClaw 等）调用 gens.team 能力
  */
 
 import { Module, OnModuleInit } from "@nestjs/common";

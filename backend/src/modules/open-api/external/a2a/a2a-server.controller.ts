@@ -111,7 +111,7 @@ export class A2AController {
 
   /**
    * Agent Discovery Endpoint
-   * 公开端点，返回 Agent Card，用于外部 Agent 发现 GenesisPod 能力
+   * 公开端点，返回 Agent Card，用于外部 Agent 发现 gens.team 能力
    *
    * 标准路径: /.well-known/agent.json
    */
@@ -121,7 +121,7 @@ export class A2AController {
   @ApiOperation({
     summary: "Get Agent Card (A2A v0.3)",
     description:
-      "Returns the A2A v0.3 spec-compliant Agent Card describing GenesisPod capabilities. This is a public discovery endpoint.",
+      "Returns the A2A v0.3 spec-compliant Agent Card describing gens.team capabilities. This is a public discovery endpoint.",
   })
   @ApiResponse({
     status: 200,

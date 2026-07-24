@@ -2,7 +2,7 @@
  * OTel GenAI Semantic Conventions 适配器 (PR-U)
  *
  * 基于 https://github.com/open-telemetry/semantic-conventions/blob/main/docs/gen-ai/
- * 把 GenesisPod 内部 span attributes 映射到标准 OTel GenAI 字段，让 DataDog / Honeycomb /
+ * 把 gens.team 内部 span attributes 映射到标准 OTel GenAI 字段，让 DataDog / Honeycomb /
  * Jaeger / Grafana Tempo 等工具能直接消费。
  *
  * 关键标准字段：
@@ -81,7 +81,7 @@ function detectOperation(spanName: string, raw: RawSpanAttributes): string {
 }
 
 /**
- * 把 GenesisPod raw attributes 转成 OTel GenAI semantic conventions 兼容的属性集。
+ * 把 gens.team raw attributes 转成 OTel GenAI semantic conventions 兼容的属性集。
  * 标准字段优先；业务字段保留前缀。
  */
 export function toOtelGenAiAttributes(
@@ -124,7 +124,7 @@ export function toOtelGenAiAttributes(
     if (raw.callId) out["gen_ai.tool.call.id"] = raw.callId;
   }
 
-  // GenesisPod 自定义字段 —— 'genesis.*' 前缀，与标准并存
+  // gens.team 自定义字段 —— 'genesis.*' 前缀，与标准并存
   if (raw.agentId) out["genesis.agent.id"] = raw.agentId;
   if (raw.loopKind) out["genesis.loop.kind"] = raw.loopKind;
   if (typeof raw.costUsd === "number") out["genesis.cost.usd"] = raw.costUsd;

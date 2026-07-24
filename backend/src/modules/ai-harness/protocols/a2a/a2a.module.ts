@@ -1,13 +1,13 @@
 /**
  * A2A (Agent-to-Agent) Module
- * 将 GenesisPod 暴露为 A2A 兼容的 Agent，让外部 AI Agent 可以发现和调用 GenesisPod 能力。
+ * 将 gens.team 暴露为 A2A 兼容的 Agent，让外部 AI Agent 可以发现和调用 gens.team 能力。
  *
  * TraceCollectorService 来自 @Global() ObservabilityModule，本模块无需再次注册为 provider。
  */
 
 /**
  * A2A (Agent-to-Agent) Module
- * 将 GenesisPod 暴露为 A2A 兼容的 Agent，让外部 AI Agent 可以发现和调用 GenesisPod 能力。
+ * 将 gens.team 暴露为 A2A 兼容的 Agent，让外部 AI Agent 可以发现和调用 gens.team 能力。
  *
  * Controller (A2AController) 迁移至 open-api/external/a2a/a2a-server.controller.ts (PR-X17)。
  * DI token 绑定保留在本模块（作为服务协议层）。

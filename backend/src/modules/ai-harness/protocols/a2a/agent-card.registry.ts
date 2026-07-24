@@ -1,6 +1,6 @@
 /**
  * Agent Card Registry
- * 构建和提供 GenesisPod 的 A2A Agent Card
+ * 构建和提供 gens.team 的 A2A Agent Card
  */
 
 import { Injectable } from "@nestjs/common";
@@ -14,7 +14,7 @@ export class AgentCardRegistry {
   constructor(private readonly configService: ConfigService) {}
 
   /**
-   * 获取 GenesisPod 的 Agent Card
+   * 获取 gens.team 的 Agent Card
    */
   getAgentCard(): A2AAgentCard {
     const baseUrl = this.getBaseUrl();

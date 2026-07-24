@@ -35,7 +35,7 @@ describe("toOtelGenAiAttributes (PR-U)", () => {
     expect(out["gen_ai.tool.call.id"]).toBe("tc-123");
   });
 
-  it("preserves GenesisPod-specific fields under genesis.* prefix", () => {
+  it("preserves gens.team-specific fields under genesis.* prefix", () => {
     const out = toOtelGenAiAttributes("react.iter", {
       agentId: "a1",
       loopKind: "react",

@@ -1,4 +1,4 @@
-# GenesisPod — MCP Skill Manifest
+# gens.team — MCP Skill Manifest
 
 > 声明式能力描述，供 OpenClaw、Claude Code 等 MCP 客户端自动发现和集成。
 
@@ -13,7 +13,7 @@ description: >
   Enterprise AI engine exposing deep research, multi-agent debate,
   content analysis, writing assistance, and 50+ dynamic tools
   via the Model Context Protocol.
-author: GenesisPod AI
+author: gens.team AI
 license: proprietary
 ```
 
@@ -101,7 +101,7 @@ category: chat
 tier: curated
 timeout: 60s
 description: >
-  Ask GenesisPod AI a question. Supports multi-model responses
+  Ask gens.team AI a question. Supports multi-model responses
   with web search augmentation.
 input:
   question:
@@ -321,7 +321,7 @@ prompts:
       style: { required: false, description: "academic|professional|..." }
 
   discover-capabilities:
-    description: Discover available GenesisPod AI capabilities
+    description: Discover available gens.team AI capabilities
     arguments:
       category:
         { required: false, description: "tools|skills|agents|teams|models" }

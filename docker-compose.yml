@@ -1,4 +1,4 @@
-# GenesisPod - Docker Compose (PostgreSQL Only)
+# gens.team - Docker Compose (PostgreSQL Only)
 # 已迁移到统一 PostgreSQL 架构，移除了 Neo4j、MongoDB、Qdrant
 # 知识图谱: PostgreSQL 递归 CTE (GraphService)
 # 原始数据: PostgreSQL JSONB (RawDataService)

@@ -1,8 +1,8 @@
 /**
  * MCP Resource Provider
  *
- * 将 GenesisPod 的知识库和内部数据暴露为 MCP Resources，
- * 让外部 AI 工具（Claude Code、Cursor 等）可以读取 GenesisPod 管理的内容。
+ * 将 gens.team 的知识库和内部数据暴露为 MCP Resources，
+ * 让外部 AI 工具（Claude Code、Cursor 等）可以读取 gens.team 管理的内容。
  *
  * 资源 URI 规范:
  * - genesis://capabilities         → 能力摘要

@@ -30,7 +30,7 @@ function makeSettingsServiceMock() {
       pass: "oldpass",
     }),
     updateSmtpSettings: jest.fn().mockResolvedValue(undefined),
-    getSiteSettings: jest.fn().mockResolvedValue({ name: "GenesisPod" }),
+    getSiteSettings: jest.fn().mockResolvedValue({ name: "gens.team" }),
     updateSiteSettings: jest.fn().mockResolvedValue(undefined),
     getAiSettings: jest.fn().mockResolvedValue({ defaultModel: "gpt-4" }),
     updateAiSettings: jest.fn().mockResolvedValue(undefined),
@@ -187,7 +187,7 @@ describe("SettingsController", () => {
   describe("getSiteSettings", () => {
     it("returns site settings from the service", async () => {
       const result = await controller.getSiteSettings();
-      expect(result).toEqual({ name: "GenesisPod" });
+      expect(result).toEqual({ name: "gens.team" });
     });
   });
 

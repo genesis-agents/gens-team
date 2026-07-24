@@ -1,7 +1,7 @@
 /**
  * Public API Module
  *
- * Exposes GenesisPod capabilities via REST endpoints
+ * Exposes gens.team capabilities via REST endpoints
  * for external consumers (OpenClaw, Web Apps, Mobile).
  *
  * Authentication: MCP API Key (same key pool as MCP Server)

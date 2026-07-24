@@ -1,10 +1,10 @@
-# GenesisPod MCP Server Integration Guide
+# gens.team MCP Server Integration Guide
 
-Technical integration guide for external AI agents to discover and use GenesisPod capabilities via the Model Context Protocol (MCP).
+Technical integration guide for external AI agents to discover and use gens.team capabilities via the Model Context Protocol (MCP).
 
 ## Overview
 
-The GenesisPod MCP Server exposes five core AI capabilities through a standardized MCP interface over HTTP:
+The gens.team MCP Server exposes five core AI capabilities through a standardized MCP interface over HTTP:
 
 - **genesis_ask**: Multi-model Q&A with web search augmentation
 - **genesis_deep_research**: Comprehensive research with iterative search and self-reflection
@@ -26,7 +26,7 @@ The GenesisPod MCP Server exposes five core AI capabilities through a standardiz
 
 ### Step 1: Obtain API Key
 
-API keys are managed through GenesisPod's Secrets system with category "MCP". Contact your GenesisPod administrator or create a key via the Secrets API:
+API keys are managed through gens.team's Secrets system with category "MCP". Contact your gens.team administrator or create a key via the Secrets API:
 
 ```bash
 POST /api/v1/secrets
@@ -205,7 +205,7 @@ Response:
     "tools": [
       {
         "name": "genesis_ask",
-        "description": "Ask GenesisPod AI a question...",
+        "description": "Ask gens.team AI a question...",
         "inputSchema": {
           "type": "object",
           "properties": { "question": { "type": "string" } },
@@ -306,7 +306,7 @@ Requests without an `id` field are treated as notifications (no response sent):
 
 ### 1. genesis_ask
 
-Ask GenesisPod AI a question with optional web search augmentation.
+Ask gens.team AI a question with optional web search augmentation.
 
 **Input Schema:**
 
@@ -1012,7 +1012,7 @@ curl -X POST https://your-genesis-instance.com/api/v1/mcp \
 
 ### JSON-RPC Error Codes
 
-GenesisPod follows standard JSON-RPC 2.0 error codes:
+gens.team follows standard JSON-RPC 2.0 error codes:
 
 | Code   | Message          | Description                                      |
 | ------ | ---------------- | ------------------------------------------------ |
@@ -1082,7 +1082,7 @@ Tool execution errors are returned as successful JSON-RPC responses with `isErro
 
 ### Guardrails
 
-GenesisPod MCP Server includes multi-layer security guardrails:
+gens.team MCP Server includes multi-layer security guardrails:
 
 1. **Input Guardrails**: Validate and sanitize all incoming tool arguments
 2. **Output Guardrails**: Filter sensitive data from responses
@@ -1129,7 +1129,7 @@ System prompts explicitly instruct the model to:
 
 ### API Key Management
 
-- API keys are stored in GenesisPod's Secrets system with `category="MCP"`
+- API keys are stored in gens.team's Secrets system with `category="MCP"`
 - Keys are validated on every request
 - Failed authentication returns HTTP 401
 - Sessions are isolated per API key
@@ -1177,7 +1177,7 @@ System prompts explicitly instruct the model to:
 ```javascript
 const axios = require("axios");
 
-class GenesisPodMCPClient {
+class gens.teamMCPClient {
   constructor(
     apiKey,
     baseUrl = "https://your-genesis-instance.com/api/v1/mcp",
@@ -1265,7 +1265,7 @@ class GenesisPodMCPClient {
 }
 
 // Usage
-const client = new GenesisPodMCPClient("your-api-key");
+const client = new gens.teamMCPClient("your-api-key");
 await client.initialize();
 
 const result = await client.research("Impact of AI on healthcare", {
@@ -1282,7 +1282,7 @@ console.log(JSON.parse(result.content[0].text));
 import requests
 import json
 
-class GenesisPodMCPClient:
+class gens.teamMCPClient:
     def __init__(self, api_key, base_url='https://your-genesis-instance.com/api/v1/mcp'):
         self.api_key = api_key
         self.base_url = base_url
@@ -1342,7 +1342,7 @@ class GenesisPodMCPClient:
         return self.call_tool('genesis_deep_research', {'topic': topic, **options})
 
 # Usage
-client = GenesisPodMCPClient('your-api-key')
+client = gens.teamMCPClient('your-api-key')
 client.initialize()
 
 result = client.research(

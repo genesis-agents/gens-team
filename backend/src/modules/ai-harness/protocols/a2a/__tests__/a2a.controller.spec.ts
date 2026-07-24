@@ -25,10 +25,10 @@ jest.spyOn(Logger.prototype, "error").mockImplementation();
 // ===================== Fixtures =====================
 
 const mockAgentCard = {
-  name: "GenesisPod",
+  name: "gens.team",
   description: "Enterprise AI platform",
   url: "https://api.gens.team/a2a/tasks",
-  provider: { organization: "GenesisPod", url: "https://api.gens.team" },
+  provider: { organization: "gens.team", url: "https://api.gens.team" },
   version: "1.0.0",
   capabilities: { streaming: false, pushNotifications: true },
   defaultInputModes: ["text"],

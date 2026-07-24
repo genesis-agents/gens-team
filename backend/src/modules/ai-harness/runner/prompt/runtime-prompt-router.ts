@@ -118,7 +118,7 @@ export class RuntimePromptRouter {
 
 /**
  * 简易 semver 比较 —— 仅支持 major.minor.patch 数值；不支持 pre-release / build。
- * GenesisPod 内部用，不引第三方 semver 库省 bundle。
+ * gens.team 内部用，不引第三方 semver 库省 bundle。
  */
 function compareSemver(a: string, b: string): number {
   const pa = a.split(".").map((n) => parseInt(n, 10) || 0);

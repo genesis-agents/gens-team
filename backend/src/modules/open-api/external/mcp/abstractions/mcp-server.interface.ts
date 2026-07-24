@@ -1,6 +1,6 @@
 /**
  * MCP Server - Interface Definitions
- * GenesisPod 作为 MCP Server 对外暴露能力的接口定义
+ * gens.team 作为 MCP Server 对外暴露能力的接口定义
  *
  * 支持 MCP 协议三大原语: Tools / Resources / Prompts
  */
