@@ -4,7 +4,7 @@
 
 **目标**: 用户从一个主题的头脑风暴出发，经过持续迭代研究，最终产出一堆产品原型，全程体验流畅、感知强烈。
 
-**定位**: GenesisPod Research Studio — 从洞察到原型的 AI 协同研究平台
+**定位**: gens.team Research Studio — 从洞察到原型的 AI 协同研究平台
 
 **日期**: 2026-03-12
 **状态**: 方案评审 v2
@@ -105,7 +105,7 @@ ResearchProject
         研究深度 & 迭代能力
         ▲
         │
-  Elicit│              ★ GenesisPod Research Studio
+  Elicit│              ★ gens.team Research Studio
         │              (迭代 + 实时干预 + 原型)
         │
    Deep │

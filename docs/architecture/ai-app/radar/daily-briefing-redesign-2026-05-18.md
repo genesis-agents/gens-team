@@ -749,7 +749,7 @@ Preheader: {{truncate signals.[0].whyItMatters 120}}
   （所有退订链接含 7 天 JWT token，单击即退订无需登录）
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-GenesisPod · AI 替你看世界
+gens.team · AI 替你看世界
 ```
 
 **渲染数据契约**（`EmailChannel` 传入 `emailContext`）：
@@ -905,7 +905,7 @@ Preheader: 本周
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ [打开雷达]({{topicUrl}}) ·
 [调整周报频率]({{settingsUrl}}) 退订: [退订周报]({{unsubscribeWeeklyUrl}}) ·
 [退订全部通知]({{unsubscribeAllUrl}})
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ GenesisPod · AI 替你看世界 ·
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ gens.team · AI 替你看世界 ·
 周报由模板拼装生成（无 LLM）
 ```
 

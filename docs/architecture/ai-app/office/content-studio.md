@@ -176,7 +176,7 @@ AI Office = NotebookLM (RAG 能力)
           + Gamma.app (PPT 生成)
           + Descript (视频生成)
           + Git (版本管理)
-          + GenesisPod (知识库集成)
+          + gens.team (知识库集成)
 ```
 
 **核心差异化**:
@@ -200,7 +200,7 @@ AI Office = NotebookLM (RAG 能力)
 | **云存储**   | Dropbox, Google Drive     | OAuth 连接       | ✅ 实时同步 |
 | **代码仓库** | GitHub, GitLab            | Git 集成         | ✅ 代码理解 |
 | **多媒体**   | YouTube, 播客             | URL + 转录       | ✅ 文本索引 |
-| **个人笔记** | GenesisPod Notes          | 内置系统         | ✅ 自动关联 |
+| **个人笔记** | gens.team Notes           | 内置系统         | ✅ 自动关联 |
 
 ### 3.2 输出能力
 

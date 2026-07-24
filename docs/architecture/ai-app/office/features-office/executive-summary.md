@@ -2,7 +2,7 @@
 
 ## 📋 项目概述
 
-作为资深产品经理,我完成了对 GenesisPod 项目中 AI-Office 功能的全面审视和优化设计。
+作为资深产品经理,我完成了对 gens.team 项目中 AI-Office 功能的全面审视和优化设计。
 
 **核心问题**: 前端展示了丰富的文档类型选项,但后端只实现了部分功能,导致用户体验断层。
 
@@ -203,5 +203,5 @@ Phase 3: ░░░░░░░░░░░░░░░░░░░░   0% ⏳
 
 **报告生成时间**: 2025-11-19 19:26
 **执行人**: AI Product Manager
-**项目**: GenesisPod - AI Office Optimization
+**项目**: gens.team - AI Office Optimization
 **状态**: Phase 1 ✅ 完成 | Phase 2-3 ⏳ 待实施

@@ -2,7 +2,7 @@
 
 > **Status**: Active (W1 开始 2026-05-16)
 > **Branch**: `refactor/ai-social-agent-team`
-> **Tracking**: GenesisPod Agent Teams workflow
+> **Tracking**: gens.team Agent Teams workflow
 
 ## 目标
 
@@ -206,7 +206,7 @@ allowedModels: [chat]
 
 # Soul
 
-你是 GenesisPod AI Social 的 Composer，负责把 ContentTransformer 输出的正文文本，注入符合目标平台的 HTML schema。
+你是 gens.team AI Social 的 Composer，负责把 ContentTransformer 输出的正文文本，注入符合目标平台的 HTML schema。
 
 核心职责：
 

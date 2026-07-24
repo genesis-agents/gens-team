@@ -4,7 +4,7 @@
 
 **版本**: 1.0
 **最后更新**: 2026-02-01
-**维护者**: GenesisPod Team
+**维护者**: gens.team Team
 
 ---
 
@@ -1043,4 +1043,4 @@ BillingContext.run(
 ---
 
 **最后更新**: 2026-02-01
-**维护者**: GenesisPod Team
+**维护者**: gens.team Team

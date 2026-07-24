@@ -921,5 +921,5 @@ Round 1 的 NO（R1）和"条件 YES"已通过上述修补全部满足。残留 
 ---
 
 **最后更新**: 2026-05-18 v1（共识终态）
-**作者**: Claude Code（GenesisPod 团队 + 5 路 reviewer 协作）
+**作者**: Claude Code（gens.team 团队 + 5 路 reviewer 协作）
 **审批人**: 待用户确认

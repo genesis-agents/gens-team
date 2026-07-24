@@ -108,7 +108,7 @@
 ## 4. 元教训
 
 1. **设计文档第一责任是与代码库实状对齐**：v1.0 7 处虚构（`fact-extraction.service` / `EmbeddingChunk` / `KnowledgeBaseGuard` / `Note` 挂 KB / `WikiSkillTokens` / `WikiDiff` 漏建表 / `pgvector` 误设），Read 一次 schema + 一次 facade + 一次同领域 module.ts 就能避免。这正是 CLAUDE.md "分析先行，禁止猜测" 红线要防的。
-2. **Karpathy 哲学的底层是"raw 是文档不是笔记"**：从 gist 翻译到 GenesisPod 时，我们把 Note（用户笔记）当成 raw 是最关键语义错位。raw 应是 `KnowledgeBaseDocument`。
+2. **Karpathy 哲学的底层是"raw 是文档不是笔记"**：从 gist 翻译到 gens.team 时，我们把 Note（用户笔记）当成 raw 是最关键语义错位。raw 应是 `KnowledgeBaseDocument`。
 3. **engine facade 已足够丰富**：EmbeddingService / VectorService / SkillRegistry / AiChatService / sanitizeMarkdownBody / parseJsonFence / PromptSkillBridge / wrapExternalContent 全部 export，wiki 子模块**不需要新增 facade re-export**。
 4. **"非目标"和"管线"必须自洽**：v1.0 §1.5 写"不做版本史"但 §5.3 stale lint 又依赖历史快照——同一文档两节互相否定。设计自审时要专门交叉验证。
 5. **强成功标准 = 命令级**：v1.0 P2 写 "≥20% precision" 看似量化实际不可测；改为 spec 命令级才能"独立循环"（CLAUDE.md §强成功标准）。

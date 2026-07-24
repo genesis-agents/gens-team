@@ -305,7 +305,7 @@ AI: 已为你准备好：        |  已连账户
 
 - **工作量**: 1 周+
 - **风险**: 高（需要后端 intent 解析 + NLU 准确度）
-- **优**: 心智零门槛 / 自然支持复合指令 / 与 GenesisPod 北极星对齐
+- **优**: 心智零门槛 / 自然支持复合指令 / 与 gens.team 北极星对齐
 - **缺**: 工作量最大且需要新后端 NLU / 重度操作不如表格批量 / NLU 误解需 confirm card 兜底
 
 ### 2.4 三候选对比
@@ -330,7 +330,7 @@ AI: 已为你准备好：        |  已连账户
 3. 天然单源（slide-over 里只有一个"发起发布"按钮走 `runSocialMission`）
 4. 复用公共 4 件套最充分，与 Library/Research 视觉一致
 5. B 的进度聚合可作为 follow-up（YAGNI），不要现在过度设计
-6. C 时机未到（GenesisPod leader-chat / agent-playground 还在演进）
+6. C 时机未到（gens.team leader-chat / agent-playground 还在演进）
 
 ---
 

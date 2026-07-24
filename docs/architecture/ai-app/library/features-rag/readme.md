@@ -10,7 +10,7 @@
 
 ## 概述
 
-RAG（Retrieval-Augmented Generation）模块是 GenesisPod 的知识库管理和检索系统，为 AI Ask、AI Teams 等应用提供知识检索增强能力。
+RAG（Retrieval-Augmented Generation）模块是 gens.team 的知识库管理和检索系统，为 AI Ask、AI Teams 等应用提供知识检索增强能力。
 
 ### 核心特性
 
