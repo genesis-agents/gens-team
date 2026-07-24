@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# genesis.sh — GenesisPod 客户侧统一运维入口
+# genesis.sh — gens.team 客户侧统一运维入口
 #
 # 用法：
 #   bash genesis.sh <command> [args]
@@ -60,7 +60,7 @@ detect_dc() {
 
 cmd_preflight() {
   echo
-  echo "${C_BOLD}GenesisPod 安装前体检${C_RESET}"
+  echo "${C_BOLD}gens.team 安装前体检${C_RESET}"
   echo
 
   local fail=0
@@ -161,7 +161,7 @@ cmd_install() {
   VERSION="$(cat VERSION 2>/dev/null || echo unknown)"
 
   echo
-  echo "${C_BOLD}GenesisPod On-Prem Installer${C_RESET}  (version: ${C_CYAN}${VERSION}${C_RESET})"
+  echo "${C_BOLD}gens.team On-Prem Installer${C_RESET}  (version: ${C_CYAN}${VERSION}${C_RESET})"
   echo
 
   if [ "$(id -u)" -eq 0 ]; then
@@ -279,7 +279,7 @@ cmd_install() {
 
   cat <<EOF
 
-${C_BOLD}${C_GREEN}✓ GenesisPod 部署完成${C_RESET}
+${C_BOLD}${C_GREEN}✓ gens.team 部署完成${C_RESET}
 
   访问地址 : ${C_CYAN}http://$(hostname -I 2>/dev/null | awk '{print $1}'):${PORT}${C_RESET}
              ${C_DIM}（或你配置的 PUBLIC_BASE_URL）${C_RESET}

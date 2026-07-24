@@ -1,4 +1,4 @@
-# GenesisPod 客户侧 installer 镜像
+# gens.team 客户侧 installer 镜像
 #
 # 一个 ~6MB 的"配置传输容器"：把 docker-compose.yml / 脚本 / README
 # 烤进镜像，客户 docker pull + docker run 就能把它们"倒"到本地目录。
@@ -14,7 +14,7 @@
 FROM alpine:3.20
 
 LABEL org.opencontainers.image.source="https://github.com/genesis-agents/gens-team"
-LABEL org.opencontainers.image.description="GenesisPod on-prem installer (extracts compose + scripts to host)"
+LABEL org.opencontainers.image.description="gens.team on-prem installer (extracts compose + scripts to host)"
 LABEL org.opencontainers.image.licenses="Proprietary"
 
 # build context 是 staging 目录，含 7 个客户文件 + entrypoint.sh

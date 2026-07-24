@@ -69,7 +69,7 @@ function runCommand(name, cmd, cwd = process.cwd()) {
 
 function main() {
   log("\n========================================", "blue");
-  log("  GenesisPod - 智能变更验证", "blue");
+  log("  gens.team - 智能变更验证", "blue");
   log("========================================\n", "blue");
 
   const changedFiles = getChangedFiles();

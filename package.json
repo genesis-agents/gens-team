@@ -1,7 +1,7 @@
 {
   "name": "genesis-ai",
   "version": "50.6.1",
-  "description": "GenesisPod - AI驱动的智能研究平台",
+  "description": "gens.team - AI驱动的智能研究平台",
   "private": true,
   "workspaces": [
     "frontend",
@@ -126,7 +126,7 @@
     "learning",
     "research"
   ],
-  "author": "GenesisPod Team",
+  "author": "gens.team Team",
   "license": "MIT",
   "dependencies": {
     "@napi-rs/canvas": "^0.1.100",

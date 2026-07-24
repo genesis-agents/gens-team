@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ###############################################################################
-# GenesisPod - Rollback Script
+# gens.team - Rollback Script
 # 用于快速回滚到上一个稳定版本
 ###############################################################################
 
@@ -43,7 +43,7 @@ if [ -z "$SERVICE" ]; then
 fi
 
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${YELLOW}   GenesisPod - Rollback${NC}"
+echo -e "${YELLOW}   gens.team - Rollback${NC}"
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "Service:     ${GREEN}$SERVICE${NC}"

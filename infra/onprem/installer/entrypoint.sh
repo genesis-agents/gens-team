@@ -1,5 +1,5 @@
 #!/bin/sh
-# GenesisPod installer 镜像 entrypoint
+# gens.team installer 镜像 entrypoint
 # 把 /bundle/ 拷贝到挂载的 /out/genesis-config-<version>/
 
 set -e
@@ -25,7 +25,7 @@ chmod +x "$TARGET_DIR"/*.sh 2>/dev/null || true
 
 cat <<EOF
 
-✓ GenesisPod 配置已解压到：${TARGET_DIR}
+✓ gens.team 配置已解压到：${TARGET_DIR}
 
 下一步：
   cd genesis-config-${VERSION}

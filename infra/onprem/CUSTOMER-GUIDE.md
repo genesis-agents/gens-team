@@ -1,4 +1,4 @@
-# GenesisPod 客户运维手册
+# gens.team 客户运维手册
 
 > 在线最新版：**https://github.com/genesis-release/docs**
 > 本副本由你的 installer 镜像离线分发，与上述线上版本一致（按 installer 镜像 tag 对应版本）
@@ -77,7 +77,7 @@ bash genesis.sh install
 - `Admin password` —— 至少 8 字符
 - `Public base URL` —— 用户浏览器输入的访问地址（如 `https://genesis.acme.com`，留空走同源）
 
-跑完 5-10 分钟（首次拉镜像 3.4GB + 数据库迁移），出现 `✓ GenesisPod 部署完成` 即成功。
+跑完 5-10 分钟（首次拉镜像 3.4GB + 数据库迁移），出现 `✓ gens.team 部署完成` 即成功。
 
 ### 手动操作（脚本失败时）
 
@@ -331,7 +331,7 @@ docker compose --env-file .env.production up -d --force-recreate frontend
 # 1. 查谁占用
 sudo ss -tlnp | grep :3000        # 或 sudo netstat -tlnp | grep :3000
 
-# 2. 改 GenesisPod 监听端口（如 改成 8080）
+# 2. 改 gens.team 监听端口（如 改成 8080）
 sed -i 's|^FRONTEND_PORT=.*|FRONTEND_PORT=8080|' .env.production
 docker compose --env-file .env.production up -d --force-recreate frontend
 # 然后访问 http://服务器IP:8080

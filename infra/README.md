@@ -1,6 +1,6 @@
 # 🏗️ 基础设施部署 (Infrastructure as Code)
 
-本目录包含 GenesisPod 的多云部署方案。
+本目录包含 gens.team 的多云部署方案。
 
 ## 📁 目录结构
 
@@ -340,4 +340,4 @@ bash scripts/deploy.sh
 
 **版本**: v1.0
 **最后更新**: 2024
-**维护者**: GenesisPod 基础设施团队
+**维护者**: gens.team 基础设施团队

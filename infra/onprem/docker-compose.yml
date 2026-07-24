@@ -1,4 +1,4 @@
-# GenesisPod - On-Prem / 客户离线部署 Compose（初稿）
+# gens.team - On-Prem / 客户离线部署 Compose（初稿）
 #
 # 详细使用步骤见同目录 README.md。
 #
@@ -98,9 +98,9 @@ services:
       PLAYGROUND_SOFT_WARN_THRESHOLD_MIN: ${PLAYGROUND_SOFT_WARN_THRESHOLD_MIN:-}
       # 外部依赖
       FLARESOLVERR_URL: http://flaresolverr:8191/v1
-      # 品牌（可选自定义；不填用 GenesisPod 默认）
-      BRAND_NAME: ${BRAND_NAME:-GenesisPod}
-      BRAND_FULL_NAME: ${BRAND_FULL_NAME:-GenesisPod}
+      # 品牌（可选自定义；不填用 gens.team 默认）
+      BRAND_NAME: ${BRAND_NAME:-gens.team}
+      BRAND_FULL_NAME: ${BRAND_FULL_NAME:-gens.team}
       # LLM 由用户 BYOK（admin 后台配置），不要在这里塞 OPENAI_API_KEY 等
     volumes:
       - backend_thumbnails:/app/public/thumbnails
@@ -138,8 +138,8 @@ services:
       # 浏览器侧 API URL：客户只需配对外域名 / 留空走同源
       NEXT_PUBLIC_API_URL: ${PUBLIC_BASE_URL:-}
       # 品牌透传
-      NEXT_PUBLIC_BRAND_NAME: ${BRAND_NAME:-GenesisPod}
-      NEXT_PUBLIC_BRAND_FULL_NAME: ${BRAND_FULL_NAME:-GenesisPod}
+      NEXT_PUBLIC_BRAND_NAME: ${BRAND_NAME:-gens.team}
+      NEXT_PUBLIC_BRAND_FULL_NAME: ${BRAND_FULL_NAME:-gens.team}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     restart: unless-stopped

@@ -65,7 +65,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
 
-log_header "GenesisPod - 推送前验证"
+log_header "gens.team - 推送前验证"
 echo -e "模式: ${QUICK_MODE:+快速}${QUICK_MODE:-完整}"
 echo -e "时间: $(date '+%Y-%m-%d %H:%M:%S')"
 

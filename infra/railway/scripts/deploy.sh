@@ -1,10 +1,10 @@
 #!/bin/bash
-# Railway Deployment Script for GenesisPod
+# Railway Deployment Script for gens.team
 
 set -e
 
 echo "=========================================="
-echo "  GenesisPod - Railway Deployment"
+echo "  gens.team - Railway Deployment"
 echo "=========================================="
 
 # Check if Railway CLI is installed

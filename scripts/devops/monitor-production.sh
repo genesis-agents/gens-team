@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "=== GenesisPod Production Monitor ==="
+echo "=== gens.team Production Monitor ==="
 echo "Fetching last $LINES log lines..."
 
 LOGS=$(railway logs --num "$LINES" $SERVICE 2>&1) || {
