@@ -1,6 +1,6 @@
-# GenesisPod 开发指南
+# gens.team 开发指南
 
-欢迎加入GenesisPod开发团队！本指南将帮助您快速上手项目开发。
+欢迎加入gens.team开发团队！本指南将帮助您快速上手项目开发。
 
 ---
 
@@ -554,4 +554,4 @@ npm install @prisma/client@latest
 
 ---
 
-**欢迎来到GenesisPod！有问题随时在团队频道提问。**
+**欢迎来到gens.team！有问题随时在团队频道提问。**

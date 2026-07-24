@@ -1,6 +1,6 @@
-# GenesisPod Roadmap · 2026-05 → 2027-05
+# gens.team Roadmap · 2026-05 → 2027-05
 
-> GenesisPod 平台未来 12 个月战略与执行路线图。基于 4 层架构（ai-app / ai-harness / ai-engine / ai-infra）已落地 + 标杆 app（agent-playground）成熟 + ai-ask Teams 模式上线 + LLM Wiki MVP 落地 + Storage Lifecycle v1.2 共识达成的现状制定。
+> gens.team 平台未来 12 个月战略与执行路线图。基于 4 层架构（ai-app / ai-harness / ai-engine / ai-infra）已落地 + 标杆 app（agent-playground）成熟 + ai-ask Teams 模式上线 + LLM Wiki MVP 落地 + Storage Lifecycle v1.2 共识达成的现状制定。
 
 **版本**：v1.0 · 2026-05-10
 **文档形态**：完整版（背景 / 原则 / 6 主线 / 4 季度甘特 / 风险 / 退路 / 治理）
@@ -211,7 +211,7 @@ M7  Code Agent（内部基础原语）    ─── L2 / L2.5（执行能力底�
 
 ### M6 · Open / SDK / Marketplace（**0508 决策：开源 + 商业化**）
 
-**目标**：对标 Claude Agent SDK，建立 GenesisPod Agent 生态。
+**目标**：对标 Claude Agent SDK，建立 gens.team Agent 生态。
 
 | 里程碑                          | 内容                                                                                      | 季度                | 依赖       | 验收标准                                     |
 | ------------------------------- | ----------------------------------------------------------------------------------------- | ------------------- | ---------- | -------------------------------------------- |
@@ -224,7 +224,7 @@ M7  Code Agent（内部基础原语）    ─── L2 / L2.5（执行能力底�
 
 ### M7 · Code Agent（内部基础原语）
 
-**目标**：让 GenesisPod 拥有"执行能力 agent"——能 Read 代码 / Edit 文件 / Bash 跑命令 / git 操作 / npm 验证，作为内部基础原语服务工程师 sub-agent 场景与未来自演进内核（v2.0）。**保守 scope**：不开 ai-app/code 用户产品；不暴露 Open API；4 模式权限锁 PR-only Apply。
+**目标**：让 gens.team 拥有"执行能力 agent"——能 Read 代码 / Edit 文件 / Bash 跑命令 / git 操作 / npm 验证，作为内部基础原语服务工程师 sub-agent 场景与未来自演进内核（v2.0）。**保守 scope**：不开 ai-app/code 用户产品；不暴露 Open API；4 模式权限锁 PR-only Apply。
 
 **关键设计**：
 

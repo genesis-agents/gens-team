@@ -1,5 +1,5 @@
 /**
- * GenesisPod Public API — thin TypeScript client.
+ * gens.team Public API — thin TypeScript client.
  *
  * Usage:
  *   import { GenesisPublicApiClient } from "./genesis-public-api-client";

@@ -1,4 +1,4 @@
-# 🚀 GenesisPod - 访问指南
+# 🚀 gens.team - 访问指南
 
 ## 📍 访问地址
 

@@ -531,4 +531,4 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ---
 
 **最后更新**: 2026-01-15
-**维护者**: GenesisPod Team
+**维护者**: gens.team Team

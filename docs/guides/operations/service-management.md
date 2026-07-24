@@ -1,4 +1,4 @@
-# GenesisPod - Service Management Scripts
+# gens.team - Service Management Scripts
 
 ## 使用说明
 

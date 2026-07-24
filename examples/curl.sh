@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# GenesisPod Public API — runnable curl examples.
+# gens.team Public API — runnable curl examples.
 #
 # Usage:
 #   export GENESIS_BASE_URL="http://localhost:4000"   # or your Railway domain

@@ -1,10 +1,10 @@
-# GenesisPod - 多环境部署架构
+# gens.team - 多环境部署架构
 
 > 企业级三环境部署体系，确保商用版本稳定性和开发效率。
 
 ## 概述
 
-本文档描述 GenesisPod 的多环境部署架构，包括 Production（生产）、Staging（预发布）、Development（开发）三套独立环境。
+本文档描述 gens.team 的多环境部署架构，包括 Production（生产）、Staging（预发布）、Development（开发）三套独立环境。
 
 | 属性         | 值                  |
 | ------------ | ------------------- |
