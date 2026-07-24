@@ -1,4 +1,4 @@
-# GenesisPod 分层架构总图
+# gens.team 分层架构总图
 
 > 按实际代码目录（`backend/src/modules/`）整理的五层系统架构图。
 > 信息源：2026-05-29 对 `ai-app` / `ai-harness` / `ai-engine` / `ai-infra` / `open-api` 各层目录的实测扫描，非记忆推断。

@@ -2,7 +2,7 @@
 
 ## 概述
 
-GenesisPod 使用 PostgreSQL 16 作为主数据库，采用 "PostgreSQL-First" 设计理念，利用其高级特性替代专用数据库：
+gens.team 使用 PostgreSQL 16 作为主数据库，采用 "PostgreSQL-First" 设计理念，利用其高级特性替代专用数据库：
 
 - 递归 CTE 替代 Neo4j 图数据库
 - JSONB 替代 MongoDB 文档存储

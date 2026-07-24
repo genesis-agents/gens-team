@@ -2,7 +2,7 @@
 
 > 最后更新: 2025-01-07
 >
-> AI Writing 是 GenesisPod 的长篇内容创作模块，支持多 Agent 协作写作、Story Bible 一致性管理、并行写作编排等高级功能。
+> AI Writing 是 gens.team 的长篇内容创作模块，支持多 Agent 协作写作、Story Bible 一致性管理、并行写作编排等高级功能。
 
 ---
 

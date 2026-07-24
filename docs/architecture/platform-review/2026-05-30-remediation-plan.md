@@ -1,4 +1,4 @@
-# GenesisPod 整改方案（分阶段任务卡）
+# gens.team 整改方案（分阶段任务卡）
 
 > **日期**: 2026-05-30
 > **来源**: [分层架构评审报告](./2026-05-30-layered-audit.md) · [多租户 Org 模型 ADR](./multi-tenancy-org-model-adr.md)

@@ -2,7 +2,7 @@
 
 ## 概述
 
-GenesisPod 使用 Redis 7 作为缓存和会话存储，支持 AOF 持久化。
+gens.team 使用 Redis 7 作为缓存和会话存储，支持 AOF 持久化。
 
 ## 核心数据结构
 

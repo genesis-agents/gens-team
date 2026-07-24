@@ -2,7 +2,7 @@
 
 ## 概述
 
-GenesisPod 使用以下 UI 技术栈：
+gens.team 使用以下 UI 技术栈：
 
 - **Radix UI**: 无障碍无头组件
 - **TipTap**: 富文本编辑器

@@ -190,7 +190,7 @@ CLI: `npm run migrate:prep1 -- --batch=100 --max-runtime=10m`，可重复运行�
 
 #### Per-tool feature flag 一致性 `[N1]`
 
-**v1.2 决议**：用 **DB column 直读 + 30s in-process TTL**（不用 Redis pub/sub —— GenesisPod 当前架构未引入跨 pod pub/sub，临时为此引入开销大于收益）。
+**v1.2 决议**：用 **DB column 直读 + 30s in-process TTL**（不用 Redis pub/sub —— gens.team 当前架构未引入跨 pod pub/sub，临时为此引入开销大于收益）。
 
 实现：
 

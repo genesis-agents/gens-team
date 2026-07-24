@@ -2890,7 +2890,7 @@ AGENTS.md 层级:
         → AGENTS.override.md  (强制覆盖)
 ```
 
-**GenesisPod 技能作用域设计**：
+**gens.team 技能作用域设计**：
 
 ```
 作用域层级 (从低到高):

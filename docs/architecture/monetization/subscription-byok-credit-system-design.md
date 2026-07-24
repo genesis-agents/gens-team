@@ -1,4 +1,4 @@
-# GenesisPod 商业化系统设计：订阅制 + Free-tier BYOK + 统一 Credit 计量
+# gens.team 商业化系统设计：订阅制 + Free-tier BYOK + 统一 Credit 计量
 
 > **版本**: v1.1
 > **创建时间**: 2026-05-28
@@ -63,7 +63,7 @@
 
 ### 1.3 部署模式前提（重要）
 
-**§1.1 的 D1–D6 与 §5–§9 默认描述的是 Cloud（SaaS）形态。** GenesisPod 同时有 On-Prem（本地/私有部署）形态，两者变现逻辑根本不同，**不能用同一套结算**。完整区分见 [§17](#17-部署模式区分cloud-saas-vs-on-prem)。一句话：**计量共享、结算分流**——统一计量 chokepoint 两端都开，但 Cloud 结算到真实钱（订阅+credit+支付），On-Prem 收 License（合同制）、credit 仅作可选内部成本管控。
+**§1.1 的 D1–D6 与 §5–§9 默认描述的是 Cloud（SaaS）形态。** gens.team 同时有 On-Prem（本地/私有部署）形态，两者变现逻辑根本不同，**不能用同一套结算**。完整区分见 [§17](#17-部署模式区分cloud-saas-vs-on-prem)。一句话：**计量共享、结算分流**——统一计量 chokepoint 两端都开，但 Cloud 结算到真实钱（订阅+credit+支付），On-Prem 收 License（合同制）、credit 仅作可选内部成本管控。
 
 ---
 
@@ -560,7 +560,7 @@ export class EntitlementService {
 | 维度              | Cloud（SaaS）                   | On-Prem（本地/私有部署）             |
 | ----------------- | ------------------------------- | ------------------------------------ |
 | 租户              | 多租户（厂商托管）              | 单租户（客户自持整套栈）             |
-| infra + Key 归属  | 厂商（GenesisPod）              | 客户自己                             |
+| infra + Key 归属  | 厂商（gens.team）               | 客户自己                             |
 | 谁付 LLM 账单     | 厂商垫付，向终端用户收          | 客户直付 Provider                    |
 | **厂商收什么钱**  | 订阅 + credit（按量）           | **License（合同制），不按量**        |
 | credit 当真实货币 | ✅ 是变现本身                   | ❌ **无意义**（厂商不按 token 结算） |

@@ -1,6 +1,6 @@
 # 统一存储生命周期管理架构设计 v1.4
 
-> GenesisPod 平台所有持久化数据的统一生命周期管理（HOT / WARM / COLD 三态 + DELETED 终态），沉淀到 `platform/storage` 基础层（L1）；业务模块只消费门面，不关心介质和迁移（WARM 起；HOT→WARM 由业务事件触发）。
+> gens.team 平台所有持久化数据的统一生命周期管理（HOT / WARM / COLD 三态 + DELETED 终态），沉淀到 `platform/storage` 基础层（L1）；业务模块只消费门面，不关心介质和迁移（WARM 起；HOT→WARM 由业务事件触发）。
 
 **状态**: Draft v1.4（v1.3 第 3 轮 4 路评审 3/4 NEEDS-CHANGES + 1/4 APPROVED-WITH-COMMENTS 后穿透修订；本轮重点修复 v1.3 引入的事实错误与 tombstone tier 自洽 bug）  
 **作者**: Claude Code  

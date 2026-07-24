@@ -930,7 +930,7 @@ async function executeMemberTask(
 - ✅ **80% 常规业务编码** → 可被 Skills + Tools 替代
 - ❌ **20% 核心逻辑** → 仍需代码支撑（平台层 + 新 Tool 开发）
 
-**在 GenesisPod 中的应用**：
+**在 gens.team 中的应用**：
 
 - AI Writing、AI Research → 高度声明化（Skills 主导）
 - AI Office (Slides/Doc) → 中度声明化（需结构化输出 Tool）

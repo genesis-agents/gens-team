@@ -2,7 +2,7 @@
 
 ## 概述
 
-GenesisPod 使用 Socket.io 实现 WebSocket 实时通讯，支持 AI 团队协作、实时通知和流式响应。
+gens.team 使用 Socket.io 实现 WebSocket 实时通讯，支持 AI 团队协作、实时通知和流式响应。
 
 ## Socket.io 核心原理
 

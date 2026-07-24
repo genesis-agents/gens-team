@@ -2,7 +2,7 @@
 
 ## 概述
 
-GenesisPod 采用双轨状态管理策略：
+gens.team 采用双轨状态管理策略：
 
 - **TanStack Query (React Query)**: 管理服务端状态
 - **Zustand**: 管理客户端状态

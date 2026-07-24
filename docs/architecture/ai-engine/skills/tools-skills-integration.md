@@ -11,7 +11,7 @@
 
 ### 1.1 Background
 
-GenesisPod's AI modules (Topic Research, AI Writing, AI Teams) currently have varying levels of integration with the AI Engine's Tools and Skills systems. This design document proposes a unified approach to ensure:
+gens.team's AI modules (Topic Research, AI Writing, AI Teams) currently have varying levels of integration with the AI Engine's Tools and Skills systems. This design document proposes a unified approach to ensure:
 
 1. All AI modules use `AICapabilityResolver` as the single source of truth for available capabilities
 2. `FunctionCallingExecutor` enables true LLM-driven tool invocation

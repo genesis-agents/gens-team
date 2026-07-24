@@ -123,7 +123,7 @@
 | **C. Active/Standby** | 用户在表格里手动指定哪个 active | 简单可控（其他作为 cold standby） |
 | **D. Mixed**          | 都支持，每行配 mode             | 灵活但复杂                        |
 
-**GenesisPod 现有的**：UserApiKey + KeyChain 是 **B (fallback)** + 健康熔断。建议 admin secrets 与之对齐 → **B**。
+**gens.team 现有的**：UserApiKey + KeyChain 是 **B (fallback)** + 健康熔断。建议 admin secrets 与之对齐 → **B**。
 
 ### Q2：状态有效性怎么判定？
 
@@ -134,7 +134,7 @@
 | **C. 被动回写**：业务调用失败时 mark              | 真流量驱动，无主动浪费 | 0（但首次调用前显示 unknown） |
 | **D. 手动 + 被动**：管理员点"测试"按钮 + 业务回写 | 灵活                   | 0                             |
 
-**GenesisPod 现有的**：UserApiKey 是 **D**（admin/me 页有 Test 按钮 + 业务调用 markSuccess/markFailure）。建议对齐 → **D**。
+**gens.team 现有的**：UserApiKey 是 **D**（admin/me 页有 Test 按钮 + 业务调用 markSuccess/markFailure）。建议对齐 → **D**。
 
 ### Q3：保留 SecretVersion 历史 rotation 概念吗？
 

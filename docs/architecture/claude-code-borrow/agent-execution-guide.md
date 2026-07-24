@@ -1,4 +1,4 @@
-# Claude Code v2.1.88 → GenesisPod 借鉴落地手册
+# Claude Code v2.1.88 → gens.team 借鉴落地手册
 
 > **文档定位**：Agent（Claude Code / sub-agent / 人）按图执行的工程改造手册。每张任务卡含强成功标准、文件白名单、必读上下文、可验证步骤、DoD、回滚预案。
 >
@@ -30,7 +30,7 @@
 - [9. 失败回滚原则](#9-失败回滚原则)
 - [10. 沉淀机制](#10-沉淀机制)
 - [附录 A：Claude Code 关键文件位置索引](#附录-a-claude-code-关键文件位置索引)
-- [附录 B：GenesisPod 接入锚点索引](#附录-b-genesis-接入锚点索引)
+- [附录 B：gens.team 接入锚点索引](#附录-b-genesis-接入锚点索引)
 
 ---
 
@@ -74,14 +74,14 @@ P2 看产品节奏走
 
 ### 北极星
 
-GenesisPod ai-harness/engine 持续向 **Anthropic Managed Agent / Claude Agent SDK 形态**靠拢（沿用 [project_north_star_anthropic_managed_agent](memory) 既定方向），**而不是泛义 SOTA**。
+gens.team ai-harness/engine 持续向 **Anthropic Managed Agent / Claude Agent SDK 形态**靠拢（沿用 [project_north_star_anthropic_managed_agent](memory) 既定方向），**而不是泛义 SOTA**。
 
 ### 边界（明确不做）
 
-- ❌ **不复刻 Claude Code 的 React/Ink TUI**——GenesisPod 是 Web 形态，UI 层另起炉灶
+- ❌ **不复刻 Claude Code 的 React/Ink TUI**——gens.team 是 Web 形态，UI 层另起炉灶
 - ❌ **不引入 `buddy/` 类装饰品**——Claude Code 的鸭子动画 sprite 不在借鉴范围
 - ❌ **不抄 `protectedNamespace.ts` 命名空间锁**——公开构建中是 stub
-- ❌ **不抄 Bedrock/Vertex provider 适配的具体实现**——GenesisPod 已用 LiteLLM 路径
+- ❌ **不抄 Bedrock/Vertex provider 适配的具体实现**——gens.team 已用 LiteLLM 路径
 - ❌ **不为单一用例做 P2 战略级抽象**——P2 任务卡只在产品节奏到位时启动
 
 ### 强成功标准
@@ -96,7 +96,7 @@ GenesisPod ai-harness/engine 持续向 **Anthropic Managed Agent / Claude Agent 
 
 > 与本手册 P0/P1 任务卡一一对应。"差距评级"决定优先级。
 
-| 维度                     | Claude Code 设计                                                             | GenesisPod 现状                                     | 差距 | 任务卡   |
+| 维度                     | Claude Code 设计                                                             | gens.team 现状                                      | 差距 | 任务卡   |
 | ------------------------ | ---------------------------------------------------------------------------- | --------------------------------------------------- | ---- | -------- |
 | Agent loop 退出信号      | `needsFollowUp = (assistant content 含 tool_use)`；显式弃用 `stop_reason`    | 6 个 loop 部分依赖 finalize / stop_reason           | 🟡   | **P0-2** |
 | 上下文压缩               | 4 层金字塔（budget/snip/microcompact/autoCompact）+ `cache_edits` API        | `cache-control-planner.ts` 有起步，缺 `cache_edits` | 🔴   | **P0-1** |
@@ -120,9 +120,9 @@ GenesisPod ai-harness/engine 持续向 **Anthropic Managed Agent / Claude Agent 
 
 ## 3. 反向洞察（Anthropic 自己踩出来的坑）
 
-> 这些注释从 Claude Code 源码里直接抄出来。每条对应 GenesisPod 已踩过或将踩的坑。**任何 PR 不允许违反**。
+> 这些注释从 Claude Code 源码里直接抄出来。每条对应 gens.team 已踩过或将踩的坑。**任何 PR 不允许违反**。
 
-| 反向坑                                                         | 后果                                                | 出处                               | 对应 GenesisPod 教训                            |
+| 反向坑                                                         | 后果                                                | 出处                               | 对应 gens.team 教训                             |
 | -------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------- | ----------------------------------------------- |
 | `stop_reason === 'tool_use'` 不可靠                            | 偶发漏判终止                                        | `query.ts:553-557`                 | [project_stage_emit_missing_2026_05_06](memory) |
 | stop_reason 在 `message_delta` 才到，不是 `content_block_stop` | 永远读到 null                                       | `QueryEngine.ts:802-808`           | —                                               |
@@ -173,7 +173,7 @@ backend/src/modules/ai-engine/llm/types.ts                                      
 - `d:/projects/codes/claude-code-build/src/services/api/claude.ts:3052-3211`（cache_edits API 编织 + pinnedEdits 重发约束）
 - `d:/projects/codes/claude-code-build/src/services/compact/autoCompact.ts:241-269`（autoCompact 触发 + 断路器）
 
-**GenesisPod 现状（必读）**：
+**gens.team 现状（必读）**：
 
 - `backend/src/modules/ai-harness/runner/context/cache-control-planner.ts`（现有 cache_control marker 规划）
 - `backend/src/modules/ai-harness/runner/context/context-compactor.ts`（现有压缩流程）
@@ -249,7 +249,7 @@ git checkout HEAD~1 -- backend/src/modules/ai-harness/runner/context/cache-contr
 #### Sub-agent prompt 模板
 
 ```
-你是 GenesisPod ai-harness 改造助手。
+你是 gens.team ai-harness 改造助手。
 
 【任务】：实施 P0-1 microcompact + cache_edits API（详见 docs/architecture/claude-code-borrow/agent-execution-guide.md §4 P0-1）
 
@@ -378,8 +378,8 @@ backend/src/modules/ai-engine/tools/registry/builtin-tools/*.ts                 
 - `d:/projects/codes/claude-code-build/src/Tool.ts:466`（`maxResultSizeChars` 字段定义）
 - `d:/projects/codes/claude-code-build/src/services/tools/toolExecution.ts`（`processToolResultBlock` 落盘逻辑）
 - `d:/projects/codes/claude-code-build/src/tools/BashTool/BashTool.tsx:77`（30000 字符阈值参考）
-- GenesisPod：`backend/src/modules/ai-engine/tools/abstractions/tool.interface.ts`（接口扩展点）
-- GenesisPod：`backend/src/modules/platform/storage/`（落盘后端）
+- gens.team：`backend/src/modules/ai-engine/tools/abstractions/tool.interface.ts`（接口扩展点）
+- gens.team：`backend/src/modules/platform/storage/`（落盘后端）
 
 #### 实施步骤
 
@@ -433,7 +433,7 @@ backend/src/modules/ai-engine/tools/registry/builtin-tools/file-write/*.ts
 
 - `d:/projects/codes/claude-code-build/src/tools/FileEditTool/*.ts:275, 452, 520`（核心三处守门）
 - `d:/projects/codes/claude-code-build/src/Tool.ts:158-300`（ToolContext 注入 readFileState 的方式）
-- GenesisPod：`backend/src/modules/ai-engine/tools/abstractions/tool.interface.ts:9-92`（现有 ToolContext）
+- gens.team：`backend/src/modules/ai-engine/tools/abstractions/tool.interface.ts:9-92`（现有 ToolContext）
 
 #### 实施步骤
 
@@ -480,8 +480,8 @@ docs/architecture/ai-harness/skills.md                                          
 - `d:/projects/codes/claude-code-build/src/tools/SkillTool/prompt.ts:21-29, 92-110`（注入 budget 1% + 250 字符上限）
 - `d:/projects/codes/claude-code-build/src/skills/loadSkillsDir.ts:100-105`（frontmatter token 估算）
 - `d:/projects/codes/claude-code-build/src/commands/createSkillCommand.ts:344-399`（attach 时机：调用 Skill 工具时）
-- GenesisPod：`backend/src/modules/ai-engine/skills/loader/`（现有解析）
-- GenesisPod：`backend/src/modules/ai-app/playground/services/chat/leader-chat.service.ts`（当前 duty.md 全文塞 prompt 现状）
+- gens.team：`backend/src/modules/ai-engine/skills/loader/`（现有解析）
+- gens.team：`backend/src/modules/ai-app/playground/services/chat/leader-chat.service.ts`（当前 duty.md 全文塞 prompt 现状）
 - 必读 [project_skill_sediment_2026_05_01](memory) 与 [reference_two_skill_registries](memory)（项目有 2 个 SkillRegistry，先确认改的是哪个）
 
 #### 实施步骤
@@ -538,8 +538,8 @@ docs/architecture/ai-harness/hooks.md                                           
 - `d:/projects/codes/claude-code-build/src/utils/hooks/hooksConfigManager.ts:26-260`（18 事件元数据）
 - `d:/projects/codes/claude-code-build/src/types/hooks.ts:28-176`（JSON 输出 schema）
 - `d:/projects/codes/claude-code-build/src/query.ts:1262-1264`（**关键**：API error 跳过 stop hook 的注释）
-- GenesisPod：`backend/src/modules/ai-harness/agents/core/hook-registry.ts`（现有 4 事件）
-- GenesisPod：[project_p1_react_runaway_fix_2026_04_29](memory)（已有的 retry runaway 教训）
+- gens.team：`backend/src/modules/ai-harness/agents/core/hook-registry.ts`（现有 4 事件）
+- gens.team：[project_p1_react_runaway_fix_2026_04_29](memory)（已有的 retry runaway 教训）
 
 #### 实施步骤
 
@@ -669,14 +669,14 @@ docs/architecture/ai-harness/hooks.md                                           
 ### 派活前主 Agent 必做
 
 1. **明确白名单**：从对应任务卡复制文件白名单，写进 sub-agent prompt
-2. **附完整上下文**：必读 Claude Code 源（带行号）+ 必读 GenesisPod 现状文件 + 相关 memory（如 `[project_skill_sediment_2026_05_01](memory)`）
+2. **附完整上下文**：必读 Claude Code 源（带行号）+ 必读 gens.team 现状文件 + 相关 memory（如 `[project_skill_sediment_2026_05_01](memory)`）
 3. **写明 DoD**：所有 DoD 项变成 sub-agent 必须输出的"已验证"列表
 4. **指定提交策略**：默认 sub-agent **不 commit**，结果回主 Agent 审查后再统一 commit（参 [feedback_parallel_subagent_coverage_push](memory)，例外是大规模 spec 攻坚时中途 commit）
 
 ### Sub-agent prompt 通用模板
 
 ```
-你是 GenesisPod ai-{harness|engine|infra} 改造助手。
+你是 gens.team ai-{harness|engine|infra} 改造助手。
 
 【任务】实施 {任务卡编号}（详见 docs/architecture/claude-code-borrow/agent-execution-guide.md §{4|5} {任务卡编号}）
 
@@ -686,7 +686,7 @@ docs/architecture/ai-harness/hooks.md                                           
 【必读上下文】先读完再动手：
   Claude Code 源（金标准）：
     - {路径:行号}
-  GenesisPod 现状：
+  gens.team 现状：
     - {路径}
   相关 memory：
     - {memory 文件名}
@@ -891,13 +891,13 @@ FileChanged / WorktreeCreate
 Notification / UserPromptSubmit / Setup / TeammateIdle / CwdChanged / InstructionsLoaded
 ```
 
-> GenesisPod 落地优先：前 12 项（`PreToolUse` / `PostToolUse` / `SessionStart` / `Stop` / `SubagentStart` / `SubagentStop` / `PreCompact` / `PostCompact`）覆盖即可。
+> gens.team 落地优先：前 12 项（`PreToolUse` / `PostToolUse` / `SessionStart` / `Stop` / `SubagentStart` / `SubagentStop` / `PreCompact` / `PostCompact`）覆盖即可。
 
 ---
 
-## 附录 B：GenesisPod 接入锚点索引
+## 附录 B：gens.team 接入锚点索引
 
-| 主题                    | GenesisPod 路径                                                                                                                  |
+| 主题                    | gens.team 路径                                                                                                                   |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | Agent loop 6 形态       | `backend/src/modules/ai-harness/runner/loop/{react,reflexion,plan-act,leader-worker,simple}-loop.ts` + `loop-registry.ts`        |
 | 上下文压缩              | `backend/src/modules/ai-harness/runner/context/{cache-control-planner,context-compactor,priority-pruner,token-estimator}.ts`     |

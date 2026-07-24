@@ -2,7 +2,7 @@
 
 ## 概述
 
-GenesisPod 使用 Next.js 14 作为前端框架，结合 React 18 构建高性能的服务端渲染应用。
+gens.team 使用 Next.js 14 作为前端框架，结合 React 18 构建高性能的服务端渲染应用。
 
 ## Next.js 14 核心特性
 

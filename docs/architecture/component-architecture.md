@@ -1,4 +1,4 @@
-# GenesisPod 组件级架构图
+# gens.team 组件级架构图
 
 > 落到真实 controller / service / registry / facade / gateway / loop 类名的组件级架构。
 > 信息源：2026-05-29 对 `open-api` / `ai-app` / `ai-harness` / `ai-engine` / `ai-infra` 各层 module providers、`@Controller`、`@WebSocketGateway`、`onModuleInit`、class 定义的实测扫描，非记忆推断。

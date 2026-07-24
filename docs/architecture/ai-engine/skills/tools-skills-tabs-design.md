@@ -8,7 +8,7 @@
 
 ## Overview
 
-This document outlines the architecture for implementing a tabbed interface for Tools and Skills management in the GenesisPod admin panel. The design separates local/built-in capabilities from external marketplace integrations.
+This document outlines the architecture for implementing a tabbed interface for Tools and Skills management in the gens.team admin panel. The design separates local/built-in capabilities from external marketplace integrations.
 
 ---
 
@@ -76,7 +76,7 @@ interface LocalSkill {
 ├─────────────────────────────────────────────────────────┤
 │ ┌───────────────────────────────────────────────────┐   │
 │ │ 📊 AI Architecture Layering        v2.0  [Active] │   │
-│ │ By: GenesisPod Team                                 │   │
+│ │ By: gens.team Team                                 │   │
 │ │ Design AI systems with clear architectural layers │   │
 │ │ [View] [Edit] [Disable] [Delete]                  │   │
 │ └───────────────────────────────────────────────────┘   │
@@ -225,7 +225,7 @@ Response: { success: boolean; skill: LocalSkill }
 
 ### 2.1 Built-in Tools Tab
 
-**Purpose**: Display and manage core system tools that are part of the GenesisPod.
+**Purpose**: Display and manage core system tools that are part of the gens.team.
 
 #### Tool Categories
 
@@ -1220,7 +1220,7 @@ const CACHE_CONFIG = {
 
 ## Conclusion
 
-This design provides a comprehensive architecture for managing skills and tools in GenesisPod. The tabbed interface separates concerns clearly:
+This design provides a comprehensive architecture for managing skills and tools in gens.team. The tabbed interface separates concerns clearly:
 
 - **Skills**: Local installation vs. marketplace discovery
 - **Tools**: Built-in core tools vs. external APIs vs. MCP protocol
