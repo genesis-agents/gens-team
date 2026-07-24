@@ -1,7 +1,7 @@
 ---
 name: Database Migration
 description: |
-  Database migration patterns for GenesisPod (hand-written SQL + Prisma).
+  Database migration patterns for gens.team (hand-written SQL + Prisma).
   Trigger keywords: migration, schema change, alter table, add column, enum, prisma migrate
   Not for: Schema design (-> schema-architect), Data seeding (-> database-manager)
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
@@ -25,7 +25,7 @@ boundaries:
 
 # Database Migration
 
-> GenesisPod uses **hand-written SQL migrations**, not `npx prisma migrate dev`.
+> gens.team uses **hand-written SQL migrations**, not `npx prisma migrate dev`.
 
 ## Critical Rule: No DO/EXCEPTION Wrapper for ALTER TYPE
 

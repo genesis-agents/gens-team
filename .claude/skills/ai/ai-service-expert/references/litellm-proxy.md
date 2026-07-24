@@ -36,7 +36,7 @@ router_settings:
 ### System Prompt Template
 
 ```python
-SYSTEM_PROMPT = """You are an AI assistant for GenesisPod, a knowledge management platform.
+SYSTEM_PROMPT = """You are an AI assistant for gens.team, a knowledge management platform.
 
 Your capabilities:
 - Analyze documents and extract key insights

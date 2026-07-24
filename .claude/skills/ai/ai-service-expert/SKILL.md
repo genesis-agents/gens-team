@@ -24,7 +24,7 @@ boundaries:
 
 # AI Service Expert
 
-> Integrate and manage AI services for GenesisPod.
+> Integrate and manage AI services for gens.team.
 
 ## Architecture
 

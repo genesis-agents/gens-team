@@ -1,6 +1,6 @@
 # Data Skills
 
-> Data processing and knowledge management for GenesisPod.
+> Data processing and knowledge management for gens.team.
 
 ## Skills Overview
 

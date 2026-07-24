@@ -1,10 +1,10 @@
-# GenesisPod - Claude Code 配置
+# gens.team - Claude Code 配置
 
 > AI 助手行为配置，指导 Claude Code 在本项目中的决策和行为。
 
 ## 项目概述
 
-**GenesisPod** - 企业级 AI 深度研究和内容管理平台。
+**gens.team** - 企业级 AI 深度研究和内容管理平台。
 
 ### 核心模块
 
@@ -435,7 +435,7 @@ git branch -d worktree-feat-oauth
 3. **错误处理**: 所有异步操作必须 try-catch
 4. **日志**: 使用 NestJS Logger，禁止 console.log
 5. **图标**: 禁止使用 emoji，必须使用 SVG 图标（Lucide React）
-6. **品牌名称**: 禁止硬编码品牌名（"GenesisPod"/"Raven"/"DeepDive"等），前端用 `config.brand.*`（from `@/lib/utils/config`），后端用 `APP_CONFIG.brand.*`（from `common/config/app.config`）。Logo 用前端 `<BrandLogo />` 组件或后端 `BrandLogoService`
+6. **品牌名称**: 禁止硬编码品牌名（"gens.team"/"Raven"/"DeepDive"等），前端用 `config.brand.*`（from `@/lib/utils/config`），后端用 `APP_CONFIG.brand.*`（from `common/config/app.config`）。Logo 用前端 `<BrandLogo />` 组件或后端 `BrandLogoService`
 7. **简洁优先（Karpathy 原则，反过度抽象）**:
    - **最少代码原则**：能用 5 行解决，不写 50 行；能用 50 行解决，不写 200 行
    - **不为单一用例做抽象**：只用一次的代码不要抽 Strategy / Factory / 接口；3 处使用再考虑抽象

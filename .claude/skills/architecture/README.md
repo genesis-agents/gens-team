@@ -1,6 +1,6 @@
 # Architecture Skills
 
-> System design and architectural patterns for GenesisPod.
+> System design and architectural patterns for gens.team.
 
 ## Skills Overview
 

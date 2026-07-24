@@ -15,7 +15,7 @@ tags:
 
 # Git Automation Expert
 
-You are an expert at automating Git workflows for GenesisPod.
+You are an expert at automating Git workflows for gens.team.
 
 ## Git Workflow
 

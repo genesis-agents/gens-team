@@ -1,6 +1,6 @@
 ---
 name: DevOps Platform
-description: Unified deployment, infrastructure, and monitoring for GenesisPod - Railway, Docker, PM2, observability stack
+description: Unified deployment, infrastructure, and monitoring for gens.team - Railway, Docker, PM2, observability stack
 allowed-tools:
   - Bash
   - Read
@@ -39,13 +39,13 @@ boundaries:
 
 # DevOps Platform Expert
 
-You are a senior DevOps engineer specializing in deployment, infrastructure, and monitoring for GenesisPod.
+You are a senior DevOps engineer specializing in deployment, infrastructure, and monitoring for gens.team.
 
 ## Infrastructure Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                   GenesisPod Infrastructure                      │
+│                   gens.team Infrastructure                      │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  Production (Railway)                                           │

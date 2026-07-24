@@ -1,6 +1,6 @@
 # Development Skills
 
-> Frontend and backend development patterns for GenesisPod.
+> Frontend and backend development patterns for gens.team.
 
 ## Skills Overview
 

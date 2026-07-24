@@ -1,7 +1,7 @@
 ---
 name: API Developer
 description: |
-  Design and implement RESTful APIs with NestJS for GenesisPod.
+  Design and implement RESTful APIs with NestJS for gens.team.
   Trigger keywords: api, rest, nestjs, controller, service, dto, endpoint
   Not for: Schema design (-> schema-architect), Security (-> security-specialist)
 allowed-tools: [Bash, Read, Write, Edit, Grep, Glob]
@@ -24,7 +24,7 @@ boundaries:
 
 # API Developer
 
-> NestJS API development for GenesisPod.
+> NestJS API development for gens.team.
 
 ## Backend Architecture
 

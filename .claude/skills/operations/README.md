@@ -1,6 +1,6 @@
 # Operations Skills
 
-> DevOps, debugging, and operational tasks for GenesisPod.
+> DevOps, debugging, and operational tasks for gens.team.
 
 ## Skills Overview
 

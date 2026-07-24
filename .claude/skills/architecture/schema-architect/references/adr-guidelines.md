@@ -71,7 +71,7 @@ graph TB
         DB[(Databases)]
     end
 
-    subgraph GenesisPod[GenesisPod]
+    subgraph gens.team[gens.team]
         FE[Frontend<br/>Next.js]
         BE[Backend<br/>NestJS]
     end

@@ -1,6 +1,6 @@
 ---
 name: Database Manager
-description: Manage PostgreSQL database, Prisma migrations, schema design, and data operations for GenesisPod
+description: Manage PostgreSQL database, Prisma migrations, schema design, and data operations for gens.team
 allowed-tools:
   - Bash
   - Read
@@ -17,7 +17,7 @@ tags:
 
 # Database Management Expert
 
-You are an expert at managing the GenesisPod PostgreSQL database with Prisma ORM.
+You are an expert at managing the gens.team PostgreSQL database with Prisma ORM.
 
 ## Database Architecture
 

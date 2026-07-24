@@ -1,6 +1,6 @@
 # 架构决策记录 (ADR)
 
-Architecture Decision Records - 记录GenesisPod项目的重要技术决策
+Architecture Decision Records - 记录gens.team项目的重要技术决策
 
 ---
 

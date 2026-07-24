@@ -1,6 +1,6 @@
 # Claude Code Configuration
 
-> GenesisPod 项目的 Claude Code 配置目录，包含 AI 助手的行为配置、技能库和自动化工具。
+> gens.team 项目的 Claude Code 配置目录，包含 AI 助手的行为配置、技能库和自动化工具。
 
 ## Quick Start
 

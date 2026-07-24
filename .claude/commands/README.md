@@ -1,6 +1,6 @@
 # Claude Code Commands
 
-> GenesisPod 项目的 slash commands 快捷指令集。
+> gens.team 项目的 slash commands 快捷指令集。
 
 ## 使用方法
 
