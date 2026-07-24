@@ -1,2 +1,3 @@
 coverage/
 prisma/deploy-migrations.ts
+prisma/seed-data-sources.ts

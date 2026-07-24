@@ -147,7 +147,7 @@ describe("SocialPublishAdapter", () => {
           title: "AI 周记",
           content: "今天聊聊",
           images: ["https://x.com/1.jpg", "https://x.com/2.jpg"],
-          tags: ["AI", "GenesisPod"],
+          tags: ["AI", "gens.team"],
           location: "杭州",
           atUsers: ["xiaoming"],
         },
@@ -162,7 +162,7 @@ describe("SocialPublishAdapter", () => {
         contentType: SocialContentType.XIAOHONGSHU_NOTE,
         title: "AI 周记",
         images: ["https://x.com/1.jpg", "https://x.com/2.jpg"],
-        tags: ["AI", "GenesisPod"],
+        tags: ["AI", "gens.team"],
         location: "杭州",
       });
       // atUsers 在 aiProcessLog

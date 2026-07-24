@@ -1,5 +1,5 @@
 /**
- * GenesisPod v2.1 - 品牌套件 API 控制器
+ * gens.team v2.1 - 品牌套件 API 控制器
  */
 
 import {

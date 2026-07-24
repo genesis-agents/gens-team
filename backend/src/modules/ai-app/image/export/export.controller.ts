@@ -1,5 +1,5 @@
 /**
- * GenesisPod v2.1 - 导出 API 控制器
+ * gens.team v2.1 - 导出 API 控制器
  */
 
 import {

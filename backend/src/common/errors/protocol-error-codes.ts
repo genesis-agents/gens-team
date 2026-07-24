@@ -1,7 +1,7 @@
 /**
  * Cross-protocol error-code reference (documentation + mapping constants only).
  *
- * GenesisPod exposes three external response contracts, each with its OWN error
+ * gens.team exposes three external response contracts, each with its OWN error
  * envelope. This file is a READ-ONLY reference: it does NOT change the runtime
  * behavior of any filter. It exists so that:
  *   - external integrators have one place to see how the three contracts differ;

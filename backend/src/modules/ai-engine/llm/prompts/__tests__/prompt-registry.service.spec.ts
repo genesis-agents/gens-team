@@ -43,7 +43,7 @@ describe("PromptRegistryService", () => {
           template: "Hello {{name}}, welcome to {{service}}!",
           variables: [
             { name: "name", required: true },
-            { name: "service", required: false, defaultValue: "GenesisPod AI" },
+            { name: "service", required: false, defaultValue: "gens.team AI" },
           ],
         },
       ],
@@ -128,7 +128,7 @@ describe("PromptRegistryService", () => {
 
       const result = service.resolve("test-prompt", { name: "Alice" });
 
-      expect(result.content).toBe("Hello Alice, welcome to GenesisPod AI!");
+      expect(result.content).toBe("Hello Alice, welcome to gens.team AI!");
       expect(result.version).toBe("1.0");
       expect(result.id).toBe("test-prompt");
     });

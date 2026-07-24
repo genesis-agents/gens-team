@@ -29,7 +29,7 @@ export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1536}"
 export PUPPETEER_EXECUTABLE_PATH="${PUPPETEER_EXECUTABLE_PATH:-/usr/bin/chromium}"
 
 echo "=========================================="
-echo "Starting ${BRAND_FULL_NAME:-GenesisPod} Backend"
+echo "Starting ${BRAND_FULL_NAME:-gens.team} Backend"
 echo "  NODE_ENV=$NODE_ENV"
 echo "  NODE_OPTIONS=$NODE_OPTIONS"
 echo "=========================================="

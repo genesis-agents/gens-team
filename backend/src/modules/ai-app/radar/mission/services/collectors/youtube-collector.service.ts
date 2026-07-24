@@ -181,7 +181,7 @@ export class YoutubeCollector implements ICollector {
         signal: controller.signal,
         headers: {
           "User-Agent":
-            "Mozilla/5.0 (compatible; GenesisPod-Radar/1.0; +https://gens.team)",
+            "Mozilla/5.0 (compatible; gens.team-Radar/1.0; +https://gens.team)",
           Accept: "text/html",
         },
         redirect: "follow",

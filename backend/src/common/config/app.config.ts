@@ -76,7 +76,7 @@ export const APP_CONFIG = {
     /** 默认 GitHub 仓库所有者 */
     owner: process.env.GITHUB_OWNER || "genesis-agents",
     /** 默认 GitHub 仓库名称 */
-    repo: process.env.GITHUB_REPO || "GenesisPod",
+    repo: process.env.GITHUB_REPO || "gens-team",
   },
 
   // ==================== 辅助方法 ====================

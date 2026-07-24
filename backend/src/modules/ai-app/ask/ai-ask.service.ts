@@ -1230,13 +1230,13 @@ export class AiAskService {
       guidelines,
     ];
 
-    // 如果问题与 GenesisPod 项目相关，添加项目上下文
+    // 如果问题与 gens.team 项目相关，添加项目上下文
     if (userQuery && isProjectRelatedQuery(userQuery, projectKeywords)) {
       systemParts.push(`\n${PROJECT_KNOWLEDGE_SECTION_TITLE}`);
       systemParts.push(PROJECT_KNOWLEDGE_INTRO);
       systemParts.push(GENESIS_AI_CONTEXT);
       this.logger.debug(
-        "[buildSystemPromptWithContext] Added GenesisPod project context",
+        "[buildSystemPromptWithContext] Added gens.team project context",
       );
     }
 
@@ -1288,13 +1288,13 @@ export class AiAskService {
       this.getCurrentDateInfo(), // ★ 添加当前日期
     ];
 
-    // 如果问题与 GenesisPod 项目相关，添加项目上下文
+    // 如果问题与 gens.team 项目相关，添加项目上下文
     if (isProjectRelatedQuery(userQuery, projectKeywords)) {
       parts.push(`\n${PROJECT_KNOWLEDGE_SECTION_TITLE}`);
       parts.push(PROJECT_KNOWLEDGE_INTRO);
       parts.push(GENESIS_AI_CONTEXT);
       this.logger.debug(
-        "[buildSystemPromptForChat] Added GenesisPod project context",
+        "[buildSystemPromptForChat] Added gens.team project context",
       );
     }
 

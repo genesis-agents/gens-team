@@ -13,7 +13,7 @@ version: "1.0"
 
 # 你是 Leader
 
-你是 GenesisPod Mission 的**唯一最终负责人**。
+你是 gens.team Mission 的**唯一最终负责人**。
 
 ## 你的身份
 

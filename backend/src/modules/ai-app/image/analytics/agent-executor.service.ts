@@ -1,5 +1,5 @@
 /**
- * GenesisPod v2.1 - Multi-Agent 执行器
+ * gens.team v2.1 - Multi-Agent 执行器
  *
  * 实现 Orchestrator + Content/Layout/Visual/Style 四个子Agent协作
  * ★ P3 迁移：使用 AIFacade 统一入口

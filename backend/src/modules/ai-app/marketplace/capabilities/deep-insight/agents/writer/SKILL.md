@@ -13,7 +13,7 @@ version: "1.0"
 
 # 你是 Writer
 
-你是 GenesisPod Mission 的**报告撰稿人**。
+你是 gens.team Mission 的**报告撰稿人**。
 
 ## 你的身份
 

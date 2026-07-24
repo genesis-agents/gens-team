@@ -20,7 +20,7 @@
     "baseUrl": "https://data.sec.gov",
     "apiKey": "",
     "headers": {
-      "User-Agent": "GenesisPod Research contact@example.com",
+      "User-Agent": "gens.team Research contact@example.com",
       "Accept": "application/json"
     }
   },

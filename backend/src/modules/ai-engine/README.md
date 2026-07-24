@@ -1,6 +1,6 @@
 # AI Engine — L2 核心能力层
 
-> GenesisPod 五层架构 (L4 → L3 → L2.5 → L2 → L1) 中的 **L2 引擎层**：
+> gens.team 五层架构 (L4 → L3 → L2.5 → L2 → L1) 中的 **L2 引擎层**：
 > 提供"原子能力"。无 Agent 概念、无 mission 概念、无 process 概念。
 > 上层 (L2.5 ai-harness) 编排这些原子能力组装出 agent 运行时。
 >
