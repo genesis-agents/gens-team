@@ -94,7 +94,7 @@ export function BrandLogo({
       {isFull && (
         <div className="flex items-end gap-1.5">
           <span
-            className="logo-shimmer text-[18px] font-bold leading-none tracking-[0.1em]"
+            className="logo-shimmer text-[15px] font-bold leading-none tracking-[0.03em]"
             style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
           >
             {config.brand.name}
