@@ -354,8 +354,24 @@ describe("ReportCitationImportListener", () => {
           sourceType: "news",
           credibilityScore: 85,
         },
+        {
+          // /docs/ 路径下的报告 PDF 是文档文件不是文档站页面，放行
+          url: "https://reports.weforum.org/docs/WEF_AI_Energy_Paradox_2025.pdf",
+          title: "Artificial Intelligence's Energy Paradox",
+          domain: "reports.weforum.org",
+          sourceType: "industry",
+          credibilityScore: 88,
+        },
+        {
+          // docs. 子域下的出版物 PDF 同理放行
+          url: "https://docs.nlr.gov/docs/fy26osti/97716.pdf",
+          title: "Modeling Framework for Data Center Loads",
+          domain: "docs.nlr.gov",
+          sourceType: "gov",
+          credibilityScore: 95,
+        },
       ]),
     );
-    expect(importManager.importWithMetadata).toHaveBeenCalledTimes(2);
+    expect(importManager.importWithMetadata).toHaveBeenCalledTimes(4);
   });
 });

@@ -68,6 +68,9 @@ const DOCS_PATH_PATTERN =
 export function isDocsOrReferenceUrl(url: string): boolean {
   try {
     const u = new URL(url);
+    // .pdf 是"文档文件"不是"文档站页面"——WEF/NLR 等机构把报告 PDF 挂在
+    // docs. 子域或 /docs/ 路径下（2026-07-25 存量 dry-run 实锤误伤），豁免
+    if (/\.pdf$/i.test(u.pathname)) return false;
     if (DOCS_HOST_PATTERN.test(u.hostname)) return true;
     return DOCS_PATH_PATTERN.test(u.pathname);
   } catch {
