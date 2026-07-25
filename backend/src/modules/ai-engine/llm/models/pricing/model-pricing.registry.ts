@@ -151,8 +151,38 @@ export class ModelPricingRegistry implements OnApplicationBootstrap {
         });
         registered += 1;
       }
+      // ★ 2026-07-25：BYOK 用户模型吸价 —— UserModelConfig 有价格列但此前
+      //   无人喂给 registry，BYOK 通道跑的模型（如 deepseek-v4-flash）成本
+      //   一直按 $0 统计。仅注册填了价格的行；平台 AIModel 行优先不覆盖；
+      //   tier 固定 standard（BYOK 模型不进平台 tier 选择，tier 仅估算元数据）。
+      let byokRegistered = 0;
+      const userRows = await this.prisma.userModelConfig.findMany({
+        where: {
+          isEnabled: true,
+          OR: [
+            { priceInputPerMillion: { not: null } },
+            { priceOutputPerMillion: { not: null } },
+          ],
+        },
+        select: {
+          modelId: true,
+          priceInputPerMillion: true,
+          priceOutputPerMillion: true,
+        },
+      });
+      for (const row of userRows) {
+        if (this.byId.has(row.modelId)) continue;
+        this.register({
+          modelId: row.modelId,
+          tier: "standard",
+          inputPricePerM: Number(row.priceInputPerMillion ?? 0),
+          outputPricePerM: Number(row.priceOutputPerMillion ?? 0),
+        });
+        byokRegistered += 1;
+      }
+
       this.logger.log(
-        `hydrateFromDb done: registered=${registered}, skipped=${skipped} (missing costTier). ` +
+        `hydrateFromDb done: registered=${registered}, byok=${byokRegistered}, skipped=${skipped} (missing costTier). ` +
           `Tiers: strong=${this.byTier.get("strong")?.length ?? 0}, ` +
           `standard=${this.byTier.get("standard")?.length ?? 0}, ` +
           `basic=${this.byTier.get("basic")?.length ?? 0}`,

@@ -255,6 +255,9 @@ describe("ModelPricingRegistry", () => {
             },
           ]),
         },
+        userModelConfig: {
+          findMany: jest.fn().mockResolvedValue([]),
+        },
       };
       const reg = new ModelPricingRegistry(mockPrisma as never);
       await reg.onApplicationBootstrap();
@@ -280,6 +283,9 @@ describe("ModelPricingRegistry", () => {
               priceCacheWritePerMillion: null,
             },
           ]),
+        },
+        userModelConfig: {
+          findMany: jest.fn().mockResolvedValue([]),
         },
       };
       const reg = new ModelPricingRegistry(mockPrisma as never);
@@ -313,6 +319,9 @@ describe("ModelPricingRegistry", () => {
             },
           ]),
         },
+        userModelConfig: {
+          findMany: jest.fn().mockResolvedValue([]),
+        },
       };
       const reg = new ModelPricingRegistry(mockPrisma as never);
       await reg.onApplicationBootstrap();
@@ -337,6 +346,49 @@ describe("ModelPricingRegistry", () => {
       const reg = new ModelPricingRegistry(mockPrisma as never);
       await expect(reg.onApplicationBootstrap()).resolves.toBeUndefined();
       expect(reg.list().length).toBe(0);
+    });
+
+    it("BYOK 用户模型吸价：UserModelConfig 填了价格的行注册进 registry（平台行优先）", async () => {
+      const mockPrisma = {
+        aIModel: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              modelId: "shared-model",
+              costTier: "strong",
+              priceInputPerMillion: "5",
+              priceOutputPerMillion: "15",
+              priceCacheReadPerMillion: null,
+              priceCacheWritePerMillion: null,
+            },
+          ]),
+        },
+        userModelConfig: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              modelId: "deepseek-v4-flash",
+              priceInputPerMillion: "0.14",
+              priceOutputPerMillion: "0.28",
+            },
+            {
+              // 与平台行同名 → 平台行优先，不覆盖
+              modelId: "shared-model",
+              priceInputPerMillion: "999",
+              priceOutputPerMillion: "999",
+            },
+          ]),
+        },
+      };
+      const reg = new ModelPricingRegistry(mockPrisma as never);
+      await reg.onApplicationBootstrap();
+
+      const byok = reg.get("deepseek-v4-flash");
+      expect(byok).not.toBeNull();
+      expect(byok!.tier).toBe("standard");
+      const cost = reg.estimateCost("deepseek-v4-flash", 1_000_000, 1_000_000);
+      expect(cost).toBeCloseTo(0.14 + 0.28);
+
+      // 平台行价格未被 BYOK 行覆盖
+      expect(reg.get("shared-model")!.inputPricePerM).toBe(5);
     });
   });
 });

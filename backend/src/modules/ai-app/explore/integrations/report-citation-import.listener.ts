@@ -62,6 +62,20 @@ const DOCS_PATH_PATTERN =
   /\/(docs|documentation|reference|api-reference|manual|about|about-us|pricing|terms|privacy|legal|careers|contact|faq|changelog|release-notes)(\/|$)/i;
 
 /**
+ * ★ 2026-07-25：根路径 URL（机构/产品首页）识别。报告会引用机构主页
+ * （bair.berkeley.edu / hai.stanford.edu 等），标题是真标题能过闸，
+ * 但首页不是"内容"，阅读器也提不出正文——不入库。
+ */
+export function isHomepageUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.pathname === "/" || u.pathname === "";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * ★ 2026-07-24：文档/产品参考页识别。这类页面是产品手册/公司样板页，
  * 不是"内容"，完全不入公共信源库（同一谓词供存量清理 SQL 对齐使用）。
  */
@@ -151,7 +165,9 @@ export class ReportCitationImportListener {
         // ★ 2026-07-21：必须有真实标题，挡掉裸域名/无标题的半成品引用
         hasRealTitle(c) &&
         // ★ 2026-07-24：文档/产品参考页完全不入库
-        !isDocsOrReferenceUrl(c.url),
+        !isDocsOrReferenceUrl(c.url) &&
+        // ★ 2026-07-25：机构/产品首页不入库（首页无正文可读）
+        !isHomepageUrl(c.url),
     );
     const gated = citations.length - eligible.length;
     if (eligible.length === 0) {

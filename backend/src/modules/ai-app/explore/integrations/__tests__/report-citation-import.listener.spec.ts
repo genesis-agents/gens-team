@@ -336,6 +336,29 @@ describe("ReportCitationImportListener", () => {
     expect(importManager.importWithMetadata).not.toHaveBeenCalled();
   });
 
+  it("首页闸门：机构/产品根路径 URL 一律挡下（真标题也不放行）", async () => {
+    const { listener, importManager } = makeListener();
+    await listener.handleReportCompleted(
+      makePayload([
+        {
+          url: "https://bair.berkeley.edu/",
+          title: "Berkeley Artificial Intelligence Research Lab",
+          domain: "bair.berkeley.edu",
+          sourceType: "academic",
+          credibilityScore: 92,
+        },
+        {
+          url: "https://www.lanl.gov",
+          title: "Los Alamos National Laboratory",
+          domain: "lanl.gov",
+          sourceType: "gov",
+          credibilityScore: 95,
+        },
+      ]),
+    );
+    expect(importManager.importWithMetadata).not.toHaveBeenCalled();
+  });
+
   it("文档/产品页闸门：正文路径含 report/blog 字样的正常内容不误伤", async () => {
     const { listener, importManager } = makeListener();
     await listener.handleReportCompleted(
