@@ -76,11 +76,13 @@ export interface IObjectStorageBackend {
   getBucketName(): string;
 
   /**
-   * 列对象（用于存储治理 / inventory）
+   * 列对象（用于存储治理 / inventory / archive read-back）
    */
   listObjects(options?: {
     continuationToken?: string;
     maxKeys?: number;
+    /** 只列 key 以此前缀开头的对象（S3 ListObjectsV2 Prefix，服务端过滤） */
+    prefix?: string;
   }): Promise<{
     objects: Array<{ key: string; size: number }>;
     nextContinuationToken?: string;

@@ -10,12 +10,12 @@
     "frontend/lib/design/tokens.ts"
   ],
   "totals": {
-    "all": 1950,
+    "all": 1952,
     "byLayer": {
       "engine": 553,
       "frontend": 249,
       "harness": 1092,
-      "platform": 56
+      "platform": 58
     },
     "byDomain": {
       "engine/content": 201,
@@ -81,7 +81,7 @@
       "platform/policy-config": 6,
       "platform/release": 1,
       "platform/settings": 1,
-      "platform/storage": 2
+      "platform/storage": 4
     }
   },
   "capabilities": [
@@ -15668,6 +15668,22 @@
       "domain": "settings",
       "source": "backend/src/modules/platform/settings/settings.service.ts",
       "import": "import { SettingsService } from \"@/modules/platform/facade\";"
+    },
+    {
+      "name": "ArchiveReadQuery",
+      "kind": "type",
+      "layer": "platform",
+      "domain": "storage",
+      "source": "backend/src/modules/platform/storage/governance/event-archive-reader.service.ts",
+      "import": "import { ArchiveReadQuery } from \"@/modules/platform/facade\";"
+    },
+    {
+      "name": "EventArchiveReaderService",
+      "kind": "value",
+      "layer": "platform",
+      "domain": "storage",
+      "source": "backend/src/modules/platform/storage/governance/event-archive-reader.service.ts",
+      "import": "import { EventArchiveReaderService } from \"@/modules/platform/facade\";"
     },
     {
       "name": "ObjectStorageService",

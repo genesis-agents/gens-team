@@ -10,9 +10,11 @@
  * 4. 提供按维度分组的活动查询
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { AgentActivityType } from "@prisma/client";
+import type { Prisma, ResearchAgentActivity } from "@prisma/client";
+import { EventArchiveReaderService } from "@/modules/platform/facade";
 import { getModelDisplayNameMap } from "../../utils/model-display-name";
 import type {
   SearchResultsRecord,
@@ -64,7 +66,95 @@ export class AgentActivityService {
   // 用于追踪正在进行的阶段（topicId:agentId:thinkingPhase -> activityId）
   private readonly activePhases = new Map<string, string>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // @Optional：StorageModule 未 import 时归档回读退化为空（只返回 Postgres 命中）。
+    @Optional() private readonly archiveReader?: EventArchiveReaderService,
+  ) {}
+
+  private static readonly DAY_MS = 24 * 3600 * 1000;
+
+  /**
+   * ★ 2026-07-25：按 (where + topic/mission) 查活动，Postgres 空时回读 R2 归档
+   * （EventArchiveService 已把 >保留期 的 research_agent_activities 归档删除）。
+   * jsPredicate 需与 where 的非 topicId/missionId 条件等价（用于过滤归档行）。
+   */
+  private async findActivitiesWithArchiveFallback(
+    where: Prisma.ResearchAgentActivityWhereInput,
+    anchor: { topicId: string; missionId?: string },
+    jsPredicate: (row: Record<string, unknown>) => boolean,
+  ): Promise<ResearchAgentActivity[]> {
+    const rows = await this.prisma.researchAgentActivity.findMany({
+      where,
+      orderBy: { createdAt: "asc" },
+    });
+    if (rows.length > 0 || !this.archiveReader) return rows;
+
+    const window = await this.archiveDayWindow(
+      anchor.topicId,
+      anchor.missionId,
+    );
+    if (!window) return rows;
+
+    const archived = await this.archiveReader.readArchivedRows({
+      table: "research_agent_activities",
+      dayFrom: window.from,
+      dayTo: window.to,
+      rowFilter: (r) =>
+        r.topicId === anchor.topicId &&
+        (anchor.missionId == null || r.missionId === anchor.missionId) &&
+        jsPredicate(r),
+      limit: 5000,
+    });
+    return archived
+      .map((r) => this.reviveActivity(r))
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  /** 归档回读的日期窗口：优先按 mission 起止，否则按该 topic 下所有 mission 聚合。 */
+  private async archiveDayWindow(
+    topicId: string,
+    missionId?: string,
+  ): Promise<{ from: Date; to: Date } | null> {
+    const D = AgentActivityService.DAY_MS;
+    if (missionId) {
+      const m = await this.prisma.researchMission.findUnique({
+        where: { id: missionId },
+        select: { startedAt: true, completedAt: true, createdAt: true },
+      });
+      if (!m) return null;
+      const start = m.startedAt ?? m.createdAt;
+      const end = m.completedAt ?? start;
+      return {
+        from: new Date(start.getTime() - D),
+        to: new Date(end.getTime() + D),
+      };
+    }
+    const agg = await this.prisma.researchMission.aggregate({
+      where: { topicId },
+      _min: { createdAt: true },
+      _max: { completedAt: true, createdAt: true },
+    });
+    const start = agg._min.createdAt;
+    if (!start) return null;
+    const end = agg._max.completedAt ?? agg._max.createdAt ?? start;
+    return {
+      from: new Date(start.getTime() - D),
+      to: new Date(end.getTime() + D),
+    };
+  }
+
+  /** 归档 JSON 行 → ResearchAgentActivity（复活 Date 列）。 */
+  private reviveActivity(r: Record<string, unknown>): ResearchAgentActivity {
+    const toDate = (v: unknown): Date | null =>
+      v == null ? null : new Date(v as string);
+    return {
+      ...r,
+      createdAt: toDate(r.createdAt) ?? new Date(0),
+      phaseStartedAt: toDate(r.phaseStartedAt),
+      phaseEndedAt: toDate(r.phaseEndedAt),
+    } as unknown as ResearchAgentActivity;
+  }
 
   /**
    * 根据 modelId 解析带模型标签的 agentName
@@ -287,13 +377,11 @@ export class AgentActivityService {
     topicId: string,
     missionId?: string,
   ): Promise<DimensionActivities[]> {
-    const activities = await this.prisma.researchAgentActivity.findMany({
-      where: {
-        topicId,
-        ...(missionId ? { missionId } : {}),
-      },
-      orderBy: { createdAt: "asc" },
-    });
+    const activities = await this.findActivitiesWithArchiveFallback(
+      { topicId, ...(missionId ? { missionId } : {}) },
+      { topicId, missionId },
+      () => true,
+    );
 
     // 按维度分组
     const dimensionMap = new Map<string, AgentActivityWithTiming[]>();
@@ -407,14 +495,11 @@ export class AgentActivityService {
     topicId: string,
     missionId?: string,
   ): Promise<AgentActivityWithTiming[]> {
-    const activities = await this.prisma.researchAgentActivity.findMany({
-      where: {
-        topicId,
-        agentRole: "leader",
-        ...(missionId ? { missionId } : {}),
-      },
-      orderBy: { createdAt: "asc" },
-    });
+    const activities = await this.findActivitiesWithArchiveFallback(
+      { topicId, agentRole: "leader", ...(missionId ? { missionId } : {}) },
+      { topicId, missionId },
+      (r) => r.agentRole === "leader",
+    );
 
     return activities.map((activity) => ({
       id: activity.id,

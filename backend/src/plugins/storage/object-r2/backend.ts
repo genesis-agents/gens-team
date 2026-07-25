@@ -152,6 +152,7 @@ export class R2ObjectStorageBackend implements IObjectStorageBackend {
   async listObjects(options?: {
     continuationToken?: string;
     maxKeys?: number;
+    prefix?: string;
   }): Promise<{
     objects: Array<{ key: string; size: number }>;
     nextContinuationToken?: string;
@@ -165,6 +166,7 @@ export class R2ObjectStorageBackend implements IObjectStorageBackend {
         Bucket: this.bucketName,
         ContinuationToken: options?.continuationToken,
         MaxKeys: options?.maxKeys ?? 1000,
+        Prefix: options?.prefix,
       }),
     );
     return {

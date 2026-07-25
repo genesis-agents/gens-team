@@ -11,16 +11,25 @@
  * - 读：sync 优先返回内存（fast path）。无内存时调用方需用 readPersisted() 兜底。
  */
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { PrismaService } from "../../../../../common/prisma/prisma.service";
 import {
   BusinessTeamEventBufferFramework,
   type EventBufferHooks,
 } from "@/modules/ai-harness/facade";
+import { EventArchiveReaderService } from "@/modules/platform/facade";
+
+const ARCHIVE_TABLE = "agent_playground_mission_events";
+const DAY_MS = 24 * 3600 * 1000;
 
 @Injectable()
 export class MissionEventBuffer extends BusinessTeamEventBufferFramework {
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    // @Optional：StorageModule 未 import 时归档回读退化为空（仍返回 Postgres 命中），
+    // 不强依赖以避免 playground.module 与 platform storage 的循环。
+    @Optional() archiveReader?: EventArchiveReaderService,
+  ) {
     const hooks: EventBufferHooks = {
       adapterId: "playground.mission-buffer",
       acceptsEvent: (type) => type.startsWith("playground."),
@@ -45,15 +54,73 @@ export class MissionEventBuffer extends BusinessTeamEventBufferFramework {
           orderBy: { ts: "asc" },
           take: limit,
         });
-        return rows.map((r) => ({
-          type: r.type,
-          payload: r.payload as unknown,
-          agentId: r.agentId ?? undefined,
-          traceId: r.traceId ?? undefined,
-          timestamp: Number(r.ts),
-        }));
+        if (rows.length > 0) {
+          return rows.map((r) => ({
+            type: r.type,
+            payload: r.payload as unknown,
+            agentId: r.agentId ?? undefined,
+            traceId: r.traceId ?? undefined,
+            timestamp: Number(r.ts),
+          }));
+        }
+        // ★ 2026-07-25：Postgres 空 → mission 事件可能已被 EventArchiveService
+        //   归档删除，回读 R2 冷存（EventArchiveReaderService）。
+        return MissionEventBuffer.readFromArchive(
+          prisma,
+          archiveReader,
+          missionId,
+          sinceTs,
+          limit,
+        );
       },
     };
     super(hooks, "MissionEventBuffer");
+  }
+
+  /** 从 R2 归档回读某 mission 的事件（Postgres 已归档删除时兜底）。 */
+  private static async readFromArchive(
+    prisma: PrismaService,
+    archiveReader: EventArchiveReaderService | undefined,
+    missionId: string,
+    sinceTs: number | undefined,
+    limit: number,
+  ): Promise<
+    Array<{
+      type: string;
+      payload: unknown;
+      agentId?: string;
+      traceId?: string;
+      timestamp: number;
+    }>
+  > {
+    if (!archiveReader) return [];
+    const mission = await prisma.agentPlaygroundMission.findUnique({
+      where: { id: missionId },
+      select: { startedAt: true, completedAt: true },
+    });
+    if (!mission) return [];
+    // 事件 createdAt 落在 [startedAt, completedAt] 内；两端各留 1 天缓冲（跨日/长跑）。
+    const dayFrom = new Date(mission.startedAt.getTime() - DAY_MS);
+    const dayTo = new Date(
+      (mission.completedAt ?? mission.startedAt).getTime() + DAY_MS,
+    );
+    const archived = await archiveReader.readArchivedRows({
+      table: ARCHIVE_TABLE,
+      dayFrom,
+      dayTo,
+      rowFilter: (r) =>
+        r.missionId === missionId &&
+        (sinceTs == null || Number(r.ts) >= sinceTs),
+      limit,
+    });
+    return archived
+      .map((r) => ({
+        type: String(r.type),
+        payload: r.payload,
+        agentId: r.agentId != null ? String(r.agentId) : undefined,
+        traceId: r.traceId != null ? String(r.traceId) : undefined,
+        timestamp: Number(r.ts),
+      }))
+      .sort((a, b) => a.timestamp - b.timestamp);
   }
 }

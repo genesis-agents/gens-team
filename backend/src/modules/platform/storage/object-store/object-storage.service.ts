@@ -268,6 +268,7 @@ export class ObjectStorageService {
   async listObjects(options?: {
     continuationToken?: string;
     maxKeys?: number;
+    prefix?: string;
   }): Promise<{
     objects: Array<{ key: string; size: number }>;
     nextContinuationToken?: string;
@@ -365,6 +366,12 @@ export class ObjectStorageService {
     const buf = await this.backend.getObject(key);
     if (!buf) return null;
     return buf.toString("utf-8");
+  }
+
+  /** 下载对象原始字节（二进制安全，用于 gzip/归档回读；不存在返回 null）。 */
+  async getObjectBytes(key: string): Promise<Buffer | null> {
+    if (!this.backend.isAvailable()) return null;
+    return this.backend.getObject(key);
   }
 
   async deleteObject(key: string): Promise<boolean> {

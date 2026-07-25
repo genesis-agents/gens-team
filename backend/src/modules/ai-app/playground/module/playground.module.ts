@@ -50,6 +50,7 @@ import {
   SkillLoaderService,
   PromptSkillRegistrationService,
 } from "@/modules/ai-engine/facade";
+import { StorageModule } from "@/modules/platform/storage/storage.module";
 import { MissionEventBuffer } from "../mission/lifecycle/mission-event-buffer.service";
 import { MissionStore } from "../mission/lifecycle/mission-store.service";
 import { PrismaMissionCheckpointStore } from "../mission/lifecycle/prisma-mission-checkpoint.store";
@@ -129,6 +130,8 @@ import {
   imports: [
     CreditsModule,
     NotificationDispatcherModule,
+    // 归档冷读（EventArchiveReaderService）—— MissionEventBuffer 兜底回读 R2 归档
+    StorageModule,
     ConfigModule.forFeature(playgroundRuntimeConfig),
     JwtModule.registerAsync({
       imports: [ConfigModule],

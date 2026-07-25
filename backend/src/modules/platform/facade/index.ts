@@ -31,6 +31,10 @@ export {
 // ─── Storage ───
 export { StorageGovernanceService } from "../storage/governance/storage-governance.service";
 export { ObjectStorageService } from "../storage/object-store/object-storage.service";
+export {
+  EventArchiveReaderService,
+  type ArchiveReadQuery,
+} from "../storage/governance/event-archive-reader.service";
 
 // ─── Email ───
 export { EmailService } from "../email/email.service";

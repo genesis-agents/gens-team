@@ -5,6 +5,7 @@ import { DataRetentionScheduler } from "./governance/data-retention.scheduler";
 import { ObjectStorageService } from "./object-store/object-storage.service";
 import { StorageOffloadService } from "./governance/storage-offload.service";
 import { EventArchiveService } from "./governance/event-archive.service";
+import { EventArchiveReaderService } from "./governance/event-archive-reader.service";
 import { StorageInventoryService } from "./governance/storage-inventory.service";
 import { PrismaModule } from "../../../common/prisma/prisma.module";
 // W2-A: object storage backend plugin（@Global，提供 OBJECT_STORAGE_BACKEND_TOKEN）
@@ -25,6 +26,8 @@ import { ObjectStorageModule } from "@/plugins/storage/object-storage.module";
     StorageOffloadService,
     // 事件大表无损归档（archive-to-R2-then-delete）
     EventArchiveService,
+    // 归档冷读（R2 read-back，供热读路径 Postgres 空时兜底）
+    EventArchiveReaderService,
     StorageInventoryService,
   ],
   exports: [
@@ -36,6 +39,8 @@ import { ObjectStorageModule } from "@/plugins/storage/object-storage.module";
     DataRetentionScheduler,
     // 事件大表无损归档 —— admin 控制器需注入做状态查询 / 手动 dry-run 预演
     EventArchiveService,
+    // 归档冷读 —— 上层热读路径注入做兜底回读
+    EventArchiveReaderService,
   ],
 })
 export class StorageModule {}
