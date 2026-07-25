@@ -9,6 +9,9 @@
  *     → 自动入库（industry-report 白名单源经 curatedSources 覆盖后为 90 分，可过）
  *   - blog / community / other 或低分 → 直接跳过（公共库保持干净，不进待审队列）
  *   - 单 mission 上限 30 条，超出取信誉分最高的 30，丢弃量记日志
+ *   - ★ 2026-07-24（用户拍板）：文档/产品参考页（docs 子域、/docs//about/
+ *     /pricing 等）完全不入库——白名单信誉分加成会把这类页面推过 70 分线，
+ *     曾致 Claude Docs 手册页灌满"报告"tab
  *
  * 幂等：ImportManagerService.importWithMetadata 按 sourceUrl 幂等
  * （已存在则更新），同一篇被多个 mission 引用不会重复建记录。
@@ -51,6 +54,26 @@ const PAPER_URL_PATTERN =
 
 /** 裸主机名/域名模式（无空格、以 TLD 结尾），如 mckinsey.com / hai.stanford.edu */
 const BARE_HOSTNAME_PATTERN = /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i;
+
+/** 文档站子域（docs.anthropic.com / help.openai.com 等） */
+const DOCS_HOST_PATTERN = /^(docs|help|support|developers?)\./i;
+/** 文档/产品样板页路径（手册、API 参考、About/Pricing 等公司页） */
+const DOCS_PATH_PATTERN =
+  /\/(docs|documentation|reference|api-reference|manual|about|about-us|pricing|terms|privacy|legal|careers|contact|faq|changelog|release-notes)(\/|$)/i;
+
+/**
+ * ★ 2026-07-24：文档/产品参考页识别。这类页面是产品手册/公司样板页，
+ * 不是"内容"，完全不入公共信源库（同一谓词供存量清理 SQL 对齐使用）。
+ */
+export function isDocsOrReferenceUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (DOCS_HOST_PATTERN.test(u.hostname)) return true;
+    return DOCS_PATH_PATTERN.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * ★ 2026-07-21：判断 citation 是否有"真实标题"。
@@ -123,7 +146,9 @@ export class ReportCitationImportListener {
         !!c.sourceType &&
         c.sourceType in SOURCE_TYPE_TO_RESOURCE_TYPE &&
         // ★ 2026-07-21：必须有真实标题，挡掉裸域名/无标题的半成品引用
-        hasRealTitle(c),
+        hasRealTitle(c) &&
+        // ★ 2026-07-24：文档/产品参考页完全不入库
+        !isDocsOrReferenceUrl(c.url),
     );
     const gated = citations.length - eligible.length;
     if (eligible.length === 0) {

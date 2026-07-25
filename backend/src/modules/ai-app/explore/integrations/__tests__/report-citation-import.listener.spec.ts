@@ -298,4 +298,64 @@ describe("ReportCitationImportListener", () => {
     });
     expect(importManager.importWithMetadata).toHaveBeenCalledTimes(1);
   });
+
+  it("文档/产品页闸门：docs 子域与手册/About/Pricing 路径一律挡下（不入库）", async () => {
+    const { listener, importManager } = makeListener();
+    await listener.handleReportCompleted(
+      makePayload([
+        {
+          url: "https://docs.anthropic.com/en/docs/claude-code/security",
+          title: "Zero data retention - Claude Code Docs",
+          domain: "docs.anthropic.com",
+          sourceType: "industry",
+          credibilityScore: 90, // 白名单加成后的高分也挡
+        },
+        {
+          url: "https://help.openai.com/en/articles/data-controls",
+          title: "Data controls in the OpenAI platform",
+          domain: "help.openai.com",
+          sourceType: "industry",
+          credibilityScore: 88,
+        },
+        {
+          url: "https://anthropic.com/about",
+          title: "About Anthropic",
+          domain: "anthropic.com",
+          sourceType: "industry",
+          credibilityScore: 90,
+        },
+        {
+          url: "https://example.com/pricing",
+          title: "Example Product Pricing",
+          domain: "example.com",
+          sourceType: "news",
+          credibilityScore: 85,
+        },
+      ]),
+    );
+    expect(importManager.importWithMetadata).not.toHaveBeenCalled();
+  });
+
+  it("文档/产品页闸门：正文路径含 report/blog 字样的正常内容不误伤", async () => {
+    const { listener, importManager } = makeListener();
+    await listener.handleReportCompleted(
+      makePayload([
+        {
+          url: "https://www.mckinsey.com/reports/state-of-ai-2026",
+          title: "The State of AI 2026",
+          domain: "mckinsey.com",
+          sourceType: "industry",
+          credibilityScore: 90,
+        },
+        {
+          url: "https://www.cnbc.com/2026/07/23/apec-open-source-ai.html",
+          title: "U.S., other nations back open-source AI",
+          domain: "cnbc.com",
+          sourceType: "news",
+          credibilityScore: 85,
+        },
+      ]),
+    );
+    expect(importManager.importWithMetadata).toHaveBeenCalledTimes(2);
+  });
 });
