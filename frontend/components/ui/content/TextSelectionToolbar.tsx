@@ -208,7 +208,10 @@ export default function TextSelectionToolbar({
           `${config.apiBaseUrl}/api/v1/ai/translate`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              ...getAuthHeader(),
+            },
             body: JSON.stringify({
               text: textToTranslate,
               targetLanguage: targetLang,
