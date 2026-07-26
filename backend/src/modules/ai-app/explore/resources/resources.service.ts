@@ -287,6 +287,45 @@ export class ResourcesService {
    * 搜索建议（实时）
    * 混合搜索：全文搜索 + 相关性排序
    */
+  /**
+   * ★ 2026-07-26: 某类型下真实存在的来源域名 + 条数（筛选面板数据源）。
+   *
+   * 用 raw SQL 从 source_url 取 host：Prisma groupBy 没法对列做函数变换，而
+   * metadata 里的 feedTitle/sourceName 覆盖率不足（引用导入的资源没有），
+   * 域名是唯一对所有入库路径都成立的口径，也与前端 getSourceName 的兜底一致。
+   *
+   * 与用户可见列表同口径：排除失效链接、排除空标题。
+   */
+  async getSourceFacets(
+    type?: string,
+    limit: number = 20,
+  ): Promise<Array<{ domain: string; count: number }>> {
+    const safeLimit = Math.min(Math.max(Math.floor(limit) || 20, 1), 100);
+    const rows = await this.prisma.$queryRaw<
+      Array<{ domain: string; count: bigint }>
+    >`
+      SELECT
+        regexp_replace(
+          split_part(split_part(regexp_replace(source_url, '^https?://', ''), '/', 1), ':', 1),
+          '^www\\.', ''
+        ) AS domain,
+        count(*) AS count
+      FROM resources
+      WHERE link_health IS DISTINCT FROM 'BROKEN'
+        AND link_health IS DISTINCT FROM 'ARCHIVED'
+        AND source_url <> ''
+        AND title <> ''
+        AND (${type ?? null}::text IS NULL OR type::text = ${type ?? null})
+      GROUP BY 1
+      HAVING count(*) > 0
+      ORDER BY count(*) DESC
+      LIMIT ${safeLimit}
+    `;
+    return rows
+      .filter((r) => r.domain)
+      .map((r) => ({ domain: r.domain, count: Number(r.count) }));
+  }
+
   async searchSuggestions(query: string, limit: number = 5) {
     const searchQuery = query.trim().toLowerCase();
 

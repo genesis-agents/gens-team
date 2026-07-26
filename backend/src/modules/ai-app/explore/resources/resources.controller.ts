@@ -206,6 +206,34 @@ export class ResourcesController {
   }
 
   /**
+   * 获取某类型下真实存在的来源域名（按条数降序）
+   * GET /api/v1/resources/sources/facets?type=REPORT&limit=20
+   *
+   * ★ 2026-07-26：前端筛选面板的来源列表此前是硬编码常量，与库里实际内容脱节
+   * （reports 给的是 Gartner/Epoch AI/McKinsey，而这三个各 0 条；真实前三
+   * stratechery/technologyreview/ai-supremacy 反而不在选项里）——选中即空列表。
+   * 本接口让筛选项由数据生成。
+   *
+   * 注意：此路由必须在 @Get(':id') 之前，否则会被 :id 捕获
+   */
+  @Public()
+  @Get("sources/facets")
+  @ApiOperation({
+    summary: "获取来源分面",
+    description: "返回指定资源类型下真实存在的来源域名及条数，用于筛选面板",
+  })
+  @ApiQuery({ name: "type", required: false, type: String })
+  @ApiQuery({ name: "limit", required: false, type: Number })
+  @ApiResponse({ status: 200, description: "成功获取来源分面" })
+  async getSourceFacets(
+    @Query("type") type?: string,
+    @Query("limit", new DefaultValuePipe(20), ParseIntPipe) limit?: number,
+  ) {
+    const sources = await this.resourcesService.getSourceFacets(type, limit);
+    return { sources };
+  }
+
+  /**
    * 获取资源统计
    * GET /api/v1/resources/stats/summary
    *

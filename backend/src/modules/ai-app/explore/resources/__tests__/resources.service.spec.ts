@@ -66,6 +66,8 @@ describe("ResourcesService", () => {
         create: jest.fn().mockResolvedValue({}),
         delete: jest.fn().mockResolvedValue({}),
       } as unknown,
+      // ★ 2026-07-26: getSourceFacets 用 $queryRaw 从 source_url 提域名
+      $queryRaw: jest.fn().mockResolvedValue([]),
     } as jest.Mocked<Partial<PrismaService>>;
 
     mockMongodb = {
@@ -901,6 +903,58 @@ describe("ResourcesService", () => {
         }),
       );
       expect(result).toBeDefined();
+    });
+  });
+
+  // ★ 2026-07-26: 筛选面板的来源选项数据源（此前是前端硬编码假数据）
+  describe("getSourceFacets", () => {
+    it("返回域名+条数，bigint 计数转成 number", async () => {
+      (mockPrisma.$queryRaw as jest.Mock).mockResolvedValue([
+        { domain: "stratechery.com", count: BigInt(95) },
+        { domain: "technologyreview.com", count: BigInt(90) },
+      ]);
+
+      const result = await service.getSourceFacets("REPORT");
+
+      expect(result).toEqual([
+        { domain: "stratechery.com", count: 95 },
+        { domain: "technologyreview.com", count: 90 },
+      ]);
+      expect(typeof result[0].count).toBe("number");
+    });
+
+    it("过滤掉空域名（source_url 异常的脏数据）", async () => {
+      (mockPrisma.$queryRaw as jest.Mock).mockResolvedValue([
+        { domain: "", count: BigInt(3) },
+        { domain: "arxiv.org", count: BigInt(764) },
+      ]);
+
+      const result = await service.getSourceFacets("PAPER");
+
+      expect(result).toEqual([{ domain: "arxiv.org", count: 764 }]);
+    });
+
+    it("limit 被夹在 1..100，防止越界查询", async () => {
+      (mockPrisma.$queryRaw as jest.Mock).mockResolvedValue([]);
+
+      await service.getSourceFacets("REPORT", 9999); // 上界
+      await service.getSourceFacets("REPORT", -5); // 下界
+      await service.getSourceFacets("REPORT"); // 缺省
+
+      // $queryRaw 是 tagged template：参数在第二个及之后
+      const calls = (mockPrisma.$queryRaw as jest.Mock).mock.calls;
+      expect(calls[0]).toContain(100);
+      expect(calls[1]).toContain(1);
+      expect(calls[2]).toContain(20);
+    });
+
+    it("不传 type 时不按类型过滤（查询仍执行）", async () => {
+      (mockPrisma.$queryRaw as jest.Mock).mockResolvedValue([]);
+
+      const result = await service.getSourceFacets();
+
+      expect(result).toEqual([]);
+      expect(mockPrisma.$queryRaw).toHaveBeenCalled();
     });
   });
 

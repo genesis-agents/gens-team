@@ -1,7 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { TabType } from '@/components/layout/ResponsiveNav';
+import { config as appConfig } from '@/lib/utils/config';
+import { logger } from '@/lib/utils/logger';
+
+/** tab → 资源类型（与 ExploreContent 的 typeMap 同一套口径） */
+const TAB_TO_RESOURCE_TYPE: Partial<Record<TabType, string>> = {
+  papers: 'PAPER',
+  blogs: 'BLOG',
+  reports: 'REPORT',
+  youtube: 'YOUTUBE_VIDEO',
+  news: 'NEWS',
+  policy: 'POLICY',
+};
+
+interface SourceFacet {
+  domain: string;
+  count: number;
+}
 
 interface FilterPanelProps {
   isOpen: boolean;
@@ -20,10 +37,7 @@ interface FilterPanelProps {
 }
 
 // 每个Tab的筛选配置
-const FILTER_CONFIGS: Record<
-  TabType,
-  { categories: string[]; sources: string[] }
-> = {
+const FILTER_CONFIGS: Record<TabType, { categories: string[] }> = {
   papers: {
     categories: [
       'AI',
@@ -32,14 +46,6 @@ const FILTER_CONFIGS: Record<
       'NLP',
       'Robotics',
       'Theory',
-    ],
-    sources: [
-      'arXiv cs.AI',
-      'arXiv cs.LG',
-      'arXiv cs.CL',
-      'arXiv cs.CV',
-      'PubMed',
-      'IEEE',
     ],
   },
   blogs: {
@@ -51,15 +57,6 @@ const FILTER_CONFIGS: Record<
       'Case Study',
       'Tutorial',
     ],
-    sources: [
-      'Medium',
-      'Substack',
-      'Dev.to',
-      'Hashnode',
-      'NVIDIA Blog',
-      'Google AI Blog',
-      'OpenAI Blog',
-    ],
   },
   news: {
     categories: [
@@ -69,13 +66,6 @@ const FILTER_CONFIGS: Record<
       'Security',
       'Open Source',
       'Research',
-    ],
-    sources: [
-      'Hacker News',
-      'TechCrunch',
-      'The Verge',
-      'Wired',
-      'MIT Technology Review',
     ],
   },
   youtube: {
@@ -87,14 +77,6 @@ const FILTER_CONFIGS: Record<
       'Review',
       'Lecture',
     ],
-    sources: [
-      'BG2 w/ Bill Gurley',
-      'Y Combinator',
-      'Valley 101',
-      'Bloomberg Technology',
-      'Lex Fridman',
-      'Two Minute Papers',
-    ],
   },
   policy: {
     categories: [
@@ -104,12 +86,6 @@ const FILTER_CONFIGS: Record<
       'Trade Policy',
       'Innovation Policy',
       'Privacy & Data',
-    ],
-    sources: [
-      'White House',
-      'European Commission',
-      'UK Government',
-      'China Government',
     ],
   },
   reports: {
@@ -121,7 +97,6 @@ const FILTER_CONFIGS: Record<
       'Software',
       'Enterprise',
     ],
-    sources: ['Gartner', 'IDC', 'SemiAnalysis', 'Epoch AI', 'McKinsey'],
   },
 };
 
@@ -140,6 +115,42 @@ export default function FilterPanel({
   onApply,
   onReset,
 }: FilterPanelProps) {
+  // ★ 2026-07-26: 来源选项改为由真实数据生成。此前是 FILTER_CONFIGS 里的硬编码
+  //   常量，与库存脱节——reports 给 Gartner/Epoch AI/McKinsey 各 0 条，而真实
+  //   前三 stratechery/technologyreview/ai-supremacy 不在选项里，选中即空列表。
+  const [sourceFacets, setSourceFacets] = useState<SourceFacet[]>([]);
+  const [facetsLoading, setFacetsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const resourceType = TAB_TO_RESOURCE_TYPE[activeTab];
+    if (!resourceType) {
+      setSourceFacets([]);
+      return;
+    }
+    const controller = new AbortController();
+    setFacetsLoading(true);
+    fetch(
+      `${appConfig.apiUrl}/resources/sources/facets?type=${resourceType}&limit=20`,
+      { signal: controller.signal }
+    )
+      .then((res) =>
+        res.ok ? res.json() : Promise.reject(new Error(`${res.status}`))
+      )
+      .then((result) => {
+        const data = result?.data ?? result;
+        setSourceFacets(Array.isArray(data?.sources) ? data.sources : []);
+      })
+      .catch((err) => {
+        if ((err as Error)?.name === 'AbortError') return;
+        // 拉取失败时退到空列表（不再回落硬编码假选项，避免"选了却筛不出"）
+        logger.error('Failed to load source facets:', err);
+        setSourceFacets([]);
+      })
+      .finally(() => setFacetsLoading(false));
+    return () => controller.abort();
+  }, [isOpen, activeTab]);
+
   if (!isOpen) return null;
 
   const config = FILTER_CONFIGS[activeTab];
@@ -211,17 +222,27 @@ export default function FilterPanel({
           <div className="mb-6">
             <h3 className="mb-3 text-sm font-medium text-gray-700">数据来源</h3>
             <div className="flex flex-wrap gap-2">
-              {config.sources.map((source) => (
+              {facetsLoading && sourceFacets.length === 0 && (
+                <span className="text-xs text-gray-400">加载中…</span>
+              )}
+              {!facetsLoading && sourceFacets.length === 0 && (
+                <span className="text-xs text-gray-400">暂无可筛选的来源</span>
+              )}
+              {sourceFacets.map((facet) => (
                 <button
-                  key={source}
-                  onClick={() => toggleSource(source)}
+                  key={facet.domain}
+                  onClick={() => toggleSource(facet.domain)}
+                  title={`${facet.count} 条`}
                   className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
-                    selectedSources.includes(source)
+                    selectedSources.includes(facet.domain)
                       ? 'bg-blue-500 text-white'
                       : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
                   }`}
                 >
-                  {source}
+                  {facet.domain}
+                  <span className="ml-1.5 text-xs opacity-60">
+                    {facet.count}
+                  </span>
                 </button>
               ))}
             </div>

@@ -45,26 +45,25 @@ export default function ExploreList() {
   }, [loadMoreNode, hasMore, loadingMore, fetchResources]);
 
   // Filter resources
-  const filteredResources = useMemo(
-    () =>
-      resources.filter((resource) => {
-        // Filter out invalid resources
-        if (!resource.title || resource.title.trim() === '') return false;
-
-        // Apply source filter
-        if (selectedSources.length === 0) return true;
-
-        const sourceName = getSourceName(resource);
-        if (!sourceName) return false;
-
-        return selectedSources.some(
-          (selected) =>
-            sourceName.toLowerCase().includes(selected.toLowerCase()) ||
-            selected.toLowerCase().includes(sourceName.toLowerCase())
-        );
-      }),
-    [resources, selectedSources]
-  );
+  // ★ 2026-07-26: 与 ExploreContent 同款——筛选项是域名，按 host 精确匹配
+  const filteredResources = useMemo(() => {
+    const wanted = selectedSources.map((s) =>
+      s.toLowerCase().replace(/^www\./, '')
+    );
+    return resources.filter((resource) => {
+      if (!resource.title || resource.title.trim() === '') return false;
+      if (wanted.length === 0) return true;
+      let host = '';
+      try {
+        host = new URL(resource.sourceUrl).hostname
+          .toLowerCase()
+          .replace(/^www\./, '');
+      } catch {
+        return false;
+      }
+      return wanted.some((w) => host === w || host.endsWith(`.${w}`));
+    });
+  }, [resources, selectedSources]);
 
   if (loading) {
     return (

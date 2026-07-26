@@ -664,23 +664,30 @@ function HomeContent() {
 
   // 来源筛选是纯前端过滤（/resources 接口没有 sources 参数）：抽成单一来源，
   // 卡片列表 / 空态 / "已加载全部" 三处共用，避免出现「一条不显示却说已加载全部」。
-  const filteredResources = useMemo(
-    () =>
-      resources.filter((resource) => {
-        // Filter out invalid resources (no title or empty title)
-        if (!resource.title || resource.title.trim() === '') return false;
-        if (selectedSources.length === 0) return true;
-        const sourceName = getSourceName(resource);
-        if (!sourceName) return false;
-        // Check if any selected source matches (case-insensitive partial match)
-        return selectedSources.some(
-          (selected) =>
-            sourceName.toLowerCase().includes(selected.toLowerCase()) ||
-            selected.toLowerCase().includes(sourceName.toLowerCase())
-        );
-      }),
-    [resources, selectedSources]
-  );
+  //
+  // ★ 2026-07-26: 筛选项改由 /resources/sources/facets 生成（值是域名），匹配
+  //   相应改为按 host 精确匹配 + 子域后缀。原先是 getSourceName 与选项做双向
+  //   模糊包含，而 getSourceName 取的是 hostname.split('.')[0]，会把
+  //   `ai.stanford.edu`(→"ai") 误判成 `ai-supremacy.com` 的命中。
+  const filteredResources = useMemo(() => {
+    const wanted = selectedSources.map((s) =>
+      s.toLowerCase().replace(/^www\./, '')
+    );
+    return resources.filter((resource) => {
+      // Filter out invalid resources (no title or empty title)
+      if (!resource.title || resource.title.trim() === '') return false;
+      if (wanted.length === 0) return true;
+      let host = '';
+      try {
+        host = new URL(resource.sourceUrl).hostname
+          .toLowerCase()
+          .replace(/^www\./, '');
+      } catch {
+        return false;
+      }
+      return wanted.some((w) => host === w || host.endsWith(`.${w}`));
+    });
+  }, [resources, selectedSources]);
 
   const handleApplyFilters = () => {
     fetchResources();
