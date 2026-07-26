@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { TabType } from '@/components/layout/ResponsiveNav';
 import { config as appConfig } from '@/lib/utils/config';
 import { logger } from '@/lib/utils/logger';
+import { useTranslation } from '@/lib/i18n';
 
 /** tab → 资源类型（与 ExploreContent 的 typeMap 同一套口径） */
 const TAB_TO_RESOURCE_TYPE: Partial<Record<TabType, string>> = {
@@ -118,6 +119,7 @@ export default function FilterPanel({
   // ★ 2026-07-26: 来源选项改为由真实数据生成。此前是 FILTER_CONFIGS 里的硬编码
   //   常量，与库存脱节——reports 给 Gartner/Epoch AI/McKinsey 各 0 条，而真实
   //   前三 stratechery/technologyreview/ai-supremacy 不在选项里，选中即空列表。
+  const { t } = useTranslation();
   const [sourceFacets, setSourceFacets] = useState<SourceFacet[]>([]);
   const [facetsLoading, setFacetsLoading] = useState(false);
 
@@ -223,16 +225,22 @@ export default function FilterPanel({
             <h3 className="mb-3 text-sm font-medium text-gray-700">数据来源</h3>
             <div className="flex flex-wrap gap-2">
               {facetsLoading && sourceFacets.length === 0 && (
-                <span className="text-xs text-gray-400">加载中…</span>
+                <span className="text-xs text-gray-400">
+                  {t('common.loading')}
+                </span>
               )}
               {!facetsLoading && sourceFacets.length === 0 && (
-                <span className="text-xs text-gray-400">暂无可筛选的来源</span>
+                <span className="text-xs text-gray-400">
+                  {t('explore.filter.noSources')}
+                </span>
               )}
               {sourceFacets.map((facet) => (
                 <button
                   key={facet.domain}
                   onClick={() => toggleSource(facet.domain)}
-                  title={`${facet.count} 条`}
+                  title={t('explore.filter.itemCount', {
+                    count: facet.count,
+                  })}
                   className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
                     selectedSources.includes(facet.domain)
                       ? 'bg-blue-500 text-white'

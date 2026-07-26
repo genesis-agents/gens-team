@@ -968,6 +968,10 @@
         "retry": "Retry",
         "loadingSubtitles": "Loading subtitles..."
       }
+    },
+    "filter": {
+      "noSources": "No sources available",
+      "itemCount": "{{count}} items"
     }
   },
   "aiInsights": {

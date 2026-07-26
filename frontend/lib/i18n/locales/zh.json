@@ -968,6 +968,10 @@
         "retry": "重试",
         "loadingSubtitles": "加载字幕中..."
       }
+    },
+    "filter": {
+      "noSources": "暂无可筛选的来源",
+      "itemCount": "{{count}} 条"
     }
   },
   "aiInsights": {
