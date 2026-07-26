@@ -147,6 +147,9 @@ export class ResourcesController {
     @Query("search") search?: string,
     @Query("sortBy") sortBy?: "publishedAt" | "qualityScore" | "trendingScore",
     @Query("sortOrder") sortOrder?: "asc" | "desc",
+    // ★ 2026-07-26: 来源域名筛选。重复 query 参数（?sources=a&sources=b）
+    //   在单值时会被解析成 string，统一归一为数组。
+    @Query("sources") sources?: string | string[],
   ) {
     this.logger.log(`Fetching resources (skip: ${skip}, take: ${take})`);
 
@@ -158,6 +161,7 @@ export class ResourcesController {
       search,
       sortBy,
       sortOrder,
+      sources: Array.isArray(sources) ? sources : sources ? [sources] : [],
     });
   }
 

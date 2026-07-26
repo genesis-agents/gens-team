@@ -73,6 +73,8 @@ export class ResourcesService {
     search?: string;
     sortBy?: "publishedAt" | "qualityScore" | "trendingScore";
     sortOrder?: "asc" | "desc";
+    /** ★ 2026-07-26: 来源域名筛选（与 /resources/sources/facets 返回值同口径） */
+    sources?: string[];
   }) {
     const {
       skip = 0,
@@ -82,6 +84,7 @@ export class ResourcesService {
       search,
       sortBy = "publishedAt",
       sortOrder = "desc",
+      sources,
     } = params;
 
     // 构建查询条件 - 始终过滤掉空标题的资源 + 隐藏失效链接（BROKEN/ARCHIVED）
@@ -108,6 +111,41 @@ export class ResourcesService {
       where.OR = [
         { title: { contains: search, mode: "insensitive" } },
         { abstract: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    /**
+     * ★ 2026-07-26: 来源筛选下推到 DB。
+     *
+     * 此前只在前端按域名过滤已加载的那一页，页面为空时无限滚动会继续往后翻，
+     * 试图"翻到有结果为止"——新闻 11911 条要翻 600 页，实际表现是页面持续闪、
+     * 永远停在加载中。分页 + 客户端过滤本质上不兼容，必须在 DB 侧筛。
+     *
+     * 用 contains 匹配 `//host` 与 `.host`（覆盖 www. 与子域），避免把
+     * `evil-stratechery.com` 这类后缀碰撞算作命中。
+     */
+    const normalizedSources = (sources ?? [])
+      .map((s) =>
+        s
+          .trim()
+          .toLowerCase()
+          .replace(/^www\./, ""),
+      )
+      .filter((s) => s.length > 0 && /^[a-z0-9.-]+$/.test(s));
+    if (normalizedSources.length > 0) {
+      const sourceMatchers: Prisma.ResourceWhereInput[] = normalizedSources
+        .flatMap((host) => [`//${host}/`, `//${host}`, `.${host}/`, `.${host}`])
+        .map((needle) => ({
+          sourceUrl: { contains: needle, mode: "insensitive" as const },
+        }));
+      // 与 search 的 OR 共存：两组条件都要满足 → 各自收进 AND
+      where.AND = [
+        ...(Array.isArray(where.AND)
+          ? where.AND
+          : where.AND
+            ? [where.AND]
+            : []),
+        { OR: sourceMatchers },
       ];
     }
 

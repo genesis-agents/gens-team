@@ -44,26 +44,12 @@ export default function ExploreList() {
     };
   }, [loadMoreNode, hasMore, loadingMore, fetchResources]);
 
-  // Filter resources
-  // ★ 2026-07-26: 与 ExploreContent 同款——筛选项是域名，按 host 精确匹配
-  const filteredResources = useMemo(() => {
-    const wanted = selectedSources.map((s) =>
-      s.toLowerCase().replace(/^www\./, '')
-    );
-    return resources.filter((resource) => {
-      if (!resource.title || resource.title.trim() === '') return false;
-      if (wanted.length === 0) return true;
-      let host = '';
-      try {
-        host = new URL(resource.sourceUrl).hostname
-          .toLowerCase()
-          .replace(/^www\./, '');
-      } catch {
-        return false;
-      }
-      return wanted.some((w) => host === w || host.endsWith(`.${w}`));
-    });
-  }, [resources, selectedSources]);
+  // ★ 2026-07-26: 来源筛选已下推后端（见 ExploreContent），这里只剩剔除无标题
+  //   脏数据。分页 + 客户端过滤会让无限滚动为了凑结果翻完整张表。
+  const filteredResources = useMemo(
+    () => resources.filter((r) => r.title && r.title.trim() !== ''),
+    [resources]
+  );
 
   if (loading) {
     return (

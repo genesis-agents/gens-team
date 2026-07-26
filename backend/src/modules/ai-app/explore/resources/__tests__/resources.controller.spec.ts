@@ -104,6 +104,7 @@ describe("ResourcesController", () => {
         "ML",
         "publishedAt",
         "desc",
+        undefined,
       );
 
       expect(mockResourcesService.findAll).toHaveBeenCalledWith({
@@ -112,6 +113,8 @@ describe("ResourcesController", () => {
         type: "PAPER",
         category: "AI",
         search: "ML",
+        // ★ 2026-07-26: 新增来源筛选参数，未传时归一为空数组
+        sources: [],
         sortBy: "publishedAt",
         sortOrder: "desc",
       });

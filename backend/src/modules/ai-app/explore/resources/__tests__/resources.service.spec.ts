@@ -906,6 +906,68 @@ describe("ResourcesService", () => {
     });
   });
 
+  // ★ 2026-07-26: 来源筛选下推 DB（此前只在前端过滤当前页，翻页会翻完整张表）
+  describe("findAll sources filter", () => {
+    it("把域名转成 sourceUrl 匹配条件（覆盖 www 与子域）", async () => {
+      await service.findAll({ type: "REPORT", sources: ["stratechery.com"] });
+
+      const where = (mockRepository.findMany as jest.Mock).mock.calls.at(-1)[0]
+        .where;
+      expect(where.AND).toEqual([
+        {
+          OR: [
+            {
+              sourceUrl: {
+                contains: "//stratechery.com/",
+                mode: "insensitive",
+              },
+            },
+            {
+              sourceUrl: { contains: "//stratechery.com", mode: "insensitive" },
+            },
+            {
+              sourceUrl: { contains: ".stratechery.com/", mode: "insensitive" },
+            },
+            {
+              sourceUrl: { contains: ".stratechery.com", mode: "insensitive" },
+            },
+          ],
+        },
+      ]);
+    });
+
+    it("不传 sources 时不加任何来源条件", async () => {
+      await service.findAll({ type: "REPORT" });
+
+      const where = (mockRepository.findMany as jest.Mock).mock.calls.at(-1)[0]
+        .where;
+      expect(where.AND).toBeUndefined();
+    });
+
+    it("过滤掉非法域名（防注入/脏输入）", async () => {
+      await service.findAll({
+        sources: ["ok.com", "bad domain", "'; DROP TABLE--", "  "],
+      });
+
+      const where = (mockRepository.findMany as jest.Mock).mock.calls.at(-1)[0]
+        .where;
+      const needles = where.AND[0].OR.map(
+        (c: { sourceUrl: { contains: string } }) => c.sourceUrl.contains,
+      );
+      expect(needles.every((n: string) => n.includes("ok.com"))).toBe(true);
+      expect(needles).toHaveLength(4);
+    });
+
+    it("与 search 共存：两组条件都保留", async () => {
+      await service.findAll({ search: "gpu", sources: ["a16z.com"] });
+
+      const where = (mockRepository.findMany as jest.Mock).mock.calls.at(-1)[0]
+        .where;
+      expect(where.OR).toHaveLength(2); // search 的 title/abstract
+      expect(where.AND).toHaveLength(1); // sources 的 OR 组
+    });
+  });
+
   // ★ 2026-07-26: 筛选面板的来源选项数据源（此前是前端硬编码假数据）
   describe("getSourceFacets", () => {
     it("返回域名+条数，bigint 计数转成 number", async () => {

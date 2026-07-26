@@ -14,7 +14,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getAuthHeader } from '@/lib/utils/auth';
 import { confirm } from '@/stores';
 import { EmptyState } from '@/components/ui/states/EmptyState';
-import { LoadingState } from '@/components/ui/states';
 import { Alert } from '@/components/ui/feedback/Alert';
 import PDFThumbnail from '@/components/ui/viewers/PDFThumbnail';
 import PDFViewer from '@/components/ui/viewers/PDFViewer';
@@ -300,6 +299,8 @@ function HomeContent() {
     'all' | '24h' | '7d' | '30d' | '90d'
   >('all');
   const [minQualityScore, setMinQualityScore] = useState<number>(0);
+  /** 筛选“已应用”版本号：apply/reset 时 +1，驱动 fetch effect 重新拉取 */
+  const [appliedFilterVersion, setAppliedFilterVersion] = useState(0);
 
   // File upload states
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -367,7 +368,16 @@ function HomeContent() {
 
   useEffect(() => {
     fetchResources();
-  }, [activeTab, searchQuery, sortBy, sortOrder, filterCategory]);
+    // appliedFilterVersion：筛选面板点应用/重置后重新拉取（含 sources 等后端参数）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    activeTab,
+    searchQuery,
+    sortBy,
+    sortOrder,
+    filterCategory,
+    appliedFilterVersion,
+  ]);
 
   // Handle opening resource from URL parameter (from library page)
   useEffect(() => {
@@ -598,6 +608,9 @@ function HomeContent() {
       if (minQualityScore > 0) {
         params.append('minQualityScore', minQualityScore.toString());
       }
+      // ★ 2026-07-26: 来源筛选下推后端（此前是前端过滤已加载页，翻页时会
+      //   为了凑结果把整张表翻完）
+      selectedSources.forEach((s) => params.append('sources', s));
 
       const url = `${config.apiUrl}/resources?${params.toString()}`;
       const res = await fetch(url);
@@ -665,32 +678,19 @@ function HomeContent() {
   // 来源筛选是纯前端过滤（/resources 接口没有 sources 参数）：抽成单一来源，
   // 卡片列表 / 空态 / "已加载全部" 三处共用，避免出现「一条不显示却说已加载全部」。
   //
-  // ★ 2026-07-26: 筛选项改由 /resources/sources/facets 生成（值是域名），匹配
-  //   相应改为按 host 精确匹配 + 子域后缀。原先是 getSourceName 与选项做双向
-  //   模糊包含，而 getSourceName 取的是 hostname.split('.')[0]，会把
-  //   `ai.stanford.edu`(→"ai") 误判成 `ai-supremacy.com` 的命中。
-  const filteredResources = useMemo(() => {
-    const wanted = selectedSources.map((s) =>
-      s.toLowerCase().replace(/^www\./, '')
-    );
-    return resources.filter((resource) => {
-      // Filter out invalid resources (no title or empty title)
-      if (!resource.title || resource.title.trim() === '') return false;
-      if (wanted.length === 0) return true;
-      let host = '';
-      try {
-        host = new URL(resource.sourceUrl).hostname
-          .toLowerCase()
-          .replace(/^www\./, '');
-      } catch {
-        return false;
-      }
-      return wanted.some((w) => host === w || host.endsWith(`.${w}`));
-    });
-  }, [resources, selectedSources]);
+  // ★ 2026-07-26: 来源筛选已下推后端（sources 参数），这里只剩"剔除无标题脏数据"
+  //   这一条纯展示层清洗。不要再在这里做来源过滤——分页 + 客户端过滤会让
+  //   无限滚动为了凑结果翻完整张表。
+  const filteredResources = useMemo(
+    () => resources.filter((r) => r.title && r.title.trim() !== ''),
+    [resources]
+  );
 
+  // ★ 2026-07-26: 应用/重置筛选改为 bump 版本号，由 fetch effect 在 state 落定
+  //   后触发。此前是 setState 后立刻调 fetchResources()，闭包读到的是**旧**
+  //   筛选值——来源筛选下推后端后，重置会带着旧 sources 去查，拿回错误结果。
   const handleApplyFilters = () => {
-    fetchResources();
+    setAppliedFilterVersion((v) => v + 1);
   };
 
   const handleResetFilters = () => {
@@ -698,7 +698,7 @@ function HomeContent() {
     setSelectedSources([]);
     setDateRange('all');
     setMinQualityScore(0);
-    fetchResources();
+    setAppliedFilterVersion((v) => v + 1);
   };
 
   const handleFileUpload = () => {
@@ -2188,10 +2188,11 @@ function HomeContent() {
                 </div>
               )}
 
-              {/* Infinite Scroll Trigger */}
-              {/* 条件用未过滤的 resources：来源筛选把当前页全滤空时，触发器仍需
-                  挂在 DOM 上继续翻页，否则筛选一开就再也拉不到下一页 */}
-              {!loading && resources.length > 0 && hasMore && (
+              {/* Infinite Scroll Trigger
+                  ★ 2026-07-26: 条件改用 filteredResources —— 用未过滤的
+                  resources 会让"筛选后为空"的页面继续自动翻页，把整张表翻完
+                  （见下方空态注释）。筛选已下推后端，这里只需在有内容时续page。 */}
+              {!loading && filteredResources.length > 0 && hasMore && (
                 <div
                   ref={setLoadMoreNode}
                   className="mt-6 flex justify-center py-4"
@@ -2230,23 +2231,21 @@ function HomeContent() {
                 </div>
               )}
 
-              {/* Empty State：筛选后为空时，等分页真正拉完（!hasMore）再提示，
-                  避免"还在往后翻"的中间态闪一下空态 */}
+              {/* Empty State
+                  ★ 2026-07-26 修回归：此前这里在 hasMore 时渲染 LoadingState，
+                  而触发器仍挂着 —— 客户端筛选把当前页滤空时会一页页往后翻整张表
+                  （新闻 11911 条 ≈ 600 次请求），表现为"持续闪 + 永远加载中"。
+                  现在筛选为空就直接给空态，不靠翻页去凑结果；来源筛选已下推到
+                  后端（sources 参数），正常路径根本走不到这里。 */}
               {!loading && !loadingMore && filteredResources.length === 0 && (
-                <>
-                  {hasMore ? (
-                    <LoadingState size="sm" className="py-12" />
-                  ) : (
-                    <EmptyState
-                      title="No content available"
-                      description={
-                        selectedSources.length > 0
-                          ? 'No resources match the selected sources'
-                          : 'Try running the data crawler first'
-                      }
-                    />
-                  )}
-                </>
+                <EmptyState
+                  title="No content available"
+                  description={
+                    selectedSources.length > 0
+                      ? 'No resources match the selected sources'
+                      : 'Try running the data crawler first'
+                  }
+                />
               )}
             </>
           )}
