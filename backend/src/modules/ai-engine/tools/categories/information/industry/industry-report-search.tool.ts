@@ -98,12 +98,21 @@ export class IndustryReportSearchTool extends BaseTool<
   private static readonly NESTED_WEB_SEARCH_TIMEOUT_MS = 26000;
 
   /**
-   * ★ 2026-07-21: site: 过滤最多取 8 个域名（按 credibilityScore 降序）。
-   * 原 slice(0,5) 按数组原始顺序截断，白名单加源后高信誉源可能被挤出；
-   * Tavily 路径会把 site: 整体转成 include_domains 不受串长影响，
-   * Serper（Google）8 个 site: OR 仍在查询词数限制内。
+   * ★ 2026-07-21: site: 过滤按 credibilityScore 降序截断（原 slice(0,5) 按数组
+   * 原始顺序截断，白名单加源后高信誉源可能被挤出）。
+   *
+   * ★ 2026-07-26: 8 → 14。线上白名单已扩到 18 个源，排 8 名之后的 10 个
+   * （a16z / gartner / forrester / idc / cbinsights / sequoia / statista /
+   * accenture / thegradient / ark-invest）**从来没有参与过检索**，配了等于没配，
+   * 而 admin 页面对此毫无提示。
+   *
+   * 为什么不直接放开到全量：Tavily 路径把 site: 整体转成 include_domains，
+   * 不受串长影响；但 Serper（Google）走的是 `(site:a OR site:b ...)` 字面查询，
+   * OR 子句过多会显著劣化召回。14 是在"覆盖住白名单主体"和"Google 路径仍可用"
+   * 之间取的折中；配合 topicType 过滤（同日修好的大小写匹配）先收窄候选集，
+   * 实际大多数调用的候选数已低于这个上限。
    */
-  private static readonly SITE_FILTER_MAX_SOURCES = 8;
+  private static readonly SITE_FILTER_MAX_SOURCES = 14;
 
   readonly inputSchema: JSONSchema = {
     type: "object",

@@ -182,14 +182,16 @@ describe("IndustryReportSearchTool", () => {
       );
     });
 
-    it("caps site: filter at 8 domains sorted by credibility desc", async () => {
-      const manySources = Array.from({ length: 12 }, (_, i) => ({
+    // ★ 2026-07-26: 上限 8 → 14。线上白名单已 18 个源，8 名之后的 10 个从未
+    //   参与过检索；不放开到全量是因为 Serper(Google) 路径是字面 site: OR 串。
+    it("caps site: filter at 14 domains sorted by credibility desc", async () => {
+      const manySources = Array.from({ length: 20 }, (_, i) => ({
         id: `bulk-${i}`,
         name: `Bulk${i}`,
         domain: `bulk${i}.example.com`,
         category: "x",
         enabled: true,
-        credibilityScore: 0.5 + i * 0.02, // bulk11 最高
+        credibilityScore: 0.5 + i * 0.02, // bulk19 最高
         topicTypes: ["TECHNOLOGY"],
       }));
       prismaMock.toolConfig.findUnique.mockResolvedValue({
@@ -202,10 +204,32 @@ describe("IndustryReportSearchTool", () => {
 
       const callArg = webSearch.execute.mock.calls[0][0];
       const matched = callArg.query.match(/site:/g) ?? [];
-      expect(matched).toHaveLength(8);
-      // 信誉最高的 bulk11 必在，最低的 bulk0 必不在
-      expect(callArg.query).toContain("site:bulk11.example.com");
+      expect(matched).toHaveLength(14);
+      // 信誉最高的 bulk19 必在，最低的 bulk0 必不在
+      expect(callArg.query).toContain("site:bulk19.example.com");
       expect(callArg.query).not.toContain("site:bulk0.example.com");
+    });
+
+    it("白名单 18 个源时全部进检索（线上规模不再被截断）", async () => {
+      const eighteen = Array.from({ length: 18 }, (_, i) => ({
+        id: `s-${i}`,
+        name: `S${i}`,
+        domain: `s${i}.example.com`,
+        category: "x",
+        enabled: true,
+        credibilityScore: 0.8,
+        topicTypes: ["TECHNOLOGY"],
+      }));
+      prismaMock.toolConfig.findUnique.mockResolvedValue({
+        config: { sources: eighteen },
+      });
+      const webSearch = makeWebSearchTool([]);
+      registryMock.tryGet.mockReturnValue(webSearch);
+
+      const r = await tool.execute({ query: "AI" }, makeContext());
+
+      // 18 > 14：仍按上限截断，但覆盖面从 44% 提到 78%
+      expect((r.data as { sourcesQueried: number }).sourcesQueried).toBe(14);
     });
 
     it("populates source name + credibilityScore from matching domain", async () => {
