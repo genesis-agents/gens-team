@@ -218,6 +218,34 @@ describe("DataCollectionSchedulerService", () => {
       expect(result.message).toContain("No active data sources");
     });
 
+    // ★ 2026-07-26 半开重试：一次失败曾等于永久退出调度（线上 14 个 FAILED，
+    //   其中 9 个 feed 实际正常）。FAILED 源必须在冷却期后被重新捞起。
+    it("捞取 ACTIVE 源，以及冷却期已过的 FAILED 源（半开重试）", async () => {
+      await service.executeCollectionForResourceType("BLOG");
+
+      const where =
+        prismaService.dataSource.findMany.mock.calls.at(-1)[0].where;
+      expect(where.category).toBe("BLOG");
+      expect(where.OR).toEqual([
+        { status: "ACTIVE" },
+        { status: "FAILED", updatedAt: { lt: expect.any(Date) } },
+      ]);
+      // 冷却期约 6 小时前
+      const cutoff = where.OR[1].updatedAt.lt.getTime();
+      const sixHoursAgo = Date.now() - 6 * 60 * 60 * 1000;
+      expect(Math.abs(cutoff - sixHoursAgo)).toBeLessThan(60_000);
+    });
+
+    it("PAUSED / MAINTENANCE 源不会被半开重试捞起", async () => {
+      await service.executeCollectionForResourceType("BLOG");
+
+      const where =
+        prismaService.dataSource.findMany.mock.calls.at(-1)[0].where;
+      const statuses = where.OR.map((c: { status: string }) => c.status);
+      expect(statuses).not.toContain("PAUSED");
+      expect(statuses).not.toContain("MAINTENANCE");
+    });
+
     it("should create collection tasks for each active data source", async () => {
       const result = await service.executeCollectionForResourceType("PAPER");
 

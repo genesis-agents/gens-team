@@ -45,6 +45,13 @@ export class DataCollectionSchedulerService
 {
   private readonly logger = new Logger(DataCollectionSchedulerService.name);
 
+  /**
+   * FAILED 源的半开重试冷却期（6h）。取值权衡：足够短，让偶发故障（CDN 抖动、
+   * 上游 5xx、超时）在同一天内自愈；又足够长，不会对真正下线的源造成高频空打。
+   * 失败源每轮只会在冷却期满后被捞起一次，失败后 updatedAt 刷新重新计时。
+   */
+  private static readonly FAILED_RETRY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
   /** 调度器配置 */
   private config: SchedulerConfig;
 
@@ -267,10 +274,23 @@ export class DataCollectionSchedulerService
       this.logger.log(`Starting scheduled collection for ${resourceType}`);
 
       // 1. 获取该类型的活跃数据源
+      //
+      // ★ 2026-07-26 半开重试：此前只取 ACTIVE，而任何一次采集失败都会把源写成
+      //   FAILED（collection-task.service），于是**一次偶发故障 = 永久退出调度**，
+      //   没有任何恢复路径。线上因此累积了 14 个 FAILED 源，其中 9 个（OpenAI /
+      //   AWS / HN / ZDNet 等）feed 实际完全正常，只是没人再碰过它们。
+      //   现在 FAILED 源在冷却期后参与一次重试；成功即由 collection-task 恢复成
+      //   ACTIVE，仍失败则 updatedAt 刷新、再等一个冷却期。
+      const retryAfter = new Date(
+        Date.now() - DataCollectionSchedulerService.FAILED_RETRY_COOLDOWN_MS,
+      );
       const dataSources = await this.prisma.dataSource.findMany({
         where: {
           category: resourceType as ResourceType,
-          status: "ACTIVE",
+          OR: [
+            { status: "ACTIVE" },
+            { status: "FAILED", updatedAt: { lt: retryAfter } },
+          ],
         },
       });
 

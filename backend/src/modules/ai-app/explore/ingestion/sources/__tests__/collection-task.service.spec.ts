@@ -81,6 +81,8 @@ describe("CollectionTaskService", () => {
       dataSource: {
         findUnique: jest.fn(),
         update: jest.fn(),
+        // ★ 2026-07-26: 成功后 FAILED→ACTIVE 的条件恢复走 updateMany
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
 
@@ -444,6 +446,35 @@ describe("CollectionTaskService", () => {
         }),
       );
       expect(hackernewsService.fetchTopStories).toHaveBeenCalledWith(10);
+    });
+
+    // ★ 2026-07-26: 采集成功必须让源自愈。此前成功路径只写 lastSuccessAt，
+    //   status 永远留在 FAILED，而调度器只取 ACTIVE —— 源一旦失败就再也回不来。
+    it("采集成功后把 FAILED 源恢复成 ACTIVE（只翻转 FAILED，不动 PAUSED）", async () => {
+      (hackernewsService.fetchTopStories as jest.Mock).mockResolvedValue(10);
+
+      await service.execute("task-123");
+
+      expect(prismaService.dataSource.updateMany).toHaveBeenCalledWith({
+        where: { id: mockTask.sourceId, status: "FAILED" },
+        data: { status: "ACTIVE" },
+      });
+    });
+
+    it("采集成功后清空 lastErrorMessage（避免页面挂着过期报错）", async () => {
+      (hackernewsService.fetchTopStories as jest.Mock).mockResolvedValue(10);
+
+      await service.execute("task-123");
+
+      expect(prismaService.dataSource.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockTask.sourceId },
+          data: expect.objectContaining({
+            lastErrorMessage: null,
+            lastSuccessAt: expect.any(Date),
+          }),
+        }),
+      );
     });
 
     it("should execute RSS collection successfully", async () => {

@@ -445,8 +445,26 @@ export class CollectionTaskService {
                 : collectedCount,
           },
           lastSuccessAt: new Date(),
+          // ★ 2026-07-26: 成功后清掉上次的错误信息，否则 admin 页面会一直挂着
+          //   一条早已不成立的报错
+          lastErrorMessage: null,
         },
       });
+
+      // ★ 2026-07-26: 采集成功 → 把 FAILED 恢复成 ACTIVE。
+      //   此前成功路径只写 lastSuccessAt 不动 status，源一旦因一次故障被置
+      //   FAILED 就永远留在那儿（调度器只取 ACTIVE），连手动 Run 成功也救不回来。
+      //   用 updateMany + status 条件保证只翻转 FAILED，不误伤管理员手动 PAUSED
+      //   或 MAINTENANCE 的源。
+      const revived = await this.prisma.dataSource.updateMany({
+        where: { id: task.sourceId, status: "FAILED" },
+        data: { status: "ACTIVE" },
+      });
+      if (revived.count > 0) {
+        this.logger.log(
+          `Data source ${task.sourceId} recovered: FAILED -> ACTIVE after successful collection`,
+        );
+      }
 
       this.logger.log(`Task ${id} completed successfully`);
     } catch (error) {
