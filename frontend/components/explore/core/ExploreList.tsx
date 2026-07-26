@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ThumbsUp } from 'lucide-react';
 import ResourceThumbnail from '../resources/ResourceThumbnail';
 import { InsightChip } from '../InsightBadge';
@@ -9,7 +9,10 @@ import { getSourceName, getSourceBadgeColor } from '../utils/resourceHelpers';
 import { ClientDate } from '@/components/common/ClientDate';
 
 export default function ExploreList() {
-  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
+  // ★ 2026-07-26: callback ref 而非 useRef —— 触发器随视图切换卸载重建时，
+  //   useRef 变更不触发 effect，observer 会卡在已脱离文档的旧节点上
+  //   （详见 ExploreContent 同款修复）。
+  const [loadMoreNode, setLoadMoreNode] = useState<HTMLDivElement | null>(null);
 
   const {
     resources,
@@ -23,6 +26,8 @@ export default function ExploreList() {
 
   // Infinite scroll
   useEffect(() => {
+    if (!loadMoreNode) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loadingMore) {
@@ -32,35 +37,34 @@ export default function ExploreList() {
       { threshold: 0.5 }
     );
 
-    const trigger = loadMoreTriggerRef.current;
-    if (trigger) {
-      observer.observe(trigger);
-    }
+    observer.observe(loadMoreNode);
 
     return () => {
-      if (trigger) {
-        observer.unobserve(trigger);
-      }
+      observer.disconnect();
     };
-  }, [hasMore, loadingMore, fetchResources]);
+  }, [loadMoreNode, hasMore, loadingMore, fetchResources]);
 
   // Filter resources
-  const filteredResources = resources.filter((resource) => {
-    // Filter out invalid resources
-    if (!resource.title || resource.title.trim() === '') return false;
+  const filteredResources = useMemo(
+    () =>
+      resources.filter((resource) => {
+        // Filter out invalid resources
+        if (!resource.title || resource.title.trim() === '') return false;
 
-    // Apply source filter
-    if (selectedSources.length === 0) return true;
+        // Apply source filter
+        if (selectedSources.length === 0) return true;
 
-    const sourceName = getSourceName(resource);
-    if (!sourceName) return false;
+        const sourceName = getSourceName(resource);
+        if (!sourceName) return false;
 
-    return selectedSources.some(
-      (selected) =>
-        sourceName.toLowerCase().includes(selected.toLowerCase()) ||
-        selected.toLowerCase().includes(sourceName.toLowerCase())
-    );
-  });
+        return selectedSources.some(
+          (selected) =>
+            sourceName.toLowerCase().includes(selected.toLowerCase()) ||
+            selected.toLowerCase().includes(sourceName.toLowerCase())
+        );
+      }),
+    [resources, selectedSources]
+  );
 
   if (loading) {
     return (
@@ -85,7 +89,9 @@ export default function ExploreList() {
     );
   }
 
-  if (!loading && filteredResources.length === 0) {
+  // 筛选后为空但还有下一页时不早退：早退会连触发器一起摘掉，
+  // 来源筛选一开就再也翻不到下一页（与 ExploreContent 同款修复）
+  if (!loading && !hasMore && filteredResources.length === 0) {
     return (
       <div className="mx-auto max-w-6xl px-8 pb-6">
         <div className="flex h-64 items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50">
@@ -229,7 +235,7 @@ export default function ExploreList() {
 
         {/* Infinite scroll trigger */}
         {hasMore && (
-          <div ref={loadMoreTriggerRef} className="py-4 text-center">
+          <div ref={setLoadMoreNode} className="py-4 text-center">
             {loadingMore && (
               <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
                 <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-red-500"></div>

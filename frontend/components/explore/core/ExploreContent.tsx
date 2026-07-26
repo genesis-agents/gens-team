@@ -1,12 +1,20 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  Suspense,
+} from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { config } from '@/lib/utils/config';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAuthHeader } from '@/lib/utils/auth';
 import { confirm } from '@/stores';
 import { EmptyState } from '@/components/ui/states/EmptyState';
+import { LoadingState } from '@/components/ui/states';
 import { Alert } from '@/components/ui/feedback/Alert';
 import PDFThumbnail from '@/components/ui/viewers/PDFThumbnail';
 import PDFViewer from '@/components/ui/viewers/PDFViewer';
@@ -134,8 +142,12 @@ function HomeContent() {
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
 
-  // Infinite scroll ref
-  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
+  // ★ 2026-07-26: 无限滚动触发器用 callback ref（node state）而不是 useRef。
+  //   触发器 div 只在 viewMode==='list' 分支渲染，点开详情再返回列表时会卸载重建；
+  //   useRef.current 变更不触发 effect，老 IntersectionObserver 会一直盯着已脱离
+  //   文档的旧节点 —— 返回列表后下拉不再自动加载，必须刷新整页才恢复。
+  //   node 进 state 后，卸载置 null / 重建换新引用，effect 必定重新 observe。
+  const [loadMoreNode, setLoadMoreNode] = useState<HTMLDivElement | null>(null);
 
   // Initialize activeTab from URL query parameter if present
   const initialTab = (searchParams?.get('tab') || 'youtube') as TabType;
@@ -610,6 +622,9 @@ function HomeContent() {
       if (!loadMore) {
         setResources([]);
       }
+      // 请求失败必须落 hasMore=false：否则触发器留在页面上被 observer 反复
+      // 命中（无限重试），空态也会一直停在"还在加载"分支
+      setHasMore(false);
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -624,8 +639,7 @@ function HomeContent() {
 
   // Infinite scroll with IntersectionObserver
   useEffect(() => {
-    const trigger = loadMoreTriggerRef.current;
-    if (!trigger) return;
+    if (!loadMoreNode) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -641,12 +655,32 @@ function HomeContent() {
       }
     );
 
-    observer.observe(trigger);
+    observer.observe(loadMoreNode);
 
     return () => {
       observer.disconnect();
     };
-  }, [hasMore, loadingMore, loading, loadMoreResources]);
+  }, [loadMoreNode, hasMore, loadingMore, loading, loadMoreResources]);
+
+  // 来源筛选是纯前端过滤（/resources 接口没有 sources 参数）：抽成单一来源，
+  // 卡片列表 / 空态 / "已加载全部" 三处共用，避免出现「一条不显示却说已加载全部」。
+  const filteredResources = useMemo(
+    () =>
+      resources.filter((resource) => {
+        // Filter out invalid resources (no title or empty title)
+        if (!resource.title || resource.title.trim() === '') return false;
+        if (selectedSources.length === 0) return true;
+        const sourceName = getSourceName(resource);
+        if (!sourceName) return false;
+        // Check if any selected source matches (case-insensitive partial match)
+        return selectedSources.some(
+          (selected) =>
+            sourceName.toLowerCase().includes(selected.toLowerCase()) ||
+            selected.toLowerCase().includes(sourceName.toLowerCase())
+        );
+      }),
+    [resources, selectedSources]
+  );
 
   const handleApplyFilters = () => {
     fetchResources();
@@ -1890,198 +1924,58 @@ function HomeContent() {
               )}
 
               {/* Resource Cards - Horizontal Layout */}
-              {!loading && resources.length > 0 && (
+              {!loading && filteredResources.length > 0 && (
                 <div className="space-y-5">
-                  {resources
-                    .filter((resource) => {
-                      // Filter out invalid resources (no title or empty title)
-                      if (!resource.title || resource.title.trim() === '')
-                        return false;
-                      // Apply source filter if any sources are selected
-                      if (selectedSources.length === 0) return true;
-                      const sourceName = getSourceName(resource);
-                      if (!sourceName) return false;
-                      // Check if any selected source matches (case-insensitive partial match)
-                      return selectedSources.some(
-                        (selected) =>
-                          sourceName
-                            .toLowerCase()
-                            .includes(selected.toLowerCase()) ||
-                          selected
-                            .toLowerCase()
-                            .includes(sourceName.toLowerCase())
-                      );
-                    })
-                    .map((resource) => (
-                      <article
-                        key={resource.id}
-                        onClick={() => handleResourceClick(resource)}
-                        className="group w-full cursor-pointer overflow-hidden rounded-xl border border-gray-200 bg-white transition-all hover:shadow-lg"
-                      >
-                        <div className="flex h-48 w-full overflow-hidden">
-                          {/* Thumbnail - 论文使用竖向比例(w-36)，其他使用横向比例(w-64) */}
-                          <div
-                            className={`relative h-48 flex-shrink-0 overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 ${resource.type === 'PAPER' ? 'w-36' : 'w-64'}`}
-                          >
-                            <ResourceThumbnail
-                              resource={resource}
-                              className="h-full w-full"
+                  {filteredResources.map((resource) => (
+                    <article
+                      key={resource.id}
+                      onClick={() => handleResourceClick(resource)}
+                      className="group w-full cursor-pointer overflow-hidden rounded-xl border border-gray-200 bg-white transition-all hover:shadow-lg"
+                    >
+                      <div className="flex h-48 w-full overflow-hidden">
+                        {/* Thumbnail - 论文使用竖向比例(w-36)，其他使用横向比例(w-64) */}
+                        <div
+                          className={`relative h-48 flex-shrink-0 overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 ${resource.type === 'PAPER' ? 'w-36' : 'w-64'}`}
+                        >
+                          <ResourceThumbnail
+                            resource={resource}
+                            className="h-full w-full"
+                          />
+                        </div>
+
+                        {/* Content - 右侧内容区 */}
+                        <div className="flex min-w-0 flex-1 flex-col overflow-hidden p-5">
+                          {/* Date, Source Badge, Tags, and Stats */}
+                          <div className="mb-2 flex flex-shrink-0 flex-wrap items-center gap-2 text-xs text-gray-500">
+                            <ClientDate
+                              date={resource.publishedAt}
+                              format="date"
+                              locale="en-US"
+                              dateOptions={{
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                              }}
                             />
-                          </div>
-
-                          {/* Content - 右侧内容区 */}
-                          <div className="flex min-w-0 flex-1 flex-col overflow-hidden p-5">
-                            {/* Date, Source Badge, Tags, and Stats */}
-                            <div className="mb-2 flex flex-shrink-0 flex-wrap items-center gap-2 text-xs text-gray-500">
-                              <ClientDate
-                                date={resource.publishedAt}
-                                format="date"
-                                locale="en-US"
-                                dateOptions={{
-                                  day: 'numeric',
-                                  month: 'short',
-                                  year: 'numeric',
-                                }}
-                              />
-                              {/* Source Badge */}
-                              {(() => {
-                                const sourceName = getSourceName(resource);
-                                return sourceName ? (
-                                  <span
-                                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${getSourceBadgeColor(sourceName, resource.type)}`}
-                                    title={`Source: ${sourceName}`}
-                                  >
-                                    <span className="max-w-[120px] truncate">
-                                      {sourceName}
-                                    </span>
-                                  </span>
-                                ) : null;
-                              })()}
-                              {resource.upvoteCount !== undefined && (
-                                <span className="flex items-center gap-1 text-gray-600">
-                                  <svg
-                                    className="h-3 w-3"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M5 10l7-7m0 0l7 7m-7-7v18"
-                                    />
-                                  </svg>
-                                  {resource.upvoteCount}
-                                </span>
-                              )}
-                              {resource.categories &&
-                                resource.categories
-                                  .slice(0, 2)
-                                  .map((cat, i) => (
-                                    <span key={i} className="text-gray-600">
-                                      {cat}
-                                    </span>
-                                  ))}
-                              {/* AI Insights Chip - 紧凑版 */}
-                              {resource.keyInsights &&
-                                resource.keyInsights.length > 0 && (
-                                  <InsightChip
-                                    insights={resource.keyInsights}
-                                  />
-                                )}
-                            </div>
-
-                            {/* Title */}
-                            <h2
-                              className="mb-2 flex-shrink-0 truncate text-xl font-semibold text-red-600 hover:underline"
-                              title={resource.title}
-                            >
-                              {resource.title}
-                              {resource.linkHealth === 'BROKEN' && (
+                            {/* Source Badge */}
+                            {(() => {
+                              const sourceName = getSourceName(resource);
+                              return sourceName ? (
                                 <span
-                                  className="ml-1 inline-flex items-center text-amber-500"
-                                  title="链接可能已失效"
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ${getSourceBadgeColor(sourceName, resource.type)}`}
+                                  title={`Source: ${sourceName}`}
                                 >
-                                  <svg
-                                    className="h-3.5 w-3.5"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                                    />
-                                  </svg>
+                                  <span className="max-w-[120px] truncate">
+                                    {sourceName}
+                                  </span>
                                 </span>
-                              )}
-                            </h2>
-
-                            {/* Abstract or Fallback Info */}
-                            <p
-                              className="line-clamp-2 min-h-0 flex-shrink overflow-hidden text-ellipsis text-sm leading-relaxed text-gray-700"
-                              title={
-                                resource.aiSummary || resource.abstract || ''
-                              }
-                            >
-                              {resource.aiSummary || resource.abstract || (
-                                <span className="text-gray-500">
-                                  {resource.sourceUrl && (
-                                    <>
-                                      <span className="font-medium">
-                                        Source:
-                                      </span>{' '}
-                                      {new URL(
-                                        resource.sourceUrl
-                                      ).hostname.replace('www.', '')}
-                                    </>
-                                  )}
-                                  {resource.authors &&
-                                    resource.authors.length > 0 && (
-                                      <>
-                                        {resource.sourceUrl && ' • '}
-                                        <span className="font-medium">
-                                          By:
-                                        </span>{' '}
-                                        {resource.authors
-                                          .slice(0, 3)
-                                          .map(
-                                            (a) =>
-                                              a.name || a.username || 'Unknown'
-                                          )
-                                          .join(', ')}
-                                        {resource.authors.length > 3 &&
-                                          ' et al.'}
-                                      </>
-                                    )}
-                                </span>
-                              )}
-                            </p>
-
-                            {/* Spacer */}
-                            <div className="flex-1"></div>
-
-                            {/* Bottom Actions */}
-                            <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-t border-gray-100 pt-2 sm:gap-6">
-                              {/* Bookmark Button - Simple version */}
-                              <button
-                                onClick={(e) => toggleBookmark(resource.id, e)}
-                                className={`flex items-center gap-2 text-sm transition-colors ${
-                                  isBookmarked(resource.id)
-                                    ? 'text-blue-600 hover:text-blue-700'
-                                    : 'text-gray-600 hover:text-blue-600'
-                                }`}
-                              >
+                              ) : null;
+                            })()}
+                            {resource.upvoteCount !== undefined && (
+                              <span className="flex items-center gap-1 text-gray-600">
                                 <svg
-                                  className="h-4 w-4"
-                                  fill={
-                                    isBookmarked(resource.id)
-                                      ? 'currentColor'
-                                      : 'none'
-                                  }
+                                  className="h-3 w-3"
+                                  fill="none"
                                   stroke="currentColor"
                                   viewBox="0 0 24 24"
                                 >
@@ -2089,97 +1983,210 @@ function HomeContent() {
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
                                     strokeWidth={2}
-                                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                                    d="M5 10l7-7m0 0l7 7m-7-7v18"
                                   />
                                 </svg>
-                                {isBookmarked(resource.id)
-                                  ? 'Bookmarked'
-                                  : 'Bookmark'}
-                              </button>
-                              {/* Upvote Button */}
-                              {resource.upvoteCount !== undefined && (
-                                <button
-                                  className={`flex items-center gap-2 text-sm transition-colors ${
-                                    hasUpvoted(resource.id)
-                                      ? 'font-medium text-blue-600'
-                                      : 'text-gray-600 hover:text-blue-600'
-                                  }`}
-                                  onClick={(e) => toggleUpvote(resource.id, e)}
-                                  title="点赞"
-                                >
-                                  <ThumbsUp
-                                    className={`h-4 w-4 ${
-                                      hasUpvoted(resource.id)
-                                        ? 'fill-current'
-                                        : ''
-                                    }`}
-                                  />
-                                  {resource.upvoteCount}
-                                </button>
+                                {resource.upvoteCount}
+                              </span>
+                            )}
+                            {resource.categories &&
+                              resource.categories.slice(0, 2).map((cat, i) => (
+                                <span key={i} className="text-gray-600">
+                                  {cat}
+                                </span>
+                              ))}
+                            {/* AI Insights Chip - 紧凑版 */}
+                            {resource.keyInsights &&
+                              resource.keyInsights.length > 0 && (
+                                <InsightChip insights={resource.keyInsights} />
                               )}
-                              {/* Comment Button */}
-                              {resource.commentCount !== undefined && (
-                                <button
-                                  className="flex items-center gap-2 text-sm text-gray-600 transition-colors hover:text-green-600"
-                                  onClick={(e) =>
-                                    handleCommentClick(resource, e)
-                                  }
-                                  title="评论"
-                                >
-                                  <svg
-                                    className="h-4 w-4"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                                    />
-                                  </svg>
-                                  {resource.commentCount}
-                                </button>
-                              )}
+                          </div>
 
-                              {/* Admin Delete Button */}
-                              {isAdmin && (
-                                <button
-                                  onClick={(e) =>
-                                    handleDeleteResource(resource.id, e)
-                                  }
-                                  className="flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-red-600"
-                                  title="Delete resource (Admin)"
+                          {/* Title */}
+                          <h2
+                            className="mb-2 flex-shrink-0 truncate text-xl font-semibold text-red-600 hover:underline"
+                            title={resource.title}
+                          >
+                            {resource.title}
+                            {resource.linkHealth === 'BROKEN' && (
+                              <span
+                                className="ml-1 inline-flex items-center text-amber-500"
+                                title="链接可能已失效"
+                              >
+                                <svg
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
                                 >
-                                  <svg
-                                    className="h-4 w-4"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                    />
-                                  </svg>
-                                  Delete
-                                </button>
-                              )}
-                            </div>
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                                  />
+                                </svg>
+                              </span>
+                            )}
+                          </h2>
+
+                          {/* Abstract or Fallback Info */}
+                          <p
+                            className="line-clamp-2 min-h-0 flex-shrink overflow-hidden text-ellipsis text-sm leading-relaxed text-gray-700"
+                            title={
+                              resource.aiSummary || resource.abstract || ''
+                            }
+                          >
+                            {resource.aiSummary || resource.abstract || (
+                              <span className="text-gray-500">
+                                {resource.sourceUrl && (
+                                  <>
+                                    <span className="font-medium">Source:</span>{' '}
+                                    {new URL(
+                                      resource.sourceUrl
+                                    ).hostname.replace('www.', '')}
+                                  </>
+                                )}
+                                {resource.authors &&
+                                  resource.authors.length > 0 && (
+                                    <>
+                                      {resource.sourceUrl && ' • '}
+                                      <span className="font-medium">
+                                        By:
+                                      </span>{' '}
+                                      {resource.authors
+                                        .slice(0, 3)
+                                        .map(
+                                          (a) =>
+                                            a.name || a.username || 'Unknown'
+                                        )
+                                        .join(', ')}
+                                      {resource.authors.length > 3 && ' et al.'}
+                                    </>
+                                  )}
+                              </span>
+                            )}
+                          </p>
+
+                          {/* Spacer */}
+                          <div className="flex-1"></div>
+
+                          {/* Bottom Actions */}
+                          <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-t border-gray-100 pt-2 sm:gap-6">
+                            {/* Bookmark Button - Simple version */}
+                            <button
+                              onClick={(e) => toggleBookmark(resource.id, e)}
+                              className={`flex items-center gap-2 text-sm transition-colors ${
+                                isBookmarked(resource.id)
+                                  ? 'text-blue-600 hover:text-blue-700'
+                                  : 'text-gray-600 hover:text-blue-600'
+                              }`}
+                            >
+                              <svg
+                                className="h-4 w-4"
+                                fill={
+                                  isBookmarked(resource.id)
+                                    ? 'currentColor'
+                                    : 'none'
+                                }
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                                />
+                              </svg>
+                              {isBookmarked(resource.id)
+                                ? 'Bookmarked'
+                                : 'Bookmark'}
+                            </button>
+                            {/* Upvote Button */}
+                            {resource.upvoteCount !== undefined && (
+                              <button
+                                className={`flex items-center gap-2 text-sm transition-colors ${
+                                  hasUpvoted(resource.id)
+                                    ? 'font-medium text-blue-600'
+                                    : 'text-gray-600 hover:text-blue-600'
+                                }`}
+                                onClick={(e) => toggleUpvote(resource.id, e)}
+                                title="点赞"
+                              >
+                                <ThumbsUp
+                                  className={`h-4 w-4 ${
+                                    hasUpvoted(resource.id)
+                                      ? 'fill-current'
+                                      : ''
+                                  }`}
+                                />
+                                {resource.upvoteCount}
+                              </button>
+                            )}
+                            {/* Comment Button */}
+                            {resource.commentCount !== undefined && (
+                              <button
+                                className="flex items-center gap-2 text-sm text-gray-600 transition-colors hover:text-green-600"
+                                onClick={(e) => handleCommentClick(resource, e)}
+                                title="评论"
+                              >
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                                  />
+                                </svg>
+                                {resource.commentCount}
+                              </button>
+                            )}
+
+                            {/* Admin Delete Button */}
+                            {isAdmin && (
+                              <button
+                                onClick={(e) =>
+                                  handleDeleteResource(resource.id, e)
+                                }
+                                className="flex items-center gap-2 text-sm text-gray-400 transition-colors hover:text-red-600"
+                                title="Delete resource (Admin)"
+                              >
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
+                                </svg>
+                                Delete
+                              </button>
+                            )}
                           </div>
                         </div>
-                      </article>
-                    ))}
+                      </div>
+                    </article>
+                  ))}
                 </div>
               )}
 
               {/* Infinite Scroll Trigger */}
+              {/* 条件用未过滤的 resources：来源筛选把当前页全滤空时，触发器仍需
+                  挂在 DOM 上继续翻页，否则筛选一开就再也拉不到下一页 */}
               {!loading && resources.length > 0 && hasMore && (
                 <div
-                  ref={loadMoreTriggerRef}
+                  ref={setLoadMoreNode}
                   className="mt-6 flex justify-center py-4"
                 >
                   {loadingMore && (
@@ -2210,18 +2217,29 @@ function HomeContent() {
               )}
 
               {/* No More Results */}
-              {!loading && resources.length > 0 && !hasMore && (
+              {!loading && filteredResources.length > 0 && !hasMore && (
                 <div className="mt-6 text-center">
                   <p className="text-sm text-gray-400">— 已加载全部内容 —</p>
                 </div>
               )}
 
-              {/* Empty State */}
-              {!loading && resources.length === 0 && (
-                <EmptyState
-                  title="No content available"
-                  description="Try running the data crawler first"
-                />
+              {/* Empty State：筛选后为空时，等分页真正拉完（!hasMore）再提示，
+                  避免"还在往后翻"的中间态闪一下空态 */}
+              {!loading && !loadingMore && filteredResources.length === 0 && (
+                <>
+                  {hasMore ? (
+                    <LoadingState size="sm" className="py-12" />
+                  ) : (
+                    <EmptyState
+                      title="No content available"
+                      description={
+                        selectedSources.length > 0
+                          ? 'No resources match the selected sources'
+                          : 'Try running the data crawler first'
+                      }
+                    />
+                  )}
+                </>
               )}
             </>
           )}

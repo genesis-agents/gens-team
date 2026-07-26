@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { config } from '@/lib/utils/config';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Resource } from '../utils/types';
@@ -35,7 +35,10 @@ export function useResources({
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
 
-  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
+  // ★ 2026-07-26: 导出 callback ref（而非 useRef 对象）——消费方 `ref={loadMoreTriggerRef}`
+  //   即可，节点卸载重建会重新触发 observer 绑定。原先是 useRef 且从未挂到任何 DOM 上，
+  //   下面的 observer 恒等于死代码。
+  const [loadMoreNode, setLoadMoreNode] = useState<HTMLDivElement | null>(null);
 
   const fetchResources = async (loadMore = false) => {
     try {
@@ -192,6 +195,8 @@ export function useResources({
       if (!loadMore) {
         setResources([]);
       }
+      // 失败落 hasMore=false，避免触发器留在页面上被 observer 反复命中重试
+      setHasMore(false);
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -210,8 +215,7 @@ export function useResources({
 
   // Infinite scroll
   useEffect(() => {
-    const trigger = loadMoreTriggerRef.current;
-    if (!trigger) return;
+    if (!loadMoreNode) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -227,19 +231,19 @@ export function useResources({
       }
     );
 
-    observer.observe(trigger);
+    observer.observe(loadMoreNode);
 
     return () => {
       observer.disconnect();
     };
-  }, [hasMore, loadingMore, loading, loadMoreResources]);
+  }, [loadMoreNode, hasMore, loadingMore, loading, loadMoreResources]);
 
   return {
     resources,
     loading,
     loadingMore,
     hasMore,
-    loadMoreTriggerRef,
+    loadMoreTriggerRef: setLoadMoreNode,
     setResources,
     fetchResources,
   };
