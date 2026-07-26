@@ -890,18 +890,57 @@ export default function ConfigPage() {
                             Paused
                           </span>
                         )}
+                        {/* ★ 2026-07-26: 原先只渲染 ACTIVE/PAUSED，失败源在列表里
+                            和正常源长得一模一样，14 个 FAILED 谁也发现不了 */}
+                        {source.status === 'FAILED' && (
+                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                            Failed
+                          </span>
+                        )}
+                        {source.status === 'MAINTENANCE' && (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                            Maintenance
+                          </span>
+                        )}
                       </div>
                       <p className="mt-1 text-sm text-gray-600">
                         {source.description}
                       </p>
+
+                      {/* 失败原因：库里一直存着 lastErrorMessage，此前前端从不展示，
+                          导致「为什么失败 / 挂了多久」只能查库才知道 */}
+                      {source.lastErrorMessage && (
+                        <div className="mt-2 flex items-start gap-1.5 rounded-md bg-red-50 px-2 py-1.5">
+                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-red-600" />
+                          <p
+                            className="line-clamp-2 text-xs text-red-700"
+                            title={source.lastErrorMessage}
+                          >
+                            {source.lastErrorMessage}
+                          </p>
+                        </div>
+                      )}
                       <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
                         <span className="flex items-center gap-1">
                           <Database className="h-3.5 w-3.5" />
                           {source.totalCollected.toLocaleString()} collected
                         </span>
-                        <span>
+                        <span
+                          className={
+                            source.status === 'FAILED' ? 'text-red-600' : ''
+                          }
+                        >
                           Last sync: {formatRelativeTime(source.lastSuccessAt)}
                         </span>
+                        {/* 成功率：区分「偶发失败」和「长期已死」 */}
+                        {source.totalSuccess + source.totalFailed > 0 && (
+                          <span
+                            title={`${source.totalSuccess} ok / ${source.totalFailed} failed`}
+                          >
+                            {/* successRate 后端存的是百分数(0-100)，不是小数 */}
+                            {Math.round(source.successRate)}% success
+                          </span>
+                        )}
                         <a
                           href={source.baseUrl}
                           target="_blank"
