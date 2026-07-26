@@ -271,10 +271,10 @@ export class RssService {
     try {
       this.logger.log(`Fetching RSS feed from ${rssUrl}`);
 
-      // 解析RSS feed
-      const feed = await this.parser.parseURL(rssUrl);
+      // 解析RSS feed（严格解析失败时走消毒重解析，见 parseFeedTolerant）
+      const feed = await this.parseFeedTolerant(rssUrl);
 
-      if (!feed || !feed.items || feed.items.length === 0) {
+      if (!feed?.items || feed.items.length === 0) {
         this.logger.warn(`No items found in RSS feed: ${rssUrl}`);
         return { success: 0, duplicates: 0, failed: 0 };
       }
@@ -555,6 +555,87 @@ export class RssService {
       );
       throw new Error(errorMessage);
     }
+  }
+
+  /**
+   * ★ 2026-07-26: 带容错的 feed 解析。
+   *
+   * rss-parser 底层是 sax 严格模式，遇到不规范 XML 直接抛错。生产上 14 个
+   * FAILED 采集源里有 5 个死于此（AWS ML Blog / Google Cloud / Palo Alto /
+   * Brookings / Stanford HAI），错误分别是 `Invalid character in entity name`、
+   * `Attribute without value`、`Unable to parse XML` —— feed 本身还在，只是
+   * 混了裸 `&`、无值属性、控制字符这类几乎所有真实 RSS 都有的脏数据。
+   *
+   * 策略：先按原路 parseURL；失败且判定为**解析类**错误时，自取原文消毒后
+   * 重解析。网络类错误（404/403/超时）不做重试，直接抛给上层保持既有语义。
+   */
+  private async parseFeedTolerant(
+    rssUrl: string,
+  ): Promise<Parser.Output<Record<string, unknown>>> {
+    try {
+      return await this.parser.parseURL(rssUrl);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (!RssService.isXmlParseError(msg)) {
+        throw error; // 网络/HTTP 错误维持原语义
+      }
+      this.logger.warn(
+        `[rss] strict parse failed for ${rssUrl} (${msg.split("\n")[0]}); retrying with sanitizer`,
+      );
+      const res = await fetch(rssUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept:
+            "application/rss+xml, application/xml, application/atom+xml, text/xml, */*",
+        },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) {
+        throw new Error(`Status code ${res.status}`);
+      }
+      const feed = await this.parser.parseString(
+        RssService.sanitizeXml(await res.text()),
+      );
+      this.logger.log(
+        `[rss] sanitizer recovered ${feed.items?.length ?? 0} items from ${rssUrl}`,
+      );
+      return feed;
+    }
+  }
+
+  /** 是否是 XML 解析类错误（区别于网络/HTTP 错误） */
+  static isXmlParseError(message: string): boolean {
+    return /Invalid character in entity|Attribute without value|Unable to parse XML|Unexpected close tag|Unencoded <|Non-whitespace before first tag|Invalid character entity|Unquoted attribute value/i.test(
+      message,
+    );
+  }
+
+  /**
+   * XML 消毒：只处理"确定是脏数据"的几类，不做激进重写。
+   * 顺序有讲究——先补 BOM/控制字符，再补裸 &，最后补无值属性。
+   */
+  static sanitizeXml(xml: string): string {
+    return (
+      xml
+        // BOM + XML 1.0 非法控制字符（\t \n \r 保留）
+        .replace(/^\uFEFF/, "")
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
+        // 裸 & → &amp;（已是合法实体的不动）
+        .replace(/&(?!(?:[a-zA-Z][a-zA-Z0-9]*|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;")
+        // 无值属性 <a disabled> → <a disabled="disabled">
+        .replace(
+          /<([a-zA-Z][\w:-]*)((?:\s+[\w:-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*)\s*(\/?)>/g,
+          (_m, tag: string, attrs: string, selfClose: string) => {
+            const fixed = attrs.replace(
+              /\s+([\w:-]+)(?!\s*=)(?=\s|$)/g,
+              (_a, name: string) => ` ${name}="${name}"`,
+            );
+            return `<${tag}${fixed}${selfClose}>`;
+          },
+        )
+    );
   }
 
   /**
