@@ -119,8 +119,12 @@ export class IndustryReportSearchTool extends BaseTool<
       },
       topicType: {
         type: "string",
+        // ★ 2026-07-26: 词表对齐配置里真实使用的 ResearchTopicType 字面量。
+        //   原描述给的是 technology/finance/energy，与 tool_configs 里的
+        //   TECHNOLOGY/MACRO/COMPANY/EVENT 不是同一套词，模型照着填必然不命中。
+        //   匹配已改为大小写不敏感，填小写同样有效；不命中仍 fail-soft 全量检索。
         description:
-          "主题类型，按来源 topicTypes 字段过滤（如 'technology' / 'finance' / 'energy'），可选。",
+          "主题类型，按来源 topicTypes 字段过滤，可选。取值：TECHNOLOGY（技术专项）/ MACRO（宏观行业）/ COMPANY（企业）/ EVENT（事件）。",
       },
       timeRange: {
         type: "string",

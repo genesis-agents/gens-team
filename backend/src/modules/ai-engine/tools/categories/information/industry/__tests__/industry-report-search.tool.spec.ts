@@ -270,6 +270,36 @@ describe("IndustryReportSearchTool", () => {
       expect(callArg.query).toContain("site:ark-invest.com");
       expect(callArg.query).not.toContain("site:src5.example.com"); // not MACRO
     });
+
+    // ★ 2026-07-26: 配置里是 ResearchTopicType 大写字面量，模型按 schema 传的是
+    //   小写；严格相等时恒不命中 → 过滤形同虚设（每次都 fallback 全量 + 刷 WARN）
+    it("matches topicType case-insensitively (lowercase from LLM hits uppercase config)", async () => {
+      const webSearch = makeWebSearchTool([]);
+      registryMock.tryGet.mockReturnValue(webSearch);
+
+      await tool.execute(
+        { query: "Crypto outlook", topicType: "macro" },
+        makeContext(),
+      );
+
+      const callArg = webSearch.execute.mock.calls[0][0];
+      expect(callArg.query).toContain("site:semianalysis.com");
+      expect(callArg.query).toContain("site:ark-invest.com");
+      expect(callArg.query).not.toContain("site:src5.example.com");
+    });
+
+    it("unknown topicType still falls back to all enabled sources (fail-soft)", async () => {
+      const webSearch = makeWebSearchTool([]);
+      registryMock.tryGet.mockReturnValue(webSearch);
+
+      const r = await tool.execute(
+        { query: "AI", topicType: "energy" },
+        makeContext(),
+      );
+
+      const data = r.data as { sourcesQueried: number };
+      expect(data.sourcesQueried).toBe(6);
+    });
   });
 
   describe("error path", () => {

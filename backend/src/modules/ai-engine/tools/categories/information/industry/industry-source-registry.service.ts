@@ -69,14 +69,22 @@ export class IndustrySourceRegistryService {
    *   - topicType 命中至少 1 个 → 过滤子集
    *   - topicType 全不命中 → fallback 所有 enabled（不让一个 LLM-invented
    *     topicType 把整个工具变废，2026-05-04 教训）
+   *
+   * ★ 2026-07-26：比较改为大小写不敏感。配置里的 topicTypes 是
+   * ResearchTopicType 大写字面量（TECHNOLOGY / MACRO / COMPANY / EVENT），
+   * 调用方（LLM 按工具 schema）传的是小写，`includes` 严格相等 → 恒不命中，
+   * 过滤形同虚设且每次刷一条 WARN。
    */
   async getEnabledSources(
     topicType?: string,
   ): Promise<IndustryReportSourceConfig[]> {
     const sources = await this.getSources();
     const enabled = sources.filter((s) => s.enabled);
-    if (!topicType) return enabled;
-    const matched = enabled.filter((s) => s.topicTypes.includes(topicType));
+    const wanted = topicType?.trim().toLowerCase();
+    if (!wanted) return enabled;
+    const matched = enabled.filter((s) =>
+      s.topicTypes.some((t) => t.trim().toLowerCase() === wanted),
+    );
     if (matched.length > 0) return matched;
     if (enabled.length > 0) {
       this.logger.warn(

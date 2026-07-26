@@ -54,4 +54,14 @@ describe("dimension-tool-matrix 契约", () => {
     );
     expect(resolveFacetPreferredTools("policy")).toContain("federal-register");
   });
+
+  // ★ 2026-07-26: technical 维度必须能召回行业研报源 —— AI/半导体选题的维度
+  //   绝大多数落 technical，缺了它精选分析师源（semianalysis 等）永远检索不到
+  it("technical facet 含行业研报源（分析师源可召回）", () => {
+    expect(resolveFacetPreferredTools("technical")).toContain(
+      "industry-report-search",
+    );
+    // web-search 仍是最后兜底
+    expect(FACET_PREFERRED_TOOLS.technical.at(-1)).toBe("web-search");
+  });
 });

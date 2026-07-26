@@ -50,6 +50,11 @@ export const FACET_PREFERRED_TOOLS: Record<DimensionFacet, readonly string[]> =
       "github-search",
       "hackernews-search",
       "arxiv-search",
+      // ★ 2026-07-26: 技术维度补行业研报源。原先 industry-report-search 只挂
+      //   market/financial/general，而 AI/半导体类选题的维度绝大多数落 technical，
+      //   导致 semianalysis / stratechery 等精选分析师源连被检索的机会都没有
+      //   （信源库"报告"tab 长期只有学术源）。放在 web-search 兜底之前。
+      "industry-report-search",
       "web-search",
     ],
     financial: ["finance-api", "industry-report-search", "web-search"],
