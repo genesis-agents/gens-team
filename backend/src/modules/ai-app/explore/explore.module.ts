@@ -17,6 +17,9 @@ import { ReportCitationImportListener } from "./integrations/report-citation-imp
 // ★ 2026-07-21: 存量报告引用回填（管理端点，一次性运维）
 import { ReportCitationBackfillService } from "./integrations/report-citation-backfill.service";
 import { ReportCitationBackfillController } from "./integrations/report-citation-backfill.controller";
+// ★ 2026-07-26: 闸门加严前入库的存量引用资源清理（同一管理控制器暴露）
+import { CitationImportPurgeService } from "./integrations/citation-import-purge.service";
+import { ResourceLifecycleModule } from "./resources/resource-lifecycle.module";
 // ★ 2026-07-21: 导入资源 classify-only 打标（写 UI 展示字段 categories）
 import { ResourceTaggingService } from "./integrations/resource-tagging.service";
 import { AIEnrichmentService } from "./resources/ai-enrichment.service";
@@ -34,6 +37,8 @@ import { IngestionConfigModule } from "./ingestion/config/config.module";
     ToolKeyResolverModule,
     // ★ 2026-07-21: ReportCitationImportListener 需要 ImportManagerService
     IngestionConfigModule,
+    // ★ 2026-07-26: CitationImportPurgeService 需要 ResourceLifecycleService
+    ResourceLifecycleModule,
   ],
   controllers: [
     YoutubeController,
@@ -54,6 +59,8 @@ import { IngestionConfigModule } from "./ingestion/config/config.module";
     ReportCitationImportListener,
     // ★ 2026-07-21: 存量报告引用回填服务
     ReportCitationBackfillService,
+    // ★ 2026-07-26: 存量引用导入清理服务（dry-run 默认）
+    CitationImportPurgeService,
     // ★ 2026-07-21: 导入资源 classify-only 打标（AIEnrichmentService 仅依赖全局 ConfigService）
     AIEnrichmentService,
     ResourceTaggingService,

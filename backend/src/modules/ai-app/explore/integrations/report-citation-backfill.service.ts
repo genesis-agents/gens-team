@@ -81,6 +81,7 @@ export class ReportCitationBackfillService {
       failed: 0,
       gated: 0,
       capped: 0,
+      domainCapped: 0,
     };
 
     for (const mission of missions) {
@@ -105,13 +106,14 @@ export class ReportCitationBackfillService {
       summary.failed += stats.failed;
       summary.gated += stats.gated;
       summary.capped += stats.capped;
+      summary.domainCapped += stats.domainCapped ?? 0;
     }
 
     this.logger.log(
       `[backfill] ${dryRun ? "DRY-RUN " : ""}done: ${summary.missionsScanned} missions scanned, ` +
         `${summary.missionsWithCitations} with citations, ${summary.imported} imported, ` +
         `${summary.failed} failed, ${summary.gated} gated, ${summary.capped} capped, ` +
-        `${summary.offloadedSkipped} offloaded-skipped`,
+        `${summary.domainCapped} domain-capped, ${summary.offloadedSkipped} offloaded-skipped`,
     );
     return summary;
   }

@@ -36,6 +36,13 @@ import {
 const MIN_CREDIBILITY_SCORE = 70;
 /** 单 mission 最多导入条数（防公共库被单次 mission 长尾灌水） */
 const MAX_IMPORTS_PER_MISSION = 30;
+/**
+ * ★ 2026-07-26：单 mission 单域名最多导入条数。
+ * 学术检索工具一次返回 10-100 条同域结果，按信誉分排序取 Top30 时会把 30 个
+ * 名额全吃掉，行业分析师源（semianalysis / stratechery，命中数本来就个位数）
+ * 一条都排不进来 —— 信源库"报告"tab 因此长期单一域名刷屏。
+ */
+const MAX_IMPORTS_PER_DOMAIN = 5;
 
 /** 允许入库的 sourceType → 信源库 ResourceType 映射（不在表内的直接跳过） */
 const SOURCE_TYPE_TO_RESOURCE_TYPE: Partial<
@@ -70,6 +77,32 @@ export function isHomepageUrl(url: string): boolean {
   try {
     const u = new URL(url);
     return u.pathname === "/" || u.pathname === "";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 文献聚合/索引站：页面本身只是元数据卡片（标题+摘要+外链），正文在别处。
+ * 这类 URL 入库后卡片只有一行 snippet，阅读器（SPA 页面）也提不出正文，
+ * 是"报告 tab 内容极差"的主要来源。
+ */
+const AGGREGATOR_HOST_PATTERN =
+  /(^|\.)(semanticscholar\.org|connectedpapers\.com|researchgate\.net|academia\.edu)$|^scholar\.google\./i;
+
+/**
+ * ★ 2026-07-26：聚合/索引页识别。semantic-scholar 工具在论文既无 arXiv ID
+ * 也无 DOI 时回落 semanticscholar.org 聚合页，这类 URL：
+ *   - 被 assembler 按 /paper/ 路径打 85 分（scoreCredibility 的 academic 正则
+ *     不含 scholar，走不到 92 那条），稳过 70 闸门；
+ *   - 又不匹配 PAPER_URL_PATTERN，于是 resolveResourceType 把 academic 降级
+ *     成 REPORT —— 一路灌进信源库"报告"tab。
+ * 判定为聚合页则完全不入库（与 docs/首页闸门同一口径：不是"内容"就不收）。
+ */
+export function isAggregatorUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return AGGREGATOR_HOST_PATTERN.test(host);
   } catch {
     return false;
   }
@@ -121,6 +154,8 @@ export interface CitationImportStats {
   gated: number;
   /** 因单 mission 上限被截断条数 */
   capped: number;
+  /** 因单域名配额被截断条数（★ 2026-07-26） */
+  domainCapped: number;
 }
 
 @Injectable()
@@ -167,20 +202,44 @@ export class ReportCitationImportListener {
         // ★ 2026-07-24：文档/产品参考页完全不入库
         !isDocsOrReferenceUrl(c.url) &&
         // ★ 2026-07-25：机构/产品首页不入库（首页无正文可读）
-        !isHomepageUrl(c.url),
+        !isHomepageUrl(c.url) &&
+        // ★ 2026-07-26：文献聚合/索引页不入库（只有元数据卡片，无正文）
+        !isAggregatorUrl(c.url),
     );
     const gated = citations.length - eligible.length;
     if (eligible.length === 0) {
       this.logger.debug(
         `[${missionId}] no citations passed the import gate (${citations.length} total)`,
       );
-      return { imported: 0, failed: 0, gated, capped: 0 };
+      return { imported: 0, failed: 0, gated, capped: 0, domainCapped: 0 };
     }
 
-    const selected = [...eligible]
-      .sort((a, b) => (b.credibilityScore ?? 0) - (a.credibilityScore ?? 0))
-      .slice(0, MAX_IMPORTS_PER_MISSION);
-    const capped = eligible.length - selected.length;
+    // 信誉分降序 → 先按域名配额筛（保多样性），再按 mission 总量截断
+    const ranked = [...eligible].sort(
+      (a, b) => (b.credibilityScore ?? 0) - (a.credibilityScore ?? 0),
+    );
+    const perDomainCount = new Map<string, number>();
+    const domainAllowed: ReportCitationSnapshot[] = [];
+    for (const c of ranked) {
+      const domain = (
+        c.domain ||
+        this.extractDomain(c.url) ||
+        "unknown"
+      ).toLowerCase();
+      const used = perDomainCount.get(domain) ?? 0;
+      if (used >= MAX_IMPORTS_PER_DOMAIN) continue;
+      perDomainCount.set(domain, used + 1);
+      domainAllowed.push(c);
+    }
+    const domainCapped = ranked.length - domainAllowed.length;
+    if (domainCapped > 0) {
+      this.logger.log(
+        `[${missionId}] per-domain quota (${MAX_IMPORTS_PER_DOMAIN}) dropped ${domainCapped} entries`,
+      );
+    }
+
+    const selected = domainAllowed.slice(0, MAX_IMPORTS_PER_MISSION);
+    const capped = domainAllowed.length - selected.length;
     if (capped > 0) {
       this.logger.warn(
         `[${missionId}] citation import capped at ${MAX_IMPORTS_PER_MISSION}, dropped ${capped} lower-credibility entries`,
@@ -188,7 +247,13 @@ export class ReportCitationImportListener {
     }
 
     if (opts.dryRun) {
-      return { imported: selected.length, failed: 0, gated, capped };
+      return {
+        imported: selected.length,
+        failed: 0,
+        gated,
+        capped,
+        domainCapped,
+      };
     }
 
     let imported = 0;
@@ -220,9 +285,10 @@ export class ReportCitationImportListener {
       }
     }
     this.logger.log(
-      `[${missionId}] citation import done: ${imported} imported, ${failed} failed, ${gated} gated out`,
+      `[${missionId}] citation import done: ${imported} imported, ${failed} failed, ` +
+        `${gated} gated out, ${domainCapped} domain-capped`,
     );
-    return { imported, failed, gated, capped };
+    return { imported, failed, gated, capped, domainCapped };
   }
 
   private resolveResourceType(citation: ReportCitationSnapshot): ResourceType {

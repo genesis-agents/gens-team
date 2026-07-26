@@ -17,6 +17,10 @@ import {
   ReportCitationBackfillService,
   type BackfillSummary,
 } from "./report-citation-backfill.service";
+import {
+  CitationImportPurgeService,
+  type PurgeSummary,
+} from "./citation-import-purge.service";
 
 const MAX_LIMIT = 5000;
 
@@ -24,6 +28,7 @@ const MAX_LIMIT = 5000;
 export class ReportCitationBackfillController {
   constructor(
     private readonly backfillService: ReportCitationBackfillService,
+    private readonly purgeService: CitationImportPurgeService,
   ) {}
 
   @UseGuards(JwtAuthGuard, AdminGuard)
@@ -43,6 +48,28 @@ export class ReportCitationBackfillController {
         typeof body.missionId === "string" && body.missionId.trim()
           ? body.missionId.trim()
           : undefined,
+    });
+  }
+
+  /**
+   * ★ 2026-07-26：闸门加严前入库的存量引用资源清理（聚合页/docs 页/首页）。
+   *
+   *   POST /api/v1/data-management/backfill/purge-citation-imports
+   *   Body: { "dryRun": true, "limit": 1000 }（dryRun 缺省即 true，必须显式
+   *          传 false 才会真删）
+   */
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Post("purge-citation-imports")
+  async purgeCitationImports(
+    @Body() body: { dryRun?: boolean; limit?: number } = {},
+  ): Promise<PurgeSummary> {
+    const limit =
+      typeof body.limit === "number" && body.limit > 0
+        ? Math.min(Math.floor(body.limit), MAX_LIMIT)
+        : undefined;
+    return this.purgeService.purge({
+      dryRun: body.dryRun !== false,
+      limit,
     });
   }
 }

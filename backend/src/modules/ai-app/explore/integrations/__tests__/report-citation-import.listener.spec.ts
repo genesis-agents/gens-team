@@ -397,4 +397,120 @@ describe("ReportCitationImportListener", () => {
     );
     expect(importManager.importWithMetadata).toHaveBeenCalledTimes(4);
   });
+
+  // ─── ★ 2026-07-26: 聚合页闸门 + 同域配额 ─────────────────────────────
+  it("聚合页闸门：semanticscholar / scholar.google / researchgate 等索引页一律挡下", async () => {
+    const { listener, importManager } = makeListener();
+    await listener.handleReportCompleted(
+      makePayload([
+        {
+          // semantic-scholar 工具在无 arXiv/DOI 时的回落 URL —— 报告 tab 灌水主因
+          url: "https://www.semanticscholar.org/paper/Scaling-Laws/abc123",
+          title: "Scaling Laws for Neural Language Models",
+          domain: "semanticscholar.org",
+          sourceType: "academic",
+          credibilityScore: 85,
+        },
+        {
+          url: "https://api.semanticscholar.org/graph/v1/paper/abc123",
+          title: "Chain-of-Thought Prompting",
+          domain: "api.semanticscholar.org",
+          sourceType: "academic",
+          credibilityScore: 85,
+        },
+        {
+          url: "https://scholar.google.com/citations?user=xyz",
+          title: "Yann LeCun - Google Scholar",
+          domain: "scholar.google.com",
+          sourceType: "academic",
+          credibilityScore: 85,
+        },
+        {
+          url: "https://www.researchgate.net/publication/12345_Transformers",
+          title: "Attention Is All You Need",
+          domain: "researchgate.net",
+          sourceType: "academic",
+          credibilityScore: 85,
+        },
+      ]),
+    );
+    expect(importManager.importWithMetadata).not.toHaveBeenCalled();
+  });
+
+  it("聚合页闸门：论文原始出处（arXiv / DOI）不受影响，仍按 PAPER 入库", async () => {
+    const { listener, importManager } = makeListener();
+    await listener.handleReportCompleted(
+      makePayload([
+        {
+          url: "https://arxiv.org/abs/2501.00001",
+          title: "Scaling Laws for Neural Language Models",
+          domain: "arxiv.org",
+          sourceType: "academic",
+          credibilityScore: 92,
+        },
+        {
+          url: "https://doi.org/10.1038/s41586-025-00001-0",
+          title: "A Foundation Model for Materials",
+          domain: "doi.org",
+          sourceType: "academic",
+          credibilityScore: 92,
+        },
+      ]),
+    );
+    expect(importManager.importWithMetadata).toHaveBeenCalledTimes(2);
+    const types = importManager.importWithMetadata.mock.calls.map(
+      (c: unknown[]) => c[1] as string,
+    );
+    expect(types).toEqual(["PAPER", "PAPER"]);
+  });
+
+  it("同域配额：单域名最多 5 条，其余域名不受影响", async () => {
+    const { listener, importManager } = makeListener();
+    const flood = Array.from({ length: 8 }, (_, i) => ({
+      url: `https://arxiv.org/abs/2501.0000${i}`,
+      title: `Paper ${i}`,
+      domain: "arxiv.org",
+      sourceType: "academic" as const,
+      credibilityScore: 92, // 分数比行业源高，无配额时会吃满名额
+    }));
+    await listener.handleReportCompleted(
+      makePayload([
+        ...flood,
+        {
+          url: "https://semianalysis.com/p/gpu-shortage",
+          title: "GPU Shortage Deep Dive",
+          domain: "semianalysis.com",
+          sourceType: "industry",
+          credibilityScore: 90,
+        },
+      ]),
+    );
+    const importedUrls = importManager.importWithMetadata.mock.calls.map(
+      (c: unknown[]) => c[0] as string,
+    );
+    expect(importedUrls).toHaveLength(6);
+    expect(
+      importedUrls.filter((u: string) => u.includes("arxiv.org")),
+    ).toHaveLength(5);
+    // 低分但异域的分析师源不再被同域高分刷屏挤掉
+    expect(importedUrls).toContain("https://semianalysis.com/p/gpu-shortage");
+  });
+
+  it("同域配额统计：domainCapped 计入 importCitations 返回值", async () => {
+    const { listener } = makeListener();
+    const stats = await listener.importCitations(
+      "m-1",
+      Array.from({ length: 8 }, (_, i) => ({
+        url: `https://arxiv.org/abs/2501.0000${i}`,
+        title: `Paper ${i}`,
+        domain: "arxiv.org",
+        sourceType: "academic" as const,
+        credibilityScore: 92,
+      })),
+      { dryRun: true },
+    );
+    expect(stats.imported).toBe(5);
+    expect(stats.domainCapped).toBe(3);
+    expect(stats.gated).toBe(0);
+  });
 });
