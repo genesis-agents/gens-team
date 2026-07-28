@@ -1,226 +1,128 @@
-# GenesisPod 开发实践复盘 — CTO 汇报（五视角版）
+# 如何构建一个 Agent / 多 Agent 系统 — GenesisPod 实践复盘（CTO 汇报）
 
-> **日期**: 2026-07-23（v4：立论章改为"日常洞察任务是第一动因,定位是其产品化"；v3：补立论章；v2：按五视角重组）
-> **性质**: 基于项目全量实践证据的开发心得复盘（非架构审计，架构合规见 2026-06-02/03 系列评审）
+> **日期**: 2026-07-23（v5：按"内部技术探索 + 五视角×三句"重构,主线收敛为 Agent/多 Agent 系统构建）
+> **性质**: 内部技术探索项目的开发心得复盘,非对外产品汇报
 > **调查方式**: 三路并行只读调研（治理规范与事故教训 / 架构演进史 / 自动化看护机制）+ 仓库量化统计
-> **证据原则**: 每条结论标注来源文件路径；无法追溯的数字如实标注（见 §8 诚实性说明）
+> **证据原则**: 每句结论配项目内实证；无法追溯的数字如实标注（见 §8）
 > **维护者**: Claude Code
 
 ---
 
-## 0. 执行摘要（一页版）
+## 0. 项目定位声明
 
-**为什么做这个系统**：第一动因是一个每天都在发生的真实任务——**从海量信息源中持续产出可交付的洞察**（采集信源 → 阅读消化 → 深度研究/话题洞察报告 → 沉淀进知识库循环复用）。这件事高频、刚需，而通用 chatbot 给不了稳定质量、可追溯引用和可复利的沉淀,所以值得做成系统。在日常自用中被验证后,它产品化为面向一人公司/专业个体的"专家 Agent"平台：卖的不是工具、不是 agent,而是**"干完的活"——有分工审校、有交付标准的专业成果**。这个定位决定了本报告后面的一切：承诺"可信、一致、可问责",平台自身的工程治理就必须重到同等程度（立论详见 §1）。
+**GenesisPod 是一个内部技术探索项目,不是对外销售的产品。** 它的探索命题只有一个：**如何构建一个可信的 Agent / 多 Agent 系统**——包括 Agent 运行时（编排、记忆、守护、追踪）、多 Agent 协作（分工、审校、交接）、以及支撑这一切的工程方法论。
 
-GenesisPod 现状：后端约 157 万行、前端约 50 万行 TypeScript，20 个 AI App 模块跑在五层单向依赖架构上，迭代量超 400 个 PR，绝大部分代码由 AI Agent 编写、人负责决策与验收。实践心得按五个视角展开，每视角一句话结论：
+- **试验场**：自己每天真实发生的洞察任务（信源采集 → 阅读消化 → 深度研究/话题洞察 → 知识沉淀 → 持续追踪，对应 explore/research/insight/library/radar 模块链）。真实任务、真实成本、真实失败,才能压强测试 agent 系统的每个环节。
+- **真正的产出**：不是某个功能,而是**一套被验证过的 Agent 系统构建方法论**——五层架构（app/harness/engine/infra）、运行时护栏（断路器/结构化输出/成本上限）、以及把经验固化为机器看护的完整体系（26 规范 / 34 架构 spec / 44 skill / 13 agent / 1,950 条能力索引）。这些资产可迁移到任何下一个系统。
+- **规模背书**：后端约 157 万行 TS、20 个 agent 应用、400+ PR、绝大部分代码由 AI Agent 编写——这场探索本身就是"用多 Agent 系统构建多 Agent 系统"的双重实验。
 
-| 视角 | 一句话结论 |
+下面是探索沉淀出的十五句心得,按五个视角组织,每句都源自本项目的真实实践或事故。
+
+---
+
+## 1. 一页总览：十五句
+
+| 视角 | 三句心得 |
 | --- | --- |
-| **产品经理** | 模糊需求是最大的浪费源头；需求必须转成可验证目标，功能定义必须自带资源边界（成本/时长上限是产品参数，不是工程细节） |
-| **架构设计** | 架构的价值不在图，在可执行边界；做减法（删层、删库、拒绝新实体）是最高杠杆的架构决策 |
-| **工程实现** | 写在文档里的规范一定失守，只有机器门禁算数；测试最大的敌人是"假绿" |
-| **持续演进** | 大重构拆小波次 + 双读过渡 + 每波全绿收口；决策错误公开留档比掩盖便宜 |
-| **AI 协作组织** | AI 规模化写代码需要新治理学：物理约束（白名单/隔离）、对抗性复核、经验固化为可执行工具 |
-
-贯穿全部视角的一个反面教材：**2026-06-21 Mission 失控事故**（一个任务空烧 33 小时 / $18.16 / 605 万 token，四层防护同时失守），五个视角各能从中读出自己的教训。
-
-**需要 CTO 层面知晓/决策的风险**（完整台账见 §8）：护城河第四层"验收 rubric"缺失（定位文档判为 P0 命门）；数据库迁移链已不是 schema 真相源（squash runbook 待批）；playground 与 deep-insight 双克隆持续漂移（去留待拍板）；跨 pod 任务中止依赖进程内 Map（多实例部署前必须解决）。
+| **产品定位** | ① Agent 系统的交易单位是"干完的活",不是 Agent 本身 ② 没有真实任务喂养的 Agent 平台是空壳 ③ Agent 的护城河是被编码的判断,四层缺一不可 |
+| **产品架构** | ④ Engine 不知道 Agent,Agent 不知道业务 ⑤ 架构边界必须机器可执行,拦不住的规则等于没有 ⑥ 不要为 Agent 自造概念层 |
+| **产品工程** | ⑦ LLM 输出永远不可信,结构化要靠 native 约束 ⑧ 每个 Agent 任务必须有断路器:防冻死、防空转、封顶成本 ⑨ 模型能力必须数据驱动,换模型就是一次回归 |
+| **迭代演进** | ⑩ Agent 系统的重构只能小波次滚动,没有大爆炸 ⑪ revert 也是变更,只验编译的回退埋雷更深 ⑫ 每次事故必须沉淀为机器看护,闭环才算复盘完 |
+| **产品质量** | ⑬ mock 测出来的 Agent 都是"好 Agent",真跑一次才见真章 ⑭ Agent 的质量始于验收标准:说不清"什么叫做对了"就永远做不对 ⑮ AI 的产出必须被 AI 对抗,单路结论不可信 |
 
 ---
 
-## 1. 为什么做这个系统：立论
+## 2. 产品定位视角
 
-> 权威来源：`docs/architecture/product-positioning.md`（2026-06-09 落档的定位北极星）+ 仓库模块与提交记录实证。
+### ① Agent 系统的交易单位是"干完的活",不是 Agent 本身
 
-### 1.1 第一动因：把"日常洞察任务"做成系统
+用户要的是结果（一份带引用、可复盘的洞察报告）,不是养一只 agent。这决定了系统形态:多 Agent 编排对用户不可见,可见的只有交付物及其验收状态。本项目的定位坐标（`product-positioning.md`）把这一点讲透:左端零件市场卖工具（要用户会拼）,右端通用 agent 卖"一只全能 agent"（质量抽卡、会闯祸）,而以交付物为中心的系统卖"可信、一致、可问责"。**设计 agent 系统,先定义交付物和验收标准,再倒推需要什么 agent。**
 
-系统存在的根本理由不是抽象的市场叙事，而是一个每天都要完成的具体工作：**持续跟踪多个信息源,并产出拿得出手的洞察**。这条日常工作流在代码里有完整的对应链路：
+### ② 没有真实任务喂养的 Agent 平台是空壳
 
-```
-信源采集/清洗 ──→ 阅读消化 ──→ 深度研究 / 话题洞察 ──→ 沉淀复用 ──→ 持续追踪
-  explore          explore        research / insight       library      radar / foresight
- (feed/ingestion   (摘要/翻译/     (多步骤规划、报告、        (信源库/      (雷达追踪/
-  /rawdata)        论文/YouTube)    参考文献分级)             知识库)       战略前瞻)
-```
+正面:本项目所有平台能力都由日常洞察任务这条真实链路喂出来——最近 30 个提交全是这条链的打磨（YouTube 翻译、论文摘要、引用分级、信源库回填）,数据飞轮（信源信誉/知识沉淀越用越准）也只在这条链上转。反面:intent-gateway 在架构图上是"智能编排层",实际是 0 消费方的 Placeholder,最终整层删除（`docs/_archive/2026-q2/architecture-old-intent-gateway/`）。**先有任务,再有平台;为想象中的 agent 场景预建的层,只会变成维护成本。**
 
-这不是推断——最近 30 个提交几乎全部是这条链的打磨：YouTube 翻译修复、论文摘要洞察补 PDF 正文、引用导入挡半成品、洞察报告参考文献回填公共信源库、侧栏改名"信源库/知识库/专家团"。**日常洞察就是这个系统每天真实在干的活。**
+### ③ Agent 的护城河是被编码的判断,四层缺一不可
 
-为什么这个任务值得自建系统、而不是用通用 chatbot 解决？三个通用工具给不了的东西：
+一个专业 agent 的价值沉淀在四层可编码资产:**工作流程**（这类活分几步、何时回头,`MissionPipelineRegistry`）、**团队配置**（谁主谁辅谁审,capability roles）、**技能**（每步注入的领域方法论正文,`buildSkillInstructions` 注入 SKILL.md）、**验收 rubric**（什么叫做对了 + 不达标重跑）。本项目前三层已真跑,第四层缺失——当前 review 只是同一个 LLM 自评,无独立验收、无合格门槛（§8 风险 #0,P0）。**模型会持续变强,前三层会被逐渐摊薄,唯有"什么叫做对了"的标准不会被模型替代——它是 agent 系统最后的、也是最值钱的一层。**
 
-1. **稳定质量**：一问一答的输出是"质量抽卡"；日常要交付的洞察需要多步骤研究流程（规划→检索→校核→撰写→审校）保证下限。
-2. **可追溯引用**：交付物必须带真实、分级的参考文献（近期提交里"挡掉裸域名半成品引用""白名单信誉传导至引用"都在做这件事）。
-3. **沉淀复利**：每次洞察产出的信源、事实、知识回填公共信源库与知识库,下一次洞察站在上一次的肩膀上——这是 chatbot 没有的**数据飞轮**,也是日常高频使用才能滚起来的资产。
+---
 
-### 1.2 商业立论：从自用到产品——市场的空位在"可信的专业交付"
+## 3. 产品架构视角
 
-| 维度 | 零件市场（MCP/技能库） | **GenesisPod（专家 Agent）** | 通用自主 Agent（"龙虾"类） |
+### ④ Engine 不知道 Agent,Agent 不知道业务
+
+多 Agent 架构的命根是"每层只知道该知道的":L2 engine（LLM 调用/工具/RAG/安全）不得持有任何 agent/mission 状态;L2.5 harness（运行循环/记忆/守护/交接）不得出现业务词汇;业务只活在 L3 app。这不是文档约定,是机器规则:`vocab-purity.spec.ts` 扫描 harness/engine 生产代码里的业务词,`layer-boundaries.spec.ts` 拦逆向 import,agents 层另有 primitive isolation 禁 import mission/teams 概念。**这条分界让 20 个 agent 应用共享同一个运行时而互不污染——没有它,每个 app 都会长出自己的私有 agent 循环。**
+
+### ⑤ 架构边界必须机器可执行,拦不住的规则等于没有
+
+本项目的每条架构规则都能回答"谁在机器上拦截它":facade 唯一入口（ESLint error 级,禁穿透聚合内部路径）、依赖单向（架构 spec）、前后端事件契约 byte-equal、函数调用方/字段读者锁基线契约（TS Compiler API,新增消费方必须显式过基线流程）。三层执行点互补:ESLint 写代码时拦、34 个架构 spec 推送前拦、CI 9 job 合并门最后拦。**多 Agent 系统的模块间接缝比普通系统多一个数量级（agent×tool×model×事件）,靠 review 守边界必然失守,边界必须编译期/CI 期可执行。**
+
+### ⑥ 不要为 Agent 自造概念层
+
+删层史:ai-kernel（模仿 OS 内核,管 Mission 进程/IPC/调度）和 intent-gateway（"智能编排层"）都被整层移除,能力并入标准分层;活下来的顶层目录全是业界标准词（agents/runner/memory/handoffs/guardrails/tracing/evaluation）,架构 spec 明令禁止自造词目录（kernel/execution/runtime 类）。配套规则:上提公共层必须有 ≥2 个真实消费方 import（`harness-uplift-gate.spec.ts`）,空壳抽象推不上去。**Agent 领域概念通胀严重,自造概念会让系统无法与业界对齐、无法招人、无法开源——命名保守是架构美德。**
+
+---
+
+## 4. 产品工程视角
+
+### ⑦ LLM 输出永远不可信,结构化要靠 native 约束
+
+6-21 事故的中心根因:agent 的 finalize 输出走了"普通文本里夹一段 JSON,再用 7 策略启发式抽取"的脆弱路径,强模型直接把万字 markdown 写进 string 槽,schema 反复 reject,任务无限重试。全平台 17+ 个 agent 同模式,但根因是单点:结构化输出路由在正常轮次用宽松 schema,修复方式是"一旦 finalize 被拒,下一轮强制升级 provider 层 strict schema"（`react-loop.ts`）。**教训:凡是要机器消费的 agent 输出,必须用 provider native 的 json_schema/tool_use 强约束;"从文本里抠 JSON"只能是最后兜底,且兜底路径必须有快停。**
+
+### ⑧ 每个 Agent 任务必须有断路器:防冻死、防空转、封顶成本
+
+6-21 事故里一个洞察任务空烧 33 小时 / $18.16 / 605 万 token,期间没有任何护栏介入——因为 liveness 守护只杀"心跳和事件双停滞"的冻死,杀不了"高频出事件但不推进"的空转（67 次 validation-reject 的 thrash）,且部分 mission 类型连 liveness 都没注册。修复后的完整断路器三件套:**无进度+持续烧钱即 abort、每类 mission 强制注册 liveness+wall-time/cost cap（架构 spec `mission-app-conformance` 强制）、cancel 无条件先 fire abort 再改状态**。附带一个设计警示:abort 注册表是进程内 Map,多实例部署时取消会静默失效（§8 风险 #3）。**Agent 是会花钱的无限循环,断路器不是可选项,是 agent 运行时的地基。**
+
+### ⑨ 模型能力必须数据驱动,换模型就是一次回归
+
+同一事故的另一半根因:BYOK 自动配置模型时不写结构化输出能力标志,capability 派生链兜底到最弱路径;而模型能力若靠 `modelId.includes('gpt')` 这类字符串猜测,换个网关别名就全错。本项目的固化:能力目录数据驱动（每条规则必含 rationale/addedBy,防投毒）,决策代码禁模型名字符串匹配（ESLint error + AST contract spec + audit 三层拦截）,模型选择走单一漏斗,定价单源。**Agent 系统的行为 = 代码 × 模型,模型是外部依赖里最善变的一个:接入新模型、新 provider,必须当作一次全量回归对待,而不是改个配置。**
+
+---
+
+## 5. 迭代演进视角
+
+### ⑩ Agent 系统的重构只能小波次滚动,没有大爆炸
+
+MECE 架构整改拆成 W0–W7 八波（engine/safety）、W1–W3 九域（跨层能力迁移）,按风险梯度 low→high 排序,每波以 `verify:arch` 全绿收口（有执行回执:4 波执行、32 套件 362 测试全通过）;策略配置迁移用 dual-read（新旧双读）不停机切换。roadmap 的非目标清单第一条就是"❌ 重写"。**Agent 系统是在线跑着真任务、烧着真钱的系统,大爆炸重构等于拿生产 mission 当小白鼠;小波次 + 每波机器验收,是唯一被验证可行的演进方式。**
+
+### ⑪ revert 也是变更,只验编译的回退埋雷更深
+
+2026-06-10 的一次 revert,验证标准只有"tsc 0 错误、测试全绿",没真跑一次 deep mission。它悄悄抹掉了终态仲裁/快停修复,把 playground 冻成 deep-insight 的永久分叉克隆——十一天后成为 6-21 事故的放大器（schema 失败的任务无法 fast-fail,只能静默空转）。**回退在心理上是"恢复安全状态",在事实上是一次和 feature 同权重的变更;对 agent 系统,任何变更（含 revert、含换模型）的验证标准都必须包含"真跑一次端到端 mission"。**
+
+### ⑫ 每次事故必须沉淀为机器看护,闭环才算复盘完
+
+本项目的固化流水线:事故/诊断发现 → 编号规范（绑定机器看护 spec）→ skill/agent 工具化。实例:迁移红线从 honor-only 升级为 spec 拦截（18 个历史违规冻结 allowlist,新增零容忍）;"先查复用"经验固化为 capability-map skill + CI 门;审计能力常驻为 arch-auditor/arch-guardian agent。还包括向同行学习:对照还原的 Claude Code 源码提炼 10 条 agent-runtime 血泪教训（断路器/prompt cache/fallback 配对）,直接当强约束规范用——**读别人源码注释里的事故,比自己烧一遍便宜**。尚未自动化的规范被逐条标注 honor 状态、当显式债务排期偿还:"还没固化"不可耻,不承认才可耻。
+
+---
+
+## 6. 产品质量视角
+
+### ⑬ mock 测出来的 Agent 都是"好 Agent",真跑一次才见真章
+
+6-21 事故漏到生产的四层失守里,最扎心的是"1913 个测试几乎全 mock LLM"——mock 永远返回合法 JSON,真模型根本不吐。同类假绿还有:CI 曾静默跳过 53 个 spec（含安全测试）,覆盖率门槛形同虚设。对策已落地:boot-smoke 在 CI 真实实例化整个 DI 依赖图（抓 mock 抓不到的循环依赖）,全量 test:ci + per-module 覆盖率棘轮,真模型端到端回归列入计划（§8 风险 #6）。**Agent 系统的核心行为在模型侧,mock 掉模型的测试只能证明胶水代码没写错,证明不了系统能活。**
+
+### ⑭ Agent 的质量始于验收标准:说不清"什么叫做对了"就永远做不对
+
+两个层面同一条理。对人/对开发:任何任务开工前必须转成可验证目标（"修 bug"→"复现测试通过","优化"→"指标+基线+目标值"）,答不出验收标准的需求退回澄清。对 agent/对产出:mission 的 review 环节目前只是同一个 LLM 自我总结自评,没有独立验收、没有合格门槛、没有不达标重跑——这是全系统识别出的最高优先缺口（§8 风险 #0）。**多 Agent 协作里,没有独立验收的"审校"角色是集体自嗨;rubric（什么叫做对了 + 不达标怎么办）应该和 prompt 同等地位,是 agent 定义的一等公民。**
+
+### ⑮ AI 的产出必须被 AI 对抗,单路结论不可信
+
+全栈诊断动用 26 个子 agent、8 维度独立审计,再对全部 high/critical 发现做对抗性复核——结果证伪 1 条 critical 误报、多条 high 降级,并留下"勿追误报"清单;MECE 迁移蓝图由 28 agent 的 workflow 产出,9 个域先全部被判 needs-fix、修正后才定稿。守护自身同样要被对抗:protection-net 测试故意投喂坏数据确认闸门真的会拦,审计脚本必须在反模式样本上自证会报错。**"生成 + 对抗验证"是 agent 系统的质量下限结构——对 agent 写的代码如此,对 agent 产的报告如此,对质量守护本身也如此。**
+
+---
+
+## 7. 项目底盘数据
+
+| 指标 | 数值 | 指标 | 数值 |
 | --- | --- | --- | --- |
-| 交易单位 | 工具/技能/prompt | **干完的活（成品交付）** | 一只通用 agent |
-| 目标用户 | 开发者（会组装） | **一人公司老板/专业个体（要结果）** | 个人（养它干杂活） |
-| 核心强项 | 灵活、可组合 | **可信、一致、可问责** | 全能、灵活、生态势头猛 |
-| 致命软肋 | 要求用户会拼 | 灵活性弱、垂直 | 不可控、会闯祸、质量抽卡 |
+| 后端 TS | 4,617 文件 / 约 157 万行 | 前端 TS | 1,555 文件 / 约 50 万行 |
+| 测试文件 | 2,016 个 | 累计 PR | 400+（本地浅克隆仅见 74 提交） |
+| Agent 应用（L3） | 20 个 | Harness/Engine 聚合 | 11 / 12 个 |
+| 架构 spec | 34 套件（7 类） | 能力索引 | 1,950 条（AST 生成,CI 防漂移） |
+| 编号规范 / ADR | 26 / 5 | skill / agent | 44 / 13 |
 
-战略判断（原文结论）：不在两端任何一端硬刚——左端用户画像不符,右端打不过开源+免费+势头。参考事实：某开源通用 agent（"龙虾"）GitHub 25 万 star 超过 React,但已出现账户盗刷、电脑被远控、文件被一键删除等事故,并引来监管安全预警——**"龙虾悖论"（越强越危险）,它最大的软肋恰是我们的结构性强项**。
-
-目标用户的待办任务（JTBD）一句话："我要一份**能交给客户/老板**的专业成果（尽调、研报、合规分析），质量稳定、我不用懂 AI、出问题能复盘。"反向 JTBD 同样明确：不做"控制电脑/整理桌面/替我发消息"类消费场景——主动放弃,不与通用 agent 拼 raw 智能。
-
-### 1.3 技术立论：为什么必须自建,而不是拼现成框架
-
-卖"可信交付"意味着**专业判断必须被编码**,沉淀为四层护城河（原文含代码承载点与现状）：
-
-| 层 | 编码的判断 | 现状 |
-| --- | --- | --- |
-| 工作流程（打法） | 这类活分几步、先后、何时回头 | ✅ 真跑（deep-insight: plan/research/reconcile/analyze/write/review） |
-| 团队配置（阵型） | 配哪些角色、谁主谁辅谁审 | ✅ 真成军（researcher 带真 web-search/ReAct） |
-| 技能 | 每步注入的领域方法论正文 | ✅ 真生效（注入 SKILL.md 正文,非 id 字符串） |
-| **★ 验收 rubric** | **什么叫做对了 + 不达标重跑** | ❌ **缺失（P0,见 §8 风险台账 #0）** |
-
-这四层没有现成基础设施可买：通用 agent 框架给的是"能跑",不给"可问责"（独立验收、合格门槛、失败可复盘、成本可控）。这就是为什么要自建 L2.5 harness 一整层（编排/守护/评估/追踪/生命周期）,以及 §3–§5 里那套重型治理。还有一个长期判断值得 CTO 记住：**模型会持续变强,但"什么叫做对了"的标准与品味不会被模型替代**——验收 rubric 层是模型迭代冲不掉的压舱资产,也因此它的缺失被定位文档称为"命门"。
-
-### 1.4 治理强度是产品命题的镜像（为什么这个项目的工程实践值得汇报）
-
-- 本报告后面那些"重"的实践（34 个架构 spec、10 步 pre-push、断路器、成本护栏）不是工程洁癖：产品承诺"可信、一致、可问责",平台自身若不可信,承诺不成立。6-21 失控事故直接打脸 JTBD 里的"质量稳定、出问题能复盘"——所以断路器与成本上限是产品命题的一部分,而非运维细节（呼应 §3.2）。何况失控的那个任务本身就是一次日常洞察任务（topic"AIDC 并网标准洞察"）——伤到的正是系统的第一使用场景。
-- 本项目同时是一场**双重实验**："用 AI Agent 团队,开发一个卖 AI Agent 团队的平台"。开发过程自身验证了平台要卖的方法论——sub-agent 白名单=权限收敛,对抗性复核=独立验收,skill/规范固化=被编码的专业判断（§6）。开发实践与产品理论互为证据,这正是这份复盘的价值所在。
-
----
-
-## 2. 项目底盘：我们在治理一个什么规模的系统
-
-| 指标 | 数值 | 来源 |
-| --- | --- | --- |
-| 后端 TypeScript | 4,617 文件 / 约 157 万行 | 仓库实测（2026-07-23） |
-| 前端 TypeScript | 1,555 文件 / 约 50 万行 | 仓库实测 |
-| 测试文件 | 2,016 个 | 仓库实测 |
-| AI App 模块（L3） | 20 个 | `backend/src/modules/ai-app/` |
-| Harness 聚合（L2.5）/ Engine 聚合（L2） | 11 / 12 个 | `layered-architecture.md` |
-| 累计 PR | 400+（本地为浅克隆，仅见 74 提交） | PR #401（2026-07-21 合并） |
-| canonical 能力索引 | 1,950 条（AST 自动生成，CI 防漂移） | `docs/architecture/capabilities.json` |
-| 架构 spec 测试 | 34 个套件（7 类） | `backend/src/__tests__/architecture/` |
-| 编号规范 / ADR / skill / agent | 26 / 5 / 44 / 13 | `.claude/standards|adrs|skills|agents/` |
-
-技术栈：Next.js 14 + NestJS 10 + Prisma + PostgreSQL 16 + Redis 7，LLM 经 LiteLLM 多供应商接入。
-
----
-
-## 3. 产品经理视角：需求与范围的纪律
-
-### 3.1 模糊需求是最大的浪费源头，必须转成可验证目标
-
-项目把"需求转化"写成了强制流程（`.claude/CLAUDE.md`）：任何任务开工前必须转成可独立验证的成功标准——"修这个 bug"→"写复现测试并让它通过"；"性能优化"→"明确指标 + 基线 + 目标值"。弱标准（"让它跑起来"）意味着无尽的澄清轮次，强标准（"`npm run test:integration` 全绿"）让 AI/人都能独立闭环。配套的是**暴露多义性原则**：需求有多种合理解读时列出所有解读（含义/工作量/影响面）请需求方选，禁止执行方替用户选——"加个缓存"不问就选 Redis、"优化性能"不问就同时上索引+缓存+异步，都是被明令禁止的反模式。
-
-**给 CTO 的含义**：在 AI 写代码的模式下，生成成本趋近于零,需求含糊的代价反而被放大（AI 会毫不犹豫地把错误理解实现完）。需求纪律是新的第一瓶颈。
-
-### 3.2 功能定义必须自带资源边界
-
-6-21 事故的产品侧读法：deep 档洞察的产品定义只写了质量目标（Leader 自动定下"≥12000 字 / ≥50 来源 / ≥10 图表"的巨标），资源边界却宽到形同虚设（24 小时 wall-time / $40 预算 / 2000 万 token，且用户 override 还能撑大）。结果一个用户功能烧了 $18.16 还给出次优产物。修复动作里有一条纯产品决策：deep 档上限收紧 24h→6h、并堵住 override 的洞。
-
-**教训**：任何"深度/无限/自动继续"类的 AI 功能，成本上限、时长上限、失败即快停,都是产品参数,必须在 PRD 层面显式定义,而不是留给工程"合理默认"。
-
-### 3.3 克制是产品能力：不为想象中的需求建实体
-
-- **ADR-0005**：面对多租户需求，没有对标 OpenAI/WorkOS 新建 Organization/RBAC 实体，判断依据是"真缺的是执行一致性而非新实体"，复用既有 `User+ContentVisibility+Topic/TopicMember+workspaceId` 收口 IDOR。
-- **intent-gateway 整层删除**：架构图上是"智能编排层"，实际 0 消费方的 Placeholder——先建层再等需求，等来的是维护成本。
-- **反例（正在偿还）**：playground 与 deep-insight 两条近乎重复的产品线并存,一次 revert 把它们冻成永久分叉的双克隆，还成了 6-21 事故的放大器。**保留两条相似产品线是产品决策，其代价以工程债形式复利计息**（去留仍待拍板，见 §8）。
-
----
-
-## 4. 架构设计视角：可执行的边界 + 做减法
-
-### 4.1 分层架构必须"可执行"，否则只是一张图
-
-五层单向依赖（L4 open-api → L3 ai-app → L2.5 ai-harness → L2 ai-engine → L1 platform），每条规则都有对应拦截物：
-
-- 单向依赖：`layer-boundaries.spec.ts`（engine 不得 import harness、harness 不得 import ai-app）
-- facade 唯一入口：ESLint overrides（error 级）+ `agent-team-facade-contract.spec.ts`，禁穿透聚合内部路径
-- 词汇纯净：`vocab-purity.spec.ts`——harness/engine 生产代码不得出现业务词；顶层目录必须是业界标准词，禁自造词（kernel/execution/runtime 类）
-- 单一真相源：同名概念全项目唯一（tools 只在 engine、SkillRegistry 只 1 个、定价单源 `ModelPricingRegistry`、模型选择单一漏斗）
-- 最精细的一类是**基线契约**：用 TS Compiler API 锁某函数的真实调用方清单、某字段的读者清单,新增消费方必须显式过基线更新流程（`CONTRACT_README.md`）——架构漂移从 review 负担变成编译期事实。
-
-### 4.2 删层史：两个"图上很美"的层被整层移除
-
-| 被删对象 | 图上角色 | 实际情况 | 固化出的规则 |
-| --- | --- | --- | --- |
-| ai-kernel | L2 内核层（Mission 进程/IPC/调度） | 自造 OS 概念撑不起一层，能力并入 L2.5 harness | 架构 spec 禁自造词目录 |
-| intent-gateway | L6 智能编排层 | 0 消费方 Placeholder 空壳 | `harness-uplift-gate.spec.ts`：上提公共层必须 ≥2 个真实消费方 import,空壳推不上去 |
-
-（证据：`docs/_archive/2026-q2/architecture-old-*`、`layered-architecture.md`）
-
-### 4.3 做减法是最高杠杆的架构决策
-
-**三库合一**（ADR-0003→0004）：移除 MongoDB/Neo4j/Qdrant，统一 PostgreSQL 16——JSONB+GIN 替代文档库、递归 CTE 替代图库、向量能力入 PG（`docs/architecture/ai-infra/database-postgresql.md`）。运维面、依赖面、认知负担同步缩减。Karpathy 反过度抽象原则被列为红线："只用一次的代码不要抽 Strategy/Factory，3 处使用再考虑抽象"。1,950 条 canonical 能力索引 + "写代码前先查复用"的强制前置动作,把"不重复造轮子"从口号变成机器检查。
-
----
-
-## 5. 工程实现视角：机器门禁 + 防"假绿"
-
-### 5.1 honor-only 必然失守（6-21 事故的工程侧读法）
-
-CLAUDE.md 的"反向洞察"第 5 条早就写明"必须有断路器,否则日烧 250K API calls 级事故"——**规范写了，但 honor-only，无自动化拦截**，于是四层防护同时失守：revert 只验编译不验真跑；换模型不做端到端回归；1913 个 mock 测试给假信心；断路器只防"冻死"不防"空转"。同类案例：全栈诊断发现 CI 实际跑 `test:quick` 静默跳过 53 个 spec（含 JWT/guardrails 安全测试），覆盖率门槛形同虚设（`diagnosis-2026-06-14.md` Top#4，已修 `ce9dd6d34`）。
-
-### 5.2 把规范变成门禁：三处执行点互补
-
-| 执行点 | 时机 | 内容 |
-| --- | --- | --- |
-| ESLint 分层护栏 | 写代码时 / pre-commit | facade 穿透、逆向依赖、TaskProfile 绕过、密钥直返、能力字符串匹配等，error 级 |
-| jest 架构 spec | `verify:arch` / pre-push 第 0 步 | 34 套件：依赖方向、词汇纯净、契约基线、投影纯度、0-consumer 拦截等 |
-| CI 合并门 | PR 合并 | 9 个 job 全 success 才放行；`always()` + 显式逐 job result 检查，防 skip/cancel 被误判为通过 |
-
-pre-push 是 10 步全量门：god-class 尺寸守护（>2500 行文件净增 >50 行拒推）、UI 纪律 hard-zero、硬编码中文棘轮、运行时依赖审计、能力索引漂移检查等（`.husky/pre-push`）。
-
-### 5.3 "假绿"的四种形态与对策
-
-| 假绿形态 | 真实案例 | 对策 |
-| --- | --- | --- |
-| mock 给假信心 | 1913 个测试全 mock LLM,真模型 finalize 根本不吐合法 JSON | boot-smoke（CI 真实 `NestFactory.create` 实例化全 DI 图，抓 mock 抓不到的循环依赖）；真模型集成测试列入 P2 |
-| CI 静默跳测 | `test:quick` 跳过 53 个 spec | 全量 `test:ci --coverage`，per-module 覆盖率棘轮真实强制 |
-| 守护自身失效 | 断言写了但从不 fire | protection-net 反向证据测试：故意投喂 broken payload 断言守护真的拦截；audit 脚本在反模式样本上 EXITCODE 必须 ≠0 |
-| 存量违规淹没新增 | UI 违规、硬编码中文存量大 | 棘轮基线：存量冻结进 baseline JSON,只减不增,超基线 exit 1 |
-
----
-
-## 6. 持续演进视角：小波次、双读、把教训变成资产
-
-### 6.1 大重构的正确姿势：波次 + 风险梯度 + 每波全绿
-
-MECE 整改不是大爆炸重构：engine/safety 拆成 W0–W7 八波、跨层能力迁移 W1–W3 九域，按风险梯度（low→high）排序，每波以 `verify:arch` 全绿收口（engine-safety 计划 §9.3 有执行回执：4 波已执行、32 套件 362 测试全通过）。近期 L3 治理（PR #399/#401）沿用同一模式，配置迁移用 **dual-read（新旧双读）** 实现不停机切换。
-
-### 6.2 决策错误公开留档，比掩盖便宜
-
-ADR-0003（双库策略）被明确标记为废弃并由 0004（单库 PG）取代——**反向决策连同原始理由一起留档**，后来者能看到"为什么当初这么想、后来为什么改"。同理,全栈诊断报告显式维护"已证伪/勿追误报"清单，防止后续排查重复踩已排除的假线索。
-
-### 6.3 经验固化三段链：事故 → 规范（挂看护）→ 工具
-
-```
-事故/诊断发现 ──→ 编号规范（26 份，多数绑定机器看护 spec）──→ skill/agent 固化（44 skill + 13 agent）
-   例: 迁移红线 honor-only → no-alter-type-in-exception.spec（18 个历史违规冻结 allowlist,新增零容忍）
-   例: "先查复用"经验 → capability-map skill + capabilities:check CI 门
-   例: 审计能力本身 → arch-auditor / arch-guardian / security-auditor 常驻 agent
-```
-
-两个值得注意的机制设计：
-
-- **honor-only 被当作显式债务管理**：CLAUDE.md 为暂未自动化的 10 条规范逐条标注 `honor` 状态,升级为 spec/lint 有明确排期（事故复盘 P2-2）——"还没自动化"不可耻,不承认才可耻。
-- **向头部同行的事故学习**：对照还原的 Claude Code v2.1.88 源码提炼 10 条 agent-runtime"反向洞察"（断路器、prompt cache 保护、fallback 配对占位等），作为 harness/runner 类改动的强约束（`docs/architecture/claude-code-borrow/agent-execution-guide.md`）——**读别人源码注释里的血泪,比自己再烧一遍便宜**。
-
----
-
-## 7. AI 协作组织视角：当 AI 写 90% 的代码
-
-这是本项目最具外部参考价值的部分——多数团队还没到这个阶段,这里的坑都是先趟过的。它也是 §1.3 所说"双重实验"的实验记录。
-
-### 7.1 物理约束优先于流程约束
-
-2026-02-10 事故（sub-agent 越权创建模块、主 agent 用 `git checkout -- .` 回退时误删其他会话的工作）之后形成铁律：sub-agent prompt 必须含**文件白名单**与必要上下文（Prisma model、DTO 定义,禁凭猜测写表名）；并行会话/子 agent 必须 **worktree 隔离**；**永久禁止**全局回退命令（`git checkout -- .` / `git reset --hard` / `git clean -fd`）；sub-agent 禁创建新模块、禁触碰全局入口文件。对 AI 执行者,写进 prompt 的"物理约束"远比写进 wiki 的"流程规范"有效。
-
-### 7.2 AI 产出必须被 AI 攻击一遍：对抗性复核
-
-- 2026-06-14 全栈诊断动用 26 个子 agent、8 维度独立审计,并对全部 high/critical 发现做对抗性复核——**证伪了 1 条 critical**（"150 controller 零测试"实为方法论错误）、多条 high 降级（`diagnosis-2026-06-14.md`）。
-- MECE 迁移蓝图由 28 agent / 2.07M token 的 workflow 产出,9 个能力域先全部被判 needs-fix、修正后才定稿。
-- 结论：**单路 AI 产出的置信度不够用于架构决策，"生成 + 对抗验证"的双层结构是必需品**,且成本完全可接受。
-
-### 7.3 治理本身也是代码
-
-AI 协作治理的三个投入点都以代码形态存在：执行环境的物理约束（prompt 白名单/worktree/禁令）、产出的对抗验证（审计 agent + 复核 workflow）、经验的可执行化（skill/spec/棘轮）。传统"培训 + review 文化"在 AI 执行者身上不起作用,**能被 grep 到、能让 CI 变红的规则才存在**。
+技术栈:Next.js 14 + NestJS 10 + Prisma + PostgreSQL 16（三库合一,已移除 MongoDB/Neo4j/Qdrant）+ Redis 7,LLM 经 LiteLLM 多供应商接入。
 
 ---
 
@@ -228,55 +130,25 @@ AI 协作治理的三个投入点都以代码形态存在：执行环境的物�
 
 | # | 风险 | 现状 | 建议 |
 | --- | --- | --- | --- |
-| 0 | **护城河第四层"验收 rubric"缺失**：`runReview` 仅为同一 LLM 自我总结+自评,无独立验收、无合格门槛、无不达标重跑,DTO 无 `rubric` 字段——定位文档称之为"对抗通用 agent 最锋利的一刀"尚未上路 | 定位北极星文档（2026-06-09）判为 **P0 命门** | 差异化的核心承诺,建议最高优先级排期（`ai-harness/evaluation` 已有承载位） |
-| 1 | **迁移链不是 schema 真相源**：338 个迁移，部署靠 `db push --accept-data-loss` + 失败迁移静默标 applied 兜底,空库与存量库路径发散 | squash runbook 已写好，**待审批未执行**（`.claude/diagnosis/migration-squash-runbook.md`） | 数据层最深的系统性债务，建议尽快批准执行窗口 |
-| 2 | **playground / deep-insight 双克隆漂移**：2026-06-10 revert 冻成永久分叉,且抹掉 fast-fail 修复（事故放大器） | 事故复盘 P1-2，标注"唯一不可逆决策，待拍板" | 二选一：forward-port 修复或退役 playground 自有 pipeline |
-| 3 | **MissionAbortRegistry 为进程内 Map**：多 pod 部署时 cancel 落错 pod 静默失效 | 已登记设计风险（P0-5），单 pod 暂缓 | 横向扩容前必须先做（Redis pub/sub 或亲和路由） |
-| 4 | **"70-75% 成本优化"缺测算依据**：该数字仅在 `layered-architecture.md` 作为结论出现,无配套量化文档 | 技术可行性有据（PostgreSQL-First 三条替代路径），成本数字不可追溯 | 对外引用前补一页测算，或降级表述为"显著降低" |
-| 5 | **10 条反向洞察多为 honor-only** | CLAUDE.md 已逐条标注看护方式 | 按事故复盘 P2-2，把高频项（断路器、运行时验证）升级为 spec/lint |
-| 6 | **真模型集成测试缺位**：至少一条 deep mission 用真模型跑通并断言成本上限 | 事故复盘 P2-1，未落地 | 纳入 CI 定期任务（非每 PR），成本可控 |
+| 0 | **验收 rubric 缺失**（呼应第⑭句）:review 仅同一 LLM 自评,无独立验收/合格门槛/重跑,DTO 无 rubric 字段 | 定位文档判为 P0 命门 | 探索命题的下一个主攻方向,建议最高优先级（`ai-harness/evaluation` 已有承载位） |
+| 1 | **迁移链不是 schema 真相源**:338 个迁移,部署靠 `db push --accept-data-loss` 兜底 | squash runbook 已写好,待审批未执行 | 数据层最深债务,建议尽快批执行窗口 |
+| 2 | **playground / deep-insight 双克隆漂移**（第⑪句的现在进行时） | 事故复盘 P1-2,"唯一不可逆决策,待拍板" | forward-port 修复或退役 playground 自有 pipeline,二选一 |
+| 3 | **MissionAbortRegistry 进程内 Map**:多 pod 时 cancel 静默失效 | 已登记设计风险,单 pod 暂缓 | 横向扩容前必须先做（Redis pub/sub 或亲和路由） |
+| 4 | **"70-75% 成本优化"缺测算依据**:仅为结论性断言 | 技术可行性有据,数字不可追溯 | 引用前补测算,或降级为"显著降低" |
+| 5 | **10 条反向洞察多为 honor-only** | 已逐条标注看护方式 | 高频项（断路器/运行时验证）升级为 spec/lint |
+| 6 | **真模型端到端回归缺位**（第⑬句的未竟项） | 事故复盘 P2-1,未落地 | 纳入 CI 定期任务（非每 PR）,断言成本上限 |
 
-**诚实性说明**：本仓库为浅克隆（本地仅 74 个提交，2026-06-15 起），早期演进依据 `docs/` 归档文档与文中引用的 commit hash 重建；"PR-X 系列"清理在本地无留档，未采信。规范体系存在小瑕疵（标准编号 10 撞号、01/25/26 缺号），不影响结论,如实记录。
-
----
-
-## 9. 可复制的方法论清单（带走页，按视角归类）
-
-**定位**：
-1. 从每天真实发生的任务出发立项：先让系统解决自己的日常洞察任务并滚起数据飞轮（信源/知识沉淀复利），再谈产品化——自用验证是最便宜的 PMF 测试。
-2. 先定交易单位再定架构：卖工具、卖 agent、还是卖"干完的活"？交易单位决定平台要自建哪些层（本项目因卖"可问责的交付"而必须自建 harness 层与验收体系）。
-
-**产品**：
-3. 需求进场必须转成可验证目标（测试命令/指标+基线+目标值）；答不出验收标准的需求退回澄清。
-4. AI 功能的成本/时长上限是 PRD 参数,不是工程默认值；"自动继续"类功能必须定义快停条件。
-
-**架构**：
-5. 每条架构规则必须回答"谁在机器上拦截它"；ESLint（写时）+ jest spec（推前）+ CI 合并门（合并时）三层执行点缺一不可。
-6. 上提公共层设消费方门槛（≥2 个真实 import），用测试拦住空壳抽象；顶层目录只用业界标准词。
-7. 敢做减法：合并数据库、删除 0 消费方的层,并把反向决策连理由一起留档。
-
-**工程**：
-8. 合并门用 `always()` + 显式逐 job result 检查,防 skip/cancel 被误判为通过。
-9. 用反向证据测试验证守护本身会 fire；审计脚本要能在反模式样本上自证非假绿。
-10. 断路器同时覆盖"冻死"（无心跳）与"空转"（高频事件但无进展 + 成本速率），单任务设成本上限。
-
-**演进**：
-11. 大重构拆小波次、按风险梯度排序、每波以架构 spec 全绿收口；配置迁移用 dual-read 过渡。
-12. 存量违规用棘轮基线冻结（只减不增），让新增零容忍与历史债务解耦；honor-only 规范进显式债务清单并排期升级。
-
-**AI 协作**：
-13. Sub-agent 一律文件白名单 + worktree 隔离；全局回退命令永久禁用。
-14. AI 产出的架构结论必须过对抗性复核；显式维护"已证伪/勿追误报"清单。
+**诚实性说明**:本仓库为浅克隆（本地仅 74 提交,2026-06-15 起）,早期演进依据 docs 归档与文中 commit hash 重建;"PR-X 系列"本地无留档,未采信。规范编号存在撞号/缺号小瑕疵,不影响结论。
 
 ---
 
-## 附：本报告引用的关键证据文件
+## 附：关键证据文件
 
-- 产品定位：`docs/architecture/product-positioning.md`（+ `opc-hero-model.md`）
-- 事故复盘：`docs/operations/incident-2026-06-21-mission-runaway-postmortem.md`
-- 全栈诊断：`.claude/diagnosis/diagnosis-2026-06-14.md`（+ `migration-squash-runbook.md`）
-- 分层架构：`docs/architecture/layered-architecture.md`；MECE 系列：`docs/architecture/platform-review/2026-06-02/03-*`
-- 数据库决策：`.claude/adrs/0003/0004/0005` + `docs/architecture/ai-infra/database-postgresql.md`
-- 看护机制：`backend/src/__tests__/architecture/`（34 spec）、`backend/.eslintrc.js`、`.husky/pre-push`、`.github/workflows/ci.yml`、`scripts/utils/audit-*.ts`、`docs/architecture/capabilities.json`
-- 反向洞察：`docs/architecture/claude-code-borrow/agent-execution-guide.md`
-- 治理红线与固化体系：`.claude/CLAUDE.md`、`.claude/standards/`（26 份）、`.claude/skills/`（44）、`.claude/agents/`（13）
+- 事故复盘:`docs/operations/incident-2026-06-21-mission-runaway-postmortem.md`
+- 全栈诊断:`.claude/diagnosis/diagnosis-2026-06-14.md`（+ `migration-squash-runbook.md`）
+- 分层架构:`docs/architecture/layered-architecture.md`;MECE 系列:`docs/architecture/platform-review/2026-06-02/03-*`
+- 定位与护城河四层:`docs/architecture/product-positioning.md`
+- 数据库决策:`.claude/adrs/0003/0004/0005` + `docs/architecture/ai-infra/database-postgresql.md`
+- 看护机制:`backend/src/__tests__/architecture/`（34 spec）、`backend/.eslintrc.js`、`.husky/pre-push`、`.github/workflows/ci.yml`、`scripts/utils/audit-*.ts`、`docs/architecture/capabilities.json`
+- 反向洞察:`docs/architecture/claude-code-borrow/agent-execution-guide.md`
+- 治理与固化体系:`.claude/CLAUDE.md`、`.claude/standards/`（26）、`.claude/skills/`（44）、`.claude/agents/`（13）
