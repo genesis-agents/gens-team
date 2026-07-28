@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gens-team 系统架构一页图</title>
+<style>
+  :root{
+    --ink:#1a2233; --muted:#5b6478; --line:#d8dde8; --bg:#f6f8fb; --card:#ffffff;
+    --l4:#7c5cff; --l3:#2f7df6; --l25:#0ea5a4; --l2:#e8912d; --l1:#8b93a7;
+    --hot:#e0432f; --ok:#1d9e57;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;background:var(--bg);color:var(--ink);padding:18px 22px;font-size:12.5px;line-height:1.45}
+  .page{max-width:1280px;margin:0 auto}
+  header{display:flex;justify-content:space-between;align-items:baseline;border-bottom:3px solid var(--ink);padding-bottom:8px;margin-bottom:12px;gap:16px;flex-wrap:wrap}
+  h1{font-size:21px;letter-spacing:.5px}
+  h1 small{font-size:12px;color:var(--muted);font-weight:400;margin-left:10px}
+  .stats{color:var(--muted);font-size:12px;white-space:nowrap}
+  .stats b{color:var(--ink)}
+  .grid{display:grid;grid-template-columns:200px 1fr 210px;gap:12px;align-items:stretch}
+  .rail{display:flex;flex-direction:column;gap:10px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;box-shadow:0 1px 2px rgba(20,30,60,.05)}
+  .card h3{font-size:12px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:6px}
+  .dot{width:8px;height:8px;border-radius:2px;display:inline-block}
+  .rail li{list-style:none;padding:4px 0 4px 10px;border-left:2px solid var(--line);margin-left:3px;color:var(--ink)}
+  .rail li b{display:block;font-size:12px}
+  .rail li span{color:var(--muted);font-size:11px}
+  .rail .chain li{border-left-color:var(--hot)}
+  .rail .asset li{border-left-color:var(--ok)}
+  /* center stack */
+  .stack{display:flex;flex-direction:column;gap:8px;position:relative}
+  .testbed{background:linear-gradient(90deg,#fff7ed,#fef2f2);border:1px solid #f3ceb2;border-radius:8px;padding:9px 12px}
+  .testbed h3{font-size:12px;color:#9a4a12;letter-spacing:1px;margin-bottom:6px}
+  .flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .step{background:#fff;border:1px solid #eab99a;border-radius:6px;padding:4px 9px;font-size:12px}
+  .step em{display:block;font-style:normal;color:var(--muted);font-size:10.5px}
+  .arr{color:#c47a3d;font-weight:700}
+  .loop{color:#c47a3d;font-size:11px;margin-left:auto}
+  .layer{border-radius:8px;border:1px solid var(--line);background:var(--card);padding:9px 12px;position:relative}
+  .layer .tag{position:absolute;top:-9px;left:12px;font-size:10.5px;font-weight:700;color:#fff;border-radius:4px;padding:1px 8px;letter-spacing:1px}
+  .layer h2{font-size:14px;margin:4px 0 2px}
+  .layer h2 small{font-weight:400;color:var(--muted);font-size:11.5px;margin-left:8px}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .chip{border:1px solid var(--line);background:#fafbfe;border-radius:4px;padding:2px 7px;font-size:11px;color:var(--ink)}
+  .chip.hi{background:#fdeeea;border-color:#eab3a8;color:#a13324;font-weight:600}
+  .rule{font-size:11px;color:var(--muted);margin-top:5px}
+  .rule b{color:var(--hot)}
+  .seam{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);padding:0 6px}
+  .seam::before,.seam::after{content:"";flex:1;border-top:1px dashed #b9c2d4}
+  .seam b{color:var(--ink)}
+  .l4 .tag{background:var(--l4)} .l4{border-top:3px solid var(--l4)}
+  .l3 .tag{background:var(--l3)} .l3{border-top:3px solid var(--l3)}
+  .l25 .tag{background:var(--l25)} .l25{border-top:3px solid var(--l25)}
+  .l2 .tag{background:var(--l2)} .l2{border-top:3px solid var(--l2)}
+  .l1 .tag{background:var(--l1)} .l1{border-top:3px solid var(--l1)}
+  .depend{position:absolute;right:-16px;top:110px;bottom:60px;width:14px;display:flex;flex-direction:column;align-items:center}
+  .depend .bar{flex:1;width:2px;background:linear-gradient(#7c5cff,#8b93a7)}
+  .depend .head{border:6px solid transparent;border-top-color:#8b93a7}
+  .depend .lbl{writing-mode:vertical-rl;font-size:10.5px;color:var(--muted);letter-spacing:2px;margin-top:4px}
+  .data{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .db{border:1px solid var(--line);border-radius:5px;padding:4px 9px;font-size:11px;background:#f3f5fa}
+  .db b{display:block;font-size:11.5px}
+  footer{margin-top:12px;border-top:1px solid var(--line);padding-top:8px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:11.5px}
+  footer b{color:var(--ink)}
+  @media (max-width:1000px){.grid{grid-template-columns:1fr}.depend{display:none}}
+  @media (prefers-color-scheme:dark){
+    :root{--ink:#e7ebf4;--muted:#9aa3b8;--line:#38405a;--bg:#12172a;--card:#1a2138}
+    .testbed{background:#2a2030;border-color:#5a4030}
+    .step{background:#242c46;border-color:#5a4030}
+    .chip{background:#212944}
+    .chip.hi{background:#3a2326;border-color:#7a4038;color:#f0a294}
+    .db{background:#212944}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>gens-team 系统架构一页图 <small>如何构建一个可信的 Agent / 多 Agent 系统 · 内部技术探索项目（原 GenesisPod）</small></h1>
+    <div class="stats"><b>~157万行</b> 后端 TS · <b>20</b> Agent 应用 · <b>400+</b> PR · AI Agent 编写 / 人决策验收</div>
+  </header>
+
+  <div class="grid">
+    <!-- 左:治理带 -->
+    <div class="rail">
+      <div class="card">
+        <h3><span class="dot" style="background:var(--hot)"></span>静态治理带（机器门禁）</h3>
+        <ul class="chain">
+          <li><b>ESLint 分层护栏</b><span>写代码时 · facade 穿透/逆向依赖 error</span></li>
+          <li><b>34 套架构 spec</b><span>推送前 · 依赖方向/词汇纯净/契约基线</span></li>
+          <li><b>pre-push 10 步门</b><span>god-class/UI 纪律/棘轮/依赖审计</span></li>
+          <li><b>CI 9 job + 合并门</b><span>全 success 才放行,防 skip 假通过</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span class="dot" style="background:var(--hot)"></span>运行时护栏</h3>
+        <ul class="chain">
+          <li><b>断路器三件套</b><span>防冻死 / 防空转 / 单任务成本封顶</span></li>
+          <li><b>native 结构化输出</b><span>json_schema/tool_use 强约束,拒后升级 strict</span></li>
+          <li><b>liveness 强制注册</b><span>每类 mission 必挂 wall-time/cost cap</span></li>
+          <li><b>cancel 先 fire abort</b><span>中止先于状态更新</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 中:五层主干 -->
+    <div class="stack">
+      <div class="testbed">
+        <h3>试验场 · 每天真实发生的洞察任务链（真任务 / 真成本 / 真失败）</h3>
+        <div class="flow">
+          <span class="step">信源采集清洗<em>explore</em></span><span class="arr">→</span>
+          <span class="step">阅读消化<em>摘要/翻译/论文/视频</em></span><span class="arr">→</span>
+          <span class="step">深度研究·话题洞察<em>research / insight</em></span><span class="arr">→</span>
+          <span class="step">知识沉淀<em>library 信源库/知识库</em></span><span class="arr">→</span>
+          <span class="step">持续追踪<em>radar / foresight</em></span>
+          <span class="loop">⟲ 数据飞轮:信源信誉/知识复利,越用越准</span>
+        </div>
+      </div>
+
+      <div class="layer l4">
+        <span class="tag">L4</span>
+        <h2>Open API<small>对外网关 · external / admin / system / user 四区信任边界</small></h2>
+      </div>
+
+      <div class="layer l3">
+        <span class="tag">L3</span>
+        <h2>AI Apps · 20 个 Agent 应用<small>业务只活在这一层</small></h2>
+        <div class="chips">
+          <span class="chip hi">explore</span><span class="chip hi">research</span><span class="chip hi">insight</span><span class="chip hi">library</span><span class="chip hi">radar</span><span class="chip hi">foresight</span>
+          <span class="chip">teams</span><span class="chip">writing</span><span class="chip">office</span><span class="chip">ask</span><span class="chip">image</span><span class="chip">social</span><span class="chip">simulation</span><span class="chip">planning</span><span class="chip">playground</span><span class="chip">marketplace</span><span class="chip">company</span><span class="chip">…</span>
+        </div>
+        <p class="rule">红色 = 日常洞察主链 · 各 App 在 onModuleInit 向 Registry 注册自己的 Agent/Team</p>
+      </div>
+
+      <div class="seam"><b>facade 唯一入口</b>（禁穿透内部路径,ESLint error + spec 双拦截）</div>
+
+      <div class="layer l25">
+        <span class="tag">L2.5</span>
+        <h2>AI Harness · Agent 运行时<small>知 Agent / Mission,不知业务（词汇纯净 spec 看护）· 11 聚合</small></h2>
+        <div class="chips">
+          <span class="chip">agents</span><span class="chip">runner（ReAct 循环/调度/DAG）</span><span class="chip">teams（voting/debate/review）</span><span class="chip">handoffs</span><span class="chip">memory（vector/checkpoint/event-store）</span><span class="chip">protocols（a2a/ipc/events）</span><span class="chip">evaluation</span><span class="chip">guardrails（budget/rate-limit）</span><span class="chip">tracing（otel）</span><span class="chip">lifecycle（liveness/supervisor）</span><span class="chip">facade</span>
+        </div>
+      </div>
+
+      <div class="seam"><b>facade 唯一入口</b> · engine 不得 import harness（单向硬焊）</div>
+
+      <div class="layer l2">
+        <span class="tag">L2</span>
+        <h2>AI Engine · 原子能力<small>无任何 agent / mission 状态 · 12 聚合</small></h2>
+        <div class="chips">
+          <span class="chip">llm（模型适配/BYOK/结构化输出/定价单源）</span><span class="chip">tools（含 MCP/OpenAPI adapter）</span><span class="chip">rag</span><span class="chip">knowledge</span><span class="chip">content</span><span class="chip">routing</span><span class="chip">reliability</span><span class="chip">evaluation（无 LLM 启发式）</span><span class="chip">skills（唯一 SkillRegistry）</span><span class="chip">planning</span><span class="chip">safety（pii/injection）</span><span class="chip">facade</span>
+        </div>
+        <p class="rule">模型能力<b>数据驱动</b>:能力目录 + 单一选型漏斗,禁模型名字符串猜测</p>
+      </div>
+
+      <div class="layer l1">
+        <span class="tag">L1</span>
+        <h2>Platform · 基础设施<small>credentials（BYOK/secret 解析）/ 存储 / 通用基元</small></h2>
+        <div class="data">
+          <span class="db"><b>PostgreSQL 16（唯一库）</b>JSONB 文档 · 递归 CTE 图谱 · 向量 —— 三库合一（已移除 Mongo/Neo4j/Qdrant）</span>
+          <span class="db"><b>Redis 7</b>缓存/会话</span>
+          <span class="db"><b>LiteLLM</b>→ OpenAI / Claude / Grok / BYOK 多模型</span>
+        </div>
+      </div>
+
+      <div class="depend"><div class="bar"></div><div class="head"></div><div class="lbl">依赖严格单向</div></div>
+    </div>
+
+    <!-- 右:方法论资产 -->
+    <div class="rail">
+      <div class="card">
+        <h3><span class="dot" style="background:var(--ok)"></span>探索产出 · 可迁移方法论资产</h3>
+        <ul class="asset">
+          <li><b>26 份编号规范</b><span>多数绑定机器看护 spec</span></li>
+          <li><b>44 skill + 13 常驻 agent</b><span>经验固化为可执行工具</span></li>
+          <li><b>1,950 条能力索引</b><span>AST 生成,CI 防漂移,先查复用</span></li>
+          <li><b>5 份 ADR</b><span>含反向决策公开留档</span></li>
+          <li><b>事故→规范→看护 闭环</b><span>honor-only 当显式债务管理</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span class="dot" style="background:var(--ok)"></span>质量结构 · 生成 + 对抗验证</h3>
+        <ul class="asset">
+          <li><b>对抗性复核</b><span>26 子 agent 诊断,证伪误报</span></li>
+          <li><b>protection-net</b><span>投喂坏数据,验证闸门真的拦</span></li>
+          <li><b>boot-smoke</b><span>CI 真实实例化全 DI 图</span></li>
+          <li><b>棘轮基线</b><span>存量冻结只减不增</span></li>
+          <li><b>待补:验收 rubric（P0）</b><span>"什么叫做对了"尚未编码</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div><b>一句话:</b>Engine 不知道 Agent,Agent 不知道业务;每条边界机器可执行,拦不住的规则等于没有。</div>
+    <div><b>双重实验:</b>用多 Agent 系统构建多 Agent 系统 —— 开发过程本身即方法论验证。</div>
+    <div>2026-07 · docs/architecture/system-architecture-one-pager.html</div>
+  </footer>
+</div>
+</body>
+</html>
