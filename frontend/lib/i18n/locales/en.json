@@ -7842,6 +7842,77 @@
       "whatsNext": "What's next:",
       "viewTopic": "View topic",
       "retry": "Retry"
+    },
+    "matchMode": {
+      "label": "Match mode",
+      "createHint": "Semantic by default — every item goes through one AI scoring pass; exact match skips scoring for items that miss all keywords, which cuts cost significantly",
+      "semantic": {
+        "label": "Semantic",
+        "hint": "Scored by AI on topic semantics only (default)"
+      },
+      "literal": {
+        "label": "Exact match",
+        "hint": "Title or body must contain at least one keyword, otherwise the item is dropped"
+      },
+      "hybrid": {
+        "label": "Hybrid boost",
+        "hint": "Keyword hits get a score boost, but items without a hit are still kept"
+      }
+    },
+    "entityType": {
+      "label": "Entity type",
+      "hint": "Shapes how AI scores items and extracts entities; applies to future collection runs only",
+      "topic": "Topic",
+      "company": "Company",
+      "product": "Product",
+      "person": "Person",
+      "event": "Event"
+    },
+    "createTopic": {
+      "advancedLabel": "Advanced (entity type / match mode / refresh interval)"
+    },
+    "sourceList": {
+      "bulkImport": "Bulk import",
+      "emptyTitle": "No data sources yet",
+      "emptyDescription": "Click \"AI suggestions\" to let AI list candidates, \"Bulk import\" to paste many at once, or \"Add\" to add one manually",
+      "authorityLabel": "Source authority (affects daily briefing ranking, default 3)",
+      "authorityAriaLabel": "Source authority: {{name}}",
+      "weightUpdateFailed": "Failed to update authority: {{message}}",
+      "authorityOption": {
+        "w5": "5 - Primary authoritative source",
+        "w4": "4 - Highly credible",
+        "w3": "3 - Average",
+        "w2": "2 - Reference only",
+        "w1": "1 - Questionable"
+      },
+      "issue": {
+        "tooManyFields": "Too many fields — write a literal | inside the identifier as %7C",
+        "unknownType": "Unknown type \"{{type}}\" — only RSS / YOUTUBE / CUSTOM are supported",
+        "missingIdentifier": "Missing identifier",
+        "identifierTooLong": "identifier exceeds {{max}} characters",
+        "youtubeIdentifier": "A YouTube identifier must be a channelId starting with UC, or a youtube.com link",
+        "identifierNotUrl": "A {{type}} identifier must be an http(s) link",
+        "labelTooLong": "Display name exceeds {{max}} characters",
+        "invalidWeight": "Authority must be an integer from 1 to 5, got \"{{value}}\""
+      },
+      "bulk": {
+        "title": "Bulk import sources",
+        "subtitle": "One per line: type | identifier | display name (optional) | authority 1-5 (optional)",
+        "textareaLabel": "Bulk import text",
+        "placeholder": "# One per line; blank lines and lines starting with # are ignored\nRSS | https://openai.com/blog/rss.xml | OpenAI Blog | 5\nYOUTUBE | UCXuqSBlHAE6Xw-yeJA0Tunw | LTT",
+        "submitting": "Importing...",
+        "submit": "Import {{count}}",
+        "validCount": "{{count}} ready to import",
+        "overLimit": " (max {{max}} at a time, please paste in batches)",
+        "duplicateCount": "Skipping {{count}} (already exist):",
+        "duplicateLine": "Line {{lineNo}} {{reason}}",
+        "issueCount": "{{count}} lines could not be parsed:",
+        "issueLine": "Line {{lineNo}}: {{reason}}",
+        "preflightNote": "Each source is fetched once as a live preflight check; {{max}} sources take about 10-30 seconds. Unreachable sources are not saved, and the reason is listed per source in the result.",
+        "moreSkipped": "{{count}} more...",
+        "doneWithSkipped": "Imported {{created}} sources, skipped {{skipped}}:",
+        "done": "Imported {{count}} sources"
+      }
     }
   }
 }

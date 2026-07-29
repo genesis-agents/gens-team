@@ -11,6 +11,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { MissionDialogShell } from '@/components/common/dialogs/MissionDialogShell';
+import { useTranslation } from '@/lib/i18n';
 import { createTopic } from '@/services/ai-radar/api';
 import type {
   CreateRadarTopicInput,
@@ -25,37 +26,17 @@ interface Props {
   onCreated: (topic: RadarTopic) => void;
 }
 
-const ENTITY_TYPES: Array<{ value: RadarEntityType; label: string }> = [
-  { value: 'topic', label: '话题' },
-  { value: 'company', label: '公司' },
-  { value: 'product', label: '产品' },
-  { value: 'person', label: '人物' },
-  { value: 'event', label: '事件' },
+// 文案走 i18n radar.entityType.* / radar.matchMode.*，与 RadarTopicConfigDrawer
+// 共用同一组 key —— 两处只保留值域，不再各存一份 label/hint 需要人工同步。
+const ENTITY_TYPES: RadarEntityType[] = [
+  'topic',
+  'company',
+  'product',
+  'person',
+  'event',
 ];
 
-// 文案与 RadarTopicConfigDrawer 的 MATCH_MODES 保持一致，
-// 改一处必须同步另一处（两处都是 module-local const，无共享模块）。
-const MATCH_MODES: Array<{
-  value: RadarMatchMode;
-  label: string;
-  hint: string;
-}> = [
-  {
-    value: 'semantic',
-    label: '智能语义',
-    hint: '仅由 AI 按主题语义评分（默认）',
-  },
-  {
-    value: 'literal',
-    label: '精确匹配',
-    hint: '标题或正文必须含任一关键词，否则淘汰',
-  },
-  {
-    value: 'hybrid',
-    label: '混合加分',
-    hint: '命中关键词的内容加分，但不淘汰未命中项',
-  },
-];
+const MATCH_MODES: RadarMatchMode[] = ['semantic', 'literal', 'hybrid'];
 
 const CRON_PRESETS = [
   { value: '0 */6 * * *', label: '每 6 小时' },
@@ -72,6 +53,7 @@ const SAMPLE_NAMES = [
 ];
 
 export function CreateRadarTopicModal({ open, onClose, onCreated }: Props) {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [entityType, setEntityType] = useState<RadarEntityType>('topic');
@@ -203,48 +185,52 @@ export function CreateRadarTopicModal({ open, onClose, onCreated }: Props) {
           </Field>
         </>
       }
-      advancedLabel="高级设置（对象类型 / 匹配模式 / 刷新频率）"
+      advancedLabel={t('radar.createTopic.advancedLabel')}
       advanced={
         <>
-          <Field label="对象类型">
+          <Field label={t('radar.entityType.label')}>
             <div className="flex flex-wrap gap-1.5">
-              {ENTITY_TYPES.map((t) => (
+              {ENTITY_TYPES.map((value) => (
                 <button
-                  key={t.value}
+                  key={value}
                   type="button"
-                  onClick={() => setEntityType(t.value)}
+                  onClick={() => setEntityType(value)}
                   className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
-                    entityType === t.value
+                    entityType === value
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
                       : 'border-gray-200 text-gray-600 hover:border-gray-300'
                   }`}
                 >
-                  {t.label}
+                  {t(`radar.entityType.${value}`)}
                 </button>
               ))}
             </div>
           </Field>
 
           <Field
-            label="匹配模式"
-            hintInline="默认智能语义——每条内容都过一次 AI 评分；精确匹配会跳过未命中项的评分，可显著降低成本"
+            label={t('radar.matchMode.label')}
+            hintInline={t('radar.matchMode.createHint')}
           >
             <div className="space-y-1.5">
-              {MATCH_MODES.map((m) => (
+              {MATCH_MODES.map((mode) => (
                 <button
-                  key={m.value}
+                  key={mode}
                   type="button"
                   // 选中态只靠颜色传达对 AT 不可见，补 aria-pressed 让屏幕阅读器可播报
-                  aria-pressed={matchMode === m.value}
-                  onClick={() => setMatchMode(m.value)}
+                  aria-pressed={matchMode === mode}
+                  onClick={() => setMatchMode(mode)}
                   className={`w-full rounded-lg border px-3 py-1.5 text-left transition-all ${
-                    matchMode === m.value
+                    matchMode === mode
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
                       : 'border-gray-200 text-gray-600 hover:border-gray-300'
                   }`}
                 >
-                  <div className="text-xs font-medium">{m.label}</div>
-                  <div className="text-xs text-gray-500">{m.hint}</div>
+                  <div className="text-xs font-medium">
+                    {t(`radar.matchMode.${mode}.label`)}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {t(`radar.matchMode.${mode}.hint`)}
+                  </div>
                 </button>
               ))}
             </div>

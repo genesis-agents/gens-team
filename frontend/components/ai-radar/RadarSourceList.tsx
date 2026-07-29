@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/ui/states/EmptyState';
 import { ErrorInline } from '@/components/ui/states/ErrorState';
 import { Modal } from '@/components/ui/dialogs/Modal';
 import { Textarea } from '@/components/ui/form/Textarea';
+import { useTranslation } from '@/lib/i18n';
 import {
   acceptRecommendedSources,
   bulkCreateSources,
@@ -35,6 +36,12 @@ interface Props {
   sources: RadarSource[];
   onReload: () => void;
 }
+
+/** useTranslation().t 的签名，用于把 t 传进模块级纯函数（parseSourceLines） */
+type Translate = (
+  key: string,
+  params?: Record<string, string | number>
+) => string;
 
 const SOURCE_TYPE_LABEL: Record<RadarSourceType, string> = {
   X: 'X (Twitter)',
@@ -66,13 +73,8 @@ const HEALTH_DOT: Record<RadarSource['health'], string> = {
 };
 
 // 与后端 @IsInt @Min(1) @Max(5) 值域对齐；添加表单与行内编辑共用，避免文案漂移。
-const AUTHORITY_WEIGHT_OPTIONS: Array<{ value: number; label: string }> = [
-  { value: 5, label: '5 - 一手权威信源' },
-  { value: 4, label: '4 - 高可信' },
-  { value: 3, label: '3 - 一般' },
-  { value: 2, label: '2 - 参考' },
-  { value: 1, label: '1 - 存疑' },
-];
+// 文案在 i18n radar.sourceList.authorityOption.w{n}。
+const AUTHORITY_WEIGHT_VALUES = [5, 4, 3, 2, 1];
 
 // 批量导入：后端 BulkCreateRadarSourcesDto 是 @ArrayMinSize(1) @ArrayMaxSize(20)，
 // 越界整批 400，所以提交前必须本地拦住。
@@ -113,7 +115,8 @@ function isCreatableType(v: string): v is CreatableRadarSourceType {
  */
 function parseSourceLines(
   text: string,
-  existing: ReadonlyArray<Pick<RadarSource, 'type' | 'identifier'>>
+  existing: ReadonlyArray<Pick<RadarSource, 'type' | 'identifier'>>,
+  t: Translate
 ): {
   valid: ParsedSourceLine[];
   duplicates: SourceLineIssue[];
@@ -136,7 +139,7 @@ function parseSourceLines(
     if (parts.length > 4) {
       issues.push({
         lineNo,
-        reason: '字段过多，identifier 内的 | 请写成 %7C',
+        reason: t('radar.sourceList.issue.tooManyFields'),
       });
       return;
     }
@@ -145,21 +148,26 @@ function parseSourceLines(
     if (!isCreatableType(type)) {
       issues.push({
         lineNo,
-        reason: `未知类型「${field(0)}」，仅支持 RSS / YOUTUBE / CUSTOM`,
+        reason: t('radar.sourceList.issue.unknownType', { type: field(0) }),
       });
       return;
     }
 
     const identifier = field(1);
     if (!identifier) {
-      issues.push({ lineNo, reason: '缺少 identifier' });
+      issues.push({
+        lineNo,
+        reason: t('radar.sourceList.issue.missingIdentifier'),
+      });
       return;
     }
     // 与后端 CreateRadarSourceDto 的 @MaxLength(500) 对齐：超长会让整批 400
     if (identifier.length > IDENTIFIER_MAX_LENGTH) {
       issues.push({
         lineNo,
-        reason: `identifier 超过 ${IDENTIFIER_MAX_LENGTH} 字符`,
+        reason: t('radar.sourceList.issue.identifierTooLong', {
+          max: IDENTIFIER_MAX_LENGTH,
+        }),
       });
       return;
     }
@@ -170,15 +178,16 @@ function parseSourceLines(
       ) {
         issues.push({
           lineNo,
-          reason:
-            'YouTube 的 identifier 必须是 UC 开头的 channelId 或 youtube.com 链接',
+          reason: t('radar.sourceList.issue.youtubeIdentifier'),
         });
         return;
       }
     } else if (!/^https?:\/\//i.test(identifier)) {
       issues.push({
         lineNo,
-        reason: `${SOURCE_TYPE_LABEL[type]} 的 identifier 必须是 http(s) 链接`,
+        reason: t('radar.sourceList.issue.identifierNotUrl', {
+          type: SOURCE_TYPE_LABEL[type],
+        }),
       });
       return;
     }
@@ -188,7 +197,9 @@ function parseSourceLines(
     if (label.length > LABEL_MAX_LENGTH) {
       issues.push({
         lineNo,
-        reason: `显示名超过 ${LABEL_MAX_LENGTH} 字符`,
+        reason: t('radar.sourceList.issue.labelTooLong', {
+          max: LABEL_MAX_LENGTH,
+        }),
       });
       return;
     }
@@ -200,7 +211,9 @@ function parseSourceLines(
       if (!Number.isInteger(n) || n < 1 || n > 5) {
         issues.push({
           lineNo,
-          reason: `权威度必须是 1-5 的整数，实际「${weightRaw}」`,
+          reason: t('radar.sourceList.issue.invalidWeight', {
+            value: weightRaw,
+          }),
         });
         return;
       }
@@ -235,6 +248,7 @@ function relTime(iso: string | null): string {
 }
 
 export function RadarSourceList({ topicId, sources, onReload }: Props) {
+  const { t } = useTranslation();
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [recommendOpen, setRecommendOpen] = useState(false);
@@ -331,7 +345,9 @@ export function RadarSourceList({ topicId, sources, onReload }: Props) {
       onReload();
     } catch (e) {
       setOpError(
-        `权威度更新失败：${e instanceof Error ? e.message : String(e)}`
+        t('radar.sourceList.weightUpdateFailed', {
+          message: e instanceof Error ? e.message : String(e),
+        })
       );
     } finally {
       setWeightSavingId(null);
@@ -389,7 +405,7 @@ export function RadarSourceList({ topicId, sources, onReload }: Props) {
             onClick={() => setBulkOpen(true)}
           >
             <ClipboardList className="h-3 w-3" />
-            批量导入
+            {t('radar.sourceList.bulkImport')}
           </button>
           <button
             type="button"
@@ -405,8 +421,8 @@ export function RadarSourceList({ topicId, sources, onReload }: Props) {
       {sources.length === 0 ? (
         <EmptyState
           size="sm"
-          title="还没有数据源"
-          description="点击「AI 推荐」让 AI 列出候选，点「批量导入」一次粘贴多条，或点「添加」手动加"
+          title={t('radar.sourceList.emptyTitle')}
+          description={t('radar.sourceList.emptyDescription')}
         />
       ) : (
         <ul className="divide-y divide-gray-100">
@@ -456,16 +472,18 @@ export function RadarSourceList({ topicId, sources, onReload }: Props) {
                 </button>
                 <select
                   className="ml-auto rounded border border-gray-200 px-1.5 py-0.5 text-xs text-gray-600 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400 disabled:opacity-60"
-                  aria-label={`信源权威度：${s.label || s.identifier}`}
+                  aria-label={t('radar.sourceList.authorityAriaLabel', {
+                    name: s.label || s.identifier,
+                  })}
                   value={s.authorityWeight}
                   disabled={weightSavingId === s.id}
                   onChange={(e) =>
                     void handleWeightChange(s, Number(e.target.value))
                   }
                 >
-                  {AUTHORITY_WEIGHT_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
+                  {AUTHORITY_WEIGHT_VALUES.map((v) => (
+                    <option key={v} value={v}>
+                      {t(`radar.sourceList.authorityOption.w${v}`)}
                     </option>
                   ))}
                 </select>
@@ -571,6 +589,7 @@ function AddSourceForm({
   onClose: () => void;
   onAdded: () => void;
 }) {
+  const { t } = useTranslation();
   const [type, setType] = useState<CreatableRadarSourceType>('RSS');
   const [identifier, setIdentifier] = useState('');
   const [label, setLabel] = useState('');
@@ -672,7 +691,7 @@ function AddSourceForm({
               className="block text-xs text-gray-600"
               htmlFor="source-authority-weight"
             >
-              信源权威度（影响每日精选排序，默认 3）
+              {t('radar.sourceList.authorityLabel')}
             </label>
             <select
               id="source-authority-weight"
@@ -680,9 +699,9 @@ function AddSourceForm({
               value={authorityWeight}
               onChange={(e) => setAuthorityWeight(Number(e.target.value))}
             >
-              {AUTHORITY_WEIGHT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
+              {AUTHORITY_WEIGHT_VALUES.map((v) => (
+                <option key={v} value={v}>
+                  {t(`radar.sourceList.authorityOption.w${v}`)}
                 </option>
               ))}
             </select>
@@ -711,12 +730,6 @@ function AddSourceForm({
   );
 }
 
-const BULK_IMPORT_PLACEHOLDER = [
-  '# 每行一条，# 开头与空行忽略',
-  'RSS | https://openai.com/blog/rss.xml | OpenAI 官博 | 5',
-  'YOUTUBE | UCXuqSBlHAE6Xw-yeJA0Tunw | LTT',
-].join('\n');
-
 function BulkImportDialog({
   topicId,
   existing,
@@ -728,13 +741,14 @@ function BulkImportDialog({
   onClose: () => void;
   onDone: (info: string) => void;
 }) {
+  const { t } = useTranslation();
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { valid, duplicates, issues } = useMemo(
-    () => parseSourceLines(text, existing),
-    [text, existing]
+    () => parseSourceLines(text, existing, t),
+    [text, existing, t]
   );
   const overLimit = valid.length > BULK_IMPORT_MAX;
   const hasCustom = valid.some((v) => v.type === 'CUSTOM');
@@ -761,13 +775,20 @@ function BulkImportDialog({
           .join('\n');
         const more =
           result.skipped.length > 5
-            ? `\n• 还有 ${result.skipped.length - 5} 条...`
+            ? `\n• ${t('radar.sourceList.bulk.moreSkipped', {
+                count: result.skipped.length - 5,
+              })}`
             : '';
         onDone(
-          `已导入 ${result.created.length} 个源，跳过 ${result.skipped.length} 个：\n${lines}${more}`
+          `${t('radar.sourceList.bulk.doneWithSkipped', {
+            created: result.created.length,
+            skipped: result.skipped.length,
+          })}\n${lines}${more}`
         );
       } else {
-        onDone(`已导入 ${result.created.length} 个数据源`);
+        onDone(
+          t('radar.sourceList.bulk.done', { count: result.created.length })
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -780,8 +801,8 @@ function BulkImportDialog({
     <Modal
       open
       onClose={onClose}
-      title="批量导入数据源"
-      subtitle="每行一条：类型 | identifier | 显示名（可选） | 权威度 1-5（可选）"
+      title={t('radar.sourceList.bulk.title')}
+      subtitle={t('radar.sourceList.bulk.subtitle')}
       size="lg"
       closeButtonDisabled={submitting}
       closeOnOverlayClick={!submitting}
@@ -793,7 +814,7 @@ function BulkImportDialog({
             disabled={submitting}
             onClick={onClose}
           >
-            取消
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -801,7 +822,9 @@ function BulkImportDialog({
             className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs text-white disabled:opacity-60"
             onClick={() => void submit()}
           >
-            {submitting ? '导入中...' : `导入 ${valid.length} 条`}
+            {submitting
+              ? t('radar.sourceList.bulk.submitting')
+              : t('radar.sourceList.bulk.submit', { count: valid.length })}
           </button>
         </>
       }
@@ -810,8 +833,8 @@ function BulkImportDialog({
         <Textarea
           rows={10}
           className="font-mono text-xs"
-          aria-label="批量导入文本"
-          placeholder={BULK_IMPORT_PLACEHOLDER}
+          aria-label={t('radar.sourceList.bulk.textareaLabel')}
+          placeholder={t('radar.sourceList.bulk.placeholder')}
           value={text}
           error={issues.length > 0}
           disabled={submitting}
@@ -820,17 +843,25 @@ function BulkImportDialog({
 
         {valid.length > 0 && (
           <p className="text-xs text-emerald-700">
-            可导入 {valid.length} 条
-            {overLimit && `（一次最多 ${BULK_IMPORT_MAX} 条，请分批粘贴）`}
+            {t('radar.sourceList.bulk.validCount', { count: valid.length })}
+            {overLimit &&
+              t('radar.sourceList.bulk.overLimit', { max: BULK_IMPORT_MAX })}
           </p>
         )}
 
         {duplicates.length > 0 && (
           <div className="text-xs text-gray-500">
-            <p>跳过 {duplicates.length} 条（已存在）：</p>
+            <p>
+              {t('radar.sourceList.bulk.duplicateCount', {
+                count: duplicates.length,
+              })}
+            </p>
             {duplicates.map((d) => (
               <p key={d.lineNo}>
-                第 {d.lineNo} 行 {d.reason}
+                {t('radar.sourceList.bulk.duplicateLine', {
+                  lineNo: d.lineNo,
+                  reason: d.reason,
+                })}
               </p>
             ))}
           </div>
@@ -838,10 +869,15 @@ function BulkImportDialog({
 
         {issues.length > 0 && (
           <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-600">
-            <p>{issues.length} 行无法解析：</p>
+            <p>
+              {t('radar.sourceList.bulk.issueCount', { count: issues.length })}
+            </p>
             {issues.map((it) => (
               <p key={it.lineNo}>
-                第 {it.lineNo} 行：{it.reason}
+                {t('radar.sourceList.bulk.issueLine', {
+                  lineNo: it.lineNo,
+                  reason: it.reason,
+                })}
               </p>
             ))}
           </div>
@@ -857,8 +893,7 @@ function BulkImportDialog({
         {error && <ErrorInline message={error} className="text-xs" />}
 
         <p className="text-xs text-gray-400">
-          导入时会对每条源做一次真实抓取预检，20 条约需 10-30
-          秒；不可达的源不会入库，会在结果里逐条说明原因。
+          {t('radar.sourceList.bulk.preflightNote', { max: BULK_IMPORT_MAX })}
         </p>
       </div>
     </Modal>

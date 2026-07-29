@@ -4,8 +4,13 @@ import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import { SideDrawer } from '@/components/common/drawers/SideDrawer';
 import { Tabs } from '@/components/ui/tabs';
+import { useTranslation } from '@/lib/i18n';
 import { RadarSourceList } from './RadarSourceList';
-import type { RadarMatchMode, RadarSource } from '@/services/ai-radar/types';
+import type {
+  RadarEntityType,
+  RadarMatchMode,
+  RadarSource,
+} from '@/services/ai-radar/types';
 
 /** 与后端 UpdateRadarTopicDto / radar-topic.service 校验对齐 */
 const KEYWORD_MAX_COUNT = 20;
@@ -57,16 +62,17 @@ const SIGNAL_TYPES = [
   { value: 'key_event', label: '关键事件' },
 ];
 
-// 与 CreateRadarTopicModal 的 ENTITY_TYPES 同值域（后端 RadarEntityType enum）。
+// 与 CreateRadarTopicModal 的 ENTITY_TYPES 同值域（后端 RadarEntityType enum），
+// 文案共用 i18n radar.entityType.* 一组 key，两处不再各存一份 label。
 // 2026-07-29：此前抽屉把 entityType 显示成「创建时已锁定」，但后端
 // UpdateRadarTopicDto + RadarTopicService.update 从第一版就支持 PATCH，
 // 纯属前端误锁 —— 建错主题只能删库重建，改一次数据源全丢。
-const ENTITY_TYPES = [
-  { value: 'topic', label: '话题' },
-  { value: 'company', label: '公司' },
-  { value: 'product', label: '产品' },
-  { value: 'person', label: '人物' },
-  { value: 'event', label: '事件' },
+const ENTITY_TYPES: RadarEntityType[] = [
+  'topic',
+  'company',
+  'product',
+  'person',
+  'event',
 ];
 
 export function RadarTopicConfigDrawer({
@@ -429,23 +435,9 @@ function PushTab({
 
 // ── Tab: 关键词 ────────────────────────────────────────
 
-const MATCH_MODES: { value: RadarMatchMode; label: string; hint: string }[] = [
-  {
-    value: 'semantic',
-    label: '智能语义',
-    hint: '仅由 AI 按主题语义评分（默认）',
-  },
-  {
-    value: 'literal',
-    label: '精确匹配',
-    hint: '标题或正文必须含任一关键词，否则淘汰',
-  },
-  {
-    value: 'hybrid',
-    label: '混合加分',
-    hint: '命中关键词的内容加分，但不淘汰未命中项',
-  },
-];
+// 值域与 CreateRadarTopicModal 的 MATCH_MODES 一致，文案共用 i18n
+// radar.matchMode.* 一组 key，两处不再各存一份 label/hint。
+const MATCH_MODES: RadarMatchMode[] = ['semantic', 'literal', 'hybrid'];
 
 function KeywordsTab({
   draft,
@@ -454,6 +446,7 @@ function KeywordsTab({
   draft: RadarTopicConfigDrawerTopic;
   onChange: (p: Partial<RadarTopicConfigDrawerTopic>) => void;
 }) {
+  const { t } = useTranslation();
   const [input, setInput] = useState('');
   const keywords = draft.keywords;
   const atLimit = keywords.length >= KEYWORD_MAX_COUNT;
@@ -556,14 +549,14 @@ function KeywordsTab({
       {/* 匹配模式 */}
       <div>
         <label className="mb-1.5 block text-sm font-medium text-gray-700">
-          匹配模式
+          {t('radar.matchMode.label')}
         </label>
         <div className="space-y-1.5">
-          {MATCH_MODES.map((m) => {
-            const checked = draft.matchMode === m.value;
+          {MATCH_MODES.map((mode) => {
+            const checked = draft.matchMode === mode;
             return (
               <label
-                key={m.value}
+                key={mode}
                 className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 ${
                   checked
                     ? 'border-cyan-300 bg-cyan-50'
@@ -574,14 +567,16 @@ function KeywordsTab({
                   type="radio"
                   name="matchMode"
                   checked={checked}
-                  onChange={() => onChange({ matchMode: m.value })}
+                  onChange={() => onChange({ matchMode: mode })}
                   className="mt-0.5 h-4 w-4 text-cyan-600 focus:ring-cyan-500"
                 />
                 <span>
                   <span className="block text-sm font-medium text-gray-800">
-                    {m.label}
+                    {t(`radar.matchMode.${mode}.label`)}
                   </span>
-                  <span className="block text-xs text-gray-500">{m.hint}</span>
+                  <span className="block text-xs text-gray-500">
+                    {t(`radar.matchMode.${mode}.hint`)}
+                  </span>
                 </span>
               </label>
             );
@@ -605,6 +600,8 @@ function AdvancedTab({
   draft: RadarTopicConfigDrawerTopic;
   onChange: (p: Partial<RadarTopicConfigDrawerTopic>) => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="space-y-5">
       {/* 采集频率 cron */}
@@ -625,27 +622,27 @@ function AdvancedTab({
       {/* 对象类型 */}
       <div>
         <label className="mb-1 block text-sm font-medium text-gray-700">
-          对象类型
+          {t('radar.entityType.label')}
         </label>
         <div className="flex flex-wrap gap-2">
-          {ENTITY_TYPES.map((t) => (
+          {ENTITY_TYPES.map((value) => (
             <button
-              key={t.value}
+              key={value}
               type="button"
-              aria-pressed={draft.entityType === t.value}
-              onClick={() => onChange({ entityType: t.value })}
+              aria-pressed={draft.entityType === value}
+              onClick={() => onChange({ entityType: value })}
               className={`rounded-lg border px-4 py-2 text-sm font-medium ${
-                draft.entityType === t.value
+                draft.entityType === value
                   ? 'border-cyan-300 bg-cyan-50 text-cyan-700'
                   : 'border-gray-200 text-gray-600 hover:bg-gray-50'
               }`}
             >
-              {t.label}
+              {t(`radar.entityType.${value}`)}
             </button>
           ))}
         </div>
         <p className="mt-1 text-xs text-gray-400">
-          影响 AI 评分与实体抽取的判断角度，改动仅对之后的采集生效
+          {t('radar.entityType.hint')}
         </p>
       </div>
     </div>
