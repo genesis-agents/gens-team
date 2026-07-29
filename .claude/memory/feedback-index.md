@@ -1,0 +1,176 @@
+# Feedback Index
+
+> 用户协作偏好 + 项目反复踩到的反模式。每条 ≤200 字符，详情看链接文件。
+
+- [feedback_git_commit_via_bash_tool.md](feedback_git_commit_via_bash_tool.md) — 用 Bash 工具(POSIX sh)提交时禁 `git commit -m @'...'@`(PowerShell here-string 语法)→ bash 里 message 首行变空 → commit-msg hook(commitlint) 报 subject/type empty 拒提(本会话连炸3次)。多行 message 用 `cat > .git/MSG <<'EOF'` 再 `git commit -F`，或单行 `-m "type(scope): subj"`。看是否落地直接 `git log --oneline -1`(lint-staged 输出大被截断)。关联 [[feedback_shared_workdir_use_worktree_for_commits]]
+
+- [feedback_error_message_ux_and_encoding_2026_06_12.md](feedback_error_message_ux_and_encoding_2026_06_12.md) — ①错误提示硬要求：前端 !res.ok 必用 canonical lib/utils/api-error（中文透传→签名映射→状态码兜底+截短细节），禁糊原始 JSON；②Windows 批量改中文文件禁 PowerShell round-trip（ANSI 乱码实翻车），用 node -e utf8 或 Edit 工具，改完查 mojibake
+
+- [feedback_review_fe_be_contract_after_workflow.md](feedback_review_fe_be_contract_after_workflow.md) — workflow/子agent 生成的前后端联动，tsc 全绿≠对：apiClient.get<T> 泛型是编译期断言、无运行时校验，后端真实形状错配会瞒过 tsc、运行时炸。2026-06-07 一人公司 OS W2：后端 id/members[]/ceoHiredAgentId/origin'marketplace' vs 前端 instanceId/memberIds/ceoId/'market'，还缺 UI 字段 seniority/avatarGradient。审查时逐字段比对两端消费形状（主键名/关系展开/UI-only字段/枚举），前端加 adapt 层。关联 [[feedback_lint_staged_stash_safety]]
+
+- [feedback_design_doc_before_big_feature.md](feedback_design_doc_before_big_feature.md) — 大型/产品级新功能开工前要先落成文件的方案文档(docs/features/<feature>/design.md：愿景/组织模型/命名/信息架构/后端复用/M0-Mn里程碑+验证)，用 AskUserQuestion 锁命名与信息架构、preview ASCII 选布局，开放问题逐条闭合再写代码。2026-06-07「一人公司操作系统」我探索完直接写组件被连打断4次「你要先出方案啊！！！」。判据：是否引入新命名/新模块/新信息架构/不可逆方向。与 [[feedback_autonomous_mode]] 不冲突——后者针对增量低风险动作，本条针对大型功能方向性设计(抢跑=返工)
+
+- [feedback_no_stub_label_without_reading.md](feedback_no_stub_label_without_reading.md) — 评估/审计时绝不把"占位/stub/空壳"当结论除非真 Read 了文件能引 file:line。2026-06-04 后台质量评估，子 agent 把 4 个文件(consolidation/indexing/figure-relevance/pii-redactor)标"占位 2-4/10"，用户质疑"怎么会有占位"，实读后**四个全是真实现**。根因：子 agent 没读到从"未展示"推断成"空壳"，我又转述。子 agent"未读到/需补充审视"=未覆盖≠空壳；负面标签(stub/假测试/死代码)转述前必二次抽样核实。关联 [[feedback_analysis_before_guessing]]
+
+- [feedback_push_directly_to_main.md](feedback_push_directly_to_main.md) — 用户说"提交并推送/推送到远程主干"= 直接落到 main(`git checkout main`→`pull --rebase`→合并→`push origin main`),不要自作主张先开 feature 分支让他建 PR。覆盖 CLAUDE.md "default branch 先开分支"默认;pre-push hook(verify:arch)是安全网。2026-06-04 文档同步我建了 docs/ 分支被强烈纠正。与 [[feedback_shared_workdir_use_worktree_for_commits]] 区分:那条讲怎么安全做工作,这条讲交付终点在 main
+- [feedback_shared_workdir_use_worktree_for_commits.md](feedback_shared_workdir_use_worktree_for_commits.md) — 本仓主工作目录常被并发 session 驱动(切分支/留未提交文件/全局 git 操作)。在主目录直接改文件不立刻提交→被别的 session 的 checkout/restore 整个回退(2026-06-02 ai-ask 4 处未提交改动被清零)。**任何要提交的改动一律 `git worktree add -b <b> <dir> origin/main` 隔离做完再 PR**;worktree 无 node*modules/.husky/* 从主仓 junction 进去,删前先 .Delete() junction。改前 `git rev-parse --abbrev-ref HEAD` 别假设主目录在 main。BYOK PR#215 用 worktree 没事/ai-ask 图省事直接改踩坑。承接 [[feedback_never_rmrf_worktree_junction]]
+- [feedback_never_rmrf_worktree_junction.md](feedback_never_rmrf_worktree_junction.md) — 绝不用 Remove-Item -Recurse -Force/rm -rf 删 git worktree 目录：Windows 上会顺 junction 钻进主仓删真实内容。2026-06-02 删 gat-contract-wt 时 git worktree remove 报 Directory not empty，fallback Remove-Item → 删主仓 6539 个源码文件。git worktree remove 失败就停别 fallback；误删已跟踪文件(只 D 无 M)定向 checkout 救回，不用全局 restore
+- [feedback_llm_recovery_mechanism_not_hardcode.md](feedback_llm_recovery_mechanism_not_hardcode.md) — LLM 格式/能力/恢复必须机制级解决：capability catalog+chain 驱动，禁 provider/modelId 硬编码(catalog 是先验,运行时输出是 ground truth 让 self-heal 自纠)；恢复信号不能只认 4xx 拒绝，要含"200 但 content 空/畸形"退化输出→in-request 降级+合成 degenerate_output 信号 self-heal 持久化+model-failover；推理耗尽判定含 finish_reason=stop。2026-05-25 deepseek-v4-flash 思考模式被强制 json_object 反复崩
+- [feedback_byok_never_admin_fallback.md](feedback_byok_never_admin_fallback.md) — 严格 BYOK：任何请求绝不静默回退 admin key/model；"授权"走既有 ASSIGNED(用户向系统申请,需 userId)路径,别造新 env 开关/用户 UI；无 userId 后台任务选模型返回 null/[] 优雅失败,真无人值守系统设施走显式 env key(如 OPENAI_API_KEY);控制面在运维/Admin 层。2026-05-25 收口无 userId admin 兜底三处。配合 [[feedback-background-spenders-default-off]]
+
+- [feedback_workflow_subagent_cwd_worktree.md](feedback_workflow_subagent_cwd_worktree.md) — 在 worktree session 里跑 Workflow，子 agent 的 cwd 默认解析到**主仓**不是 worktree，Edit/Write 会泄漏污染 main(2026-05-30 P0 整改 7 条工作流 6 条写错树)。对策：prompt 给绝对 worktree 路径+明令禁碰主仓路径；永远加 VerifyFix barrier 在共享 worktree 实跑 git status+tsc+verify:arch 核对文件真存在；收拾泄漏逐文件 patch/checkout，绝不全局 checkout--.(多 session 会误删)。附 commitlint≤100/junction/NODE_OPTIONS 坑
+- [feedback_autonomous_mode.md](feedback_autonomous_mode.md) — 用户偏好自驱：给大方向后期望连续拆解执行，少问多做。低风险动作(文档/测试/spec/守护栏/import修复/commit+push)直接做；仅破坏性操作、有 blast radius 的运行时行为改动、架构决策才先确认。多次"为什么这么慢"=反复等待/确认让他不耐烦。并行 sub-agent 是认可的提速手段
+- [feedback_grep_before_yagni_judgment.md](feedback_grep_before_yagni_judgment.md) — 评估"过度抽象/目标态/YAGNI"前必须 grep 真实使用者数量,不凭"只有 1 个使用者"直觉判;2026-05-24 翻车:用"等触发"建议拖后腿,实际 agent-playground+social+radar 三家已 copy-paste 同一 mission-pipeline 范式急需 harness 化(文件名只换前缀,工具函数都在抄)。同一范式 ≥3 处 copy = 当下抽 framework 的信号,不是缓抽的借口
+- [feedback_batch_review_at_end.md](feedback_batch_review_at_end.md) — 大型 epic(v3.1 这种 ~10 阶段)用"全部跑完统一审视",不每阶段 review;早期高风险阶段(0/A0/A)单片 review 合理,进入定型阶段(B+/C/D/F)子片 review 信号已收敛+撞 sub-agent 配额,改"实施→commit→push→直接下一片",末尾统一派 4 路集中评审(范围覆盖全部 commits)
+- [feedback_parallel_agent_integration_2026_05_23.md](feedback_parallel_agent_integration_2026_05_23.md) — 并行后台 agent + 共享分支集成血泪(R2 #35-52)：真并行用 run_in_background(前台阻塞=串行)；集成按 `git -C wt diff --name-only`(agent 散文报告漏文件→测试全红)；cp 共享文件后 grep marker 防回退；lint-staged 大文件 ESLint OOM→`NODE_OPTIONS=8192 git commit`；注释别留 `from "x"`/event 字面量(守护误判)；别在主分支与 worktree agent 并发 commit(auto-merge 会重置 HEAD)；git/ls 一律从仓库根跑(否则根相对路径误解析)
+- [feedback_verify_subagent_output_independently.md](feedback_verify_subagent_output_independently.md) — 委托 sub-agent 重构后主 agent 必须独立重跑 tsc+全测+调用图核验再信/再提交；2026-05-22 playground C0 切换的 sub-agent 报告丢失且实际留 15 个失败测试 + s11 绕过 finalize 中央方法(直调 arbiter)。它说"全绿"不算数，自己跑过+grep 旧API无消费方才算
+- [feedback_overclaim_cutover_verify_by_callgraph.md](feedback_overclaim_cutover_verify_by_callgraph.md) — 声称"切换/单入口/无双写"前必须 grep 真实生产消费方+证明旧路径无调用点(拿调用图当证据,不是测试绿)；2026-05-22 借 Codex 抓到我把 finalize() 报成已切换实则生产零调用、userProfile 终态写仍双写。deprecation/TODO-切换注释=未完成红旗,收尾必须显式列出
+- [feedback_dont_double_down_on_theory_when_user_pushes_back.md](feedback_dont_double_down_on_theory_when_user_pushes_back.md) — 用户带证据反驳时从头重查根因别打补丁辩护；2026-05-21 AI Ask 房间我死磕 xAI 402 三轮被连续打脸，真因是用户第一句说的"代理看不到输出"。反驳一次=可能错，两次=推倒重来；优先采信用户第一手现象
+- [feedback_commit_directly_to_main.md](feedback_commit_directly_to_main.md) — 本项目直接提交推送 main，不开 feature 分支/PR（靠 pre-push 闸门保质量）；2026-05-21 我为修复擅自建 fix 分支推该分支→用户「为什么不到主干？？？」。"提交推送"=commit 到 main + push origin main
+- [feedback_guard_placement_not_just_document.md](feedback_guard_placement_not_just_document.md) — 目录/组件归属约定必须有 audit 守护，光写文档没用（文档会不自洽 + agent 会漂移）；卡片散落 ui/cards+common/cards+common/asset-card 三处无人拦→震怒。落地：全收口 ui/cards + 标准22改写 + audit R15(目录级扫描，绕过 file-walk 排除项)+造违规验证拒推。canonical 放 ui/还是 common/ 是用户决策，别擅自 mv（2026-05-21）
+- [feedback_push_must_fix_gates_not_wait.md](feedback_push_must_fix_gates_not_wait.md) — 硬规则：提交/推送前所有闸门(commitlint/lint-staged/pre-push: verify:arch+type-check+测试+UI audit+i18n+deps)必须整改全绿才算完成；携带的别人 commit 跑红也要修到合规(补契约 baseline 等)，禁「等别人修」/--no-verify/rebase 丢提交（2026-05-20 playground 契约拦截教训）
+- [feedback_ui_governance_no_fake_exceptions.md](feedback_ui_governance_no_fake_exceptions.md) — UI 治理铁律：不接受假例外，规则越界就改规则(R11 去可见性)、缺真功能就建或诚实说做不了(别造死开关)、canonical 真不适配才 allowlist+留痕；到 0 后全部规则焊死 HARD_ZERO
+- [feedback_commit_only_own_changes.md](feedback_commit_only_own_changes.md) — 提交前必 git diff --cached --name-only 核对,只提交本会话自己改的文件,工作树里无关删除/改动不碰不提交(2026-05-20 误纳 litellm-proxy 删除被纠正)
+- [feedback_frontend_dir_hygiene.md](feedback_frontend_dir_hygiene.md) — 用户对前端目录有强洁癖、逐个追问归属；按 02-directory-structure.md 消费方规则归位，给决断表+分 Tier 独立 commit，不为美观重命名 route 镜像目录（2026-05-20 me/hooks/lib 归位）
+- [feedback_verify_field_names_both_ends.md](feedback_verify_field_names_both_ends.md) — 跨文件字段名修 bug 必须 grep 两端验证字段名一致，禁止 inline type assertion 让 TS 闭嘴（2026-05-19 social budget 闸 typo 字段名教训）
+- [feedback_frontend_bug_check_network_response_first.md](feedback_frontend_bug_check_network_response_first.md) — 前端 UI 异常第一步永远是要用户截 Network → Response body，不要先去后端诊断（2026-05-19 social data sources bug 5 次失败教训）
+- [feedback_audit_script_self_implementation_exclusion.md](feedback_audit_script_self_implementation_exclusion.md) — 公共组件强制复用 audit 脚本必须 exclude 该组件自身实现路径（components/ui/ + components/common/），否则 Modal.tsx 自身就被 R6 误报
+- [feedback_tailwind_spacing_p5_p7_legal.md](feedback_tailwind_spacing_p5_p7_legal.md) — Tailwind p-5/p-7/p-9 是合法刻度；audit 扫"节奏外间距"只能算 .5 半步（0.5/1.5/2.5/3.5），整数刻度不要标违规
+- [feedback_subagent_fork_point_stale.md](feedback_subagent_fork_point_stale.md) — Sub-agent worktree 从 fork 点跑，看不到 main 后续 commit；依赖链 sub-agent 启动前主 agent 必须 push
+- [feedback_constructor_di_change_must_grep_specs.md](feedback_constructor_di_change_must_grep_specs.md) — NestJS service constructor 加 inject 必须 grep `new Service(` 全仓修参数，testing module 不覆盖直接构造
+- [feedback_subagent_ui_add_must_grep_existing.md](feedback_subagent_ui_add_must_grep_existing.md) — Sub-agent 加 UI 控件前 prompt 必须命令它 grep 同字段既有控件，否则盲目加 = 双源
+- [feedback_execution_style.md](feedback_execution_style.md) — Execute decisively after a direction is given; skip repeated "shall I commit?" prompts
+- [feedback_autonomous_phase_execution.md](feedback_autonomous_phase_execution.md) — Phase 级任务连续执行所有子 PR，中途不问、不提交，最后统一交付 review
+- [feedback_systematic_analysis.md](feedback_systematic_analysis.md) — Systematic analysis preference
+- [feedback_e2e_must_visit_ui.md](feedback_e2e_must_visit_ui.md) — 端到端验证必须打开 UI 看渲染，不能只查 DB / 类型检查就声称完成
+- [feedback_sediment_as_default_task.md](feedback_sediment_as_default_task.md) — "沉淀经验到 memory" 必须作为每轮 task 列表的默认最后一项，不能等用户提醒
+- [feedback_all_questions_as_tasks.md](feedback_all_questions_as_tasks.md) — 用户每提一个问题/截图反馈必须 TaskCreate，不能口头答复完就过
+- [feedback_parallel_subagent_coverage_push.md](feedback_parallel_subagent_coverage_push.md) — 大规模 spec 攻坚用 4-8 个并行 sub-agent + 严格白名单 + 中途持续 commit，"先提交"是用户多次给出的指令
+- [feedback_no_global_revert_even_single_file.md](feedback_no_global_revert_even_single_file.md) — `git checkout -- single-file` 在该文件含其他 agent 未提交工作时同样会清空那些工作，错改一律用反向 Edit 修
+- [feedback_plan_doc_must_backfill.md](feedback_plan_doc_must_backfill.md) — 每子 PR 落地必须立刻在 plan / design 文档（如 v5.1 plan §4.0）回填 commit hash + 状态，不得让用户来问
+- [feedback_lint_staged_stash_safety.md](feedback_lint_staged_stash_safety.md) — commit-msg hook 失败 + 第二次 retry 会让 lint-staged 的 stash/pop 错位，吸入别 session 的文件；多 session 并行尤其危险
+- [feedback_lint_staged_hung_kill_recipe.md](feedback_lint_staged_hung_kill_recipe.md) — Win+大 backend lint-staged 经常 hang(jest worker 不退)，标准 kill+stash 清理流程；commit 后必查进程/stash 别累积
+- [feedback_global_component_must_gate_auth.md](feedback_global_component_must_gate_auth.md) — Sidebar/MobileNav/AppShell 这类未登录也渲染的全局组件，新增 useApiGet 必须 gate auth，否则配合 401→logout 会死循环刷新
+- [feedback_no_lying_assertion.md](feedback_no_lying_assertion.md) — 禁 `(p.X as PrimitiveArray)` 强制断言；外部边界数据必须 Array.isArray + type guard 或 zod parse，否则 .slice/.map 运行时炸
+- [feedback_no_hardcoded_pricing.md](feedback_no_hardcoded_pricing.md) — 禁硬编码模型价格表；走 ModelPricingRegistry 单一源（DB ai_models.price_input/output_per_million）
+- [feedback_unitrack_audit_must_check_consumer.md](feedback_unitrack_audit_must_check_consumer.md) — backend 删 emit 事件 / 重命名 type 时必须 grep frontend consumer；contract spec 自动拦但写代码当下要主动跑
+- [feedback_python_no_overwrite_ts.md](feedback_python_no_overwrite_ts.md) — 不要 Python 直写 ts 文件，用 Edit/Write 工具；llm-executor.ts 被误截过
+- [feedback_no_hero_in_narrow_panel.md](feedback_no_hero_in_narrow_panel.md) — 杂志风格 hero 条 / multi-col stat grid 不能塞进 ≤600px sidebar / slide-over，必须用单列 icon-label-value StatRow
+- [feedback_eventbus_not_buffer_directly.md](feedback_eventbus_not_buffer_directly.md) — 业务 emit 必须走 eventBus.emit()，直调 BroadcastAdapter.broadcast() 会让其他 adapter（特别是 socket）漏收 → 前端不实时刷新
+- [feedback_required_field_must_scan_all_callers.md](feedback_required_field_must_scan_all_callers.md) — schema 改字段为必填且删 backend fallback 时必须 grep 全仓所有构造点；P0-K 漏改 custom-agents.translate 让 launch 必 400 两周
+- [feedback_admin_byok_visual_parity.md](feedback_admin_byok_visual_parity.md) — admin 与 BYOK 同概念 UI 必须视觉一致；admin 用 &lt;table&gt; 时 user 也用 &lt;table&gt;，不要一边卡片一边表格
+- [feedback_assetcard_must_carry_actions.md](feedback_assetcard_must_carry_actions.md) — 列表卡片用 AssetCard 默认必须携带 isOwner + onEdit + onDelete + labels 四件套，不能只塞 onClick 让卡片只读
+- [feedback_drawer_stats_2col.md](feedback_drawer_stats_2col.md) — AdminDrawer ≤640px 渲染 AdminStatsCards 必须 columns={2}；4 卡 + text-2xl + 大数 = mid-comma wrap
+- [feedback_admin_grouped_table_large_n.md](feedback_admin_grouped_table_large_n.md) — admin table N&gt;50 条同质资源必须按 category/layer 分组渲染（彩色 header），不能扁平 + 翻页
+- [feedback_consensus_must_iterate_to_all_yes.md](feedback_consensus_must_iterate_to_all_yes.md) — 集体评审共识 = 4/4 路 YES；中途任何 NO 必须立即修再走一轮；不能"代码层共识"就 push（PR-R0~R8 走了 4 轮才齐）
+- [feedback_light_only_no_dark_mode.md](feedback_light_only_no_dark_mode.md) — Genesis 前端 light-only，不要给新组件加 `dark:` 变体；tailwind darkMode='class' 锁定，不要往 &lt;html&gt; 加 dark class
+- [feedback_no_dual_sources.md](feedback_no_dual_sources.md) — 不接受双源；任何重复逻辑/常量必须当场抽公共 source，不能留为 follow-up
+- [feedback_destructive_op_must_have_rollback.md](feedback_destructive_op_must_have_rollback.md) — update SET NULL / delete / truncate / reset 必须配对失败回滚机制；evaluate review 必查 7 条
+- [feedback_fallback_must_be_self_consistent.md](feedback_fallback_must_be_self_consistent.md) — 双层网 fallback 通道必须 prompt 自洽 + 多入口校验对称；"主路径干净"假设是反模式
+- [feedback_no_causal_inversion.md](feedback_no_causal_inversion.md) — 警惕"emit 事件 → 被自己读回当 mission 活迹"的因果倒置；事件类型必须 lifecycle/business 分类
+- [feedback_implementation_rounds_need_review_too.md](feedback_implementation_rounds_need_review_too.md) — design 4 路 consensus ≠ 实施时不引入新红线；implementation PR 也必须 4 路 review，否则一定踩 emoji / dual sources / lying assertion / dual paths
+- [feedback_user_action_rate_limits_loose.md](feedback_user_action_rate_limits_loose.md) — 用户主动交互 endpoint controller `@RateLimit` 默认 30/60s 起步，恶意闸放业务层 24h 总闸 + cost guard，不要 5/60s 体验崩盘
+- [feedback_throwaway_scripts_must_cleanup.md](feedback_throwaway_scripts_must_cleanup.md) — 一次性 sim-\*/audit 脚本跑完结论沉淀到 commit/memory 后必须当场 rm，不能留 untracked 等用户问
+- [feedback_audit_must_verify_dual_source_layer.md](feedback_audit_must_verify_dual_source_layer.md) — arch-auditor 报"双源 / 应上提"前必须 grep 验证抽象层是否同 + 邻居 ai-app 是否真有第二消费方（YAGNI）
+- [feedback_commit_msg_type_must_be_legal.md](feedback_commit_msg_type_must_be_legal.md) — commit type 必须是 commitlint type-enum 合法值（feat/fix/docs/style/refactor/perf/test/build/ci/chore/revert）；review/round/merge 不在列会让 commit-msg hook 拒
+- [feedback_commit_msg_line_length_100.md](feedback_commit_msg_line_length_100.md) — commit body/footer 每行也必须 ≤100 字符（CLAUDE.md 只点了 header）；bullet 堆色值/路径很容易超
+- [feedback_commit_msg_file_fallback.md](feedback_commit_msg_file_fallback.md) — PowerShell 多行 CJK commit message here-string 偶发被拆开报"did not match any file(s)"；改用 git commit -F 临时文件，提交后即 rm
+- [feedback_background_spenders_default_off.md](feedback_background_spenders_default_off.md) — 后台自动触发 LLM/BYOK/credit/外部花费的机制必须默认 OFF + 防并发锁；即使有守卫也默认关（2026-05-25 静默烧钱事故）
+- [feedback_admin_workflow_must_match_intuition.md](feedback_admin_workflow_must_match_intuition.md) — admin 工具入口必须按"操作语义中心"对象组织（用户侧），不是按 DB schema 组织成"资源池"页面；截图反馈优先级最高
+- [feedback_admin_entry_belongs_with_account.md](feedback_admin_entry_belongs_with_account.md) — Sidebar/MobileNav 中"系统"(admin) 入口紧贴 UserProfileButton（账户元操作），不混在业务 nav；改名"系统"而非"管理后台"
+- [feedback_multi_session_must_use_pathspec_commit.md](feedback_multi_session_must_use_pathspec_commit.md) — 多 session 并行时 commit 必须用 `git commit -m "msg" -- pathspec`，禁止默认 add+commit；lint-staged stash 会吸入别 session 文件
+- [feedback_git_mv_pathspec.md](feedback_git_mv_pathspec.md) — `git mv` + pathspec commit 只捕获 new 侧，old 路径的 delete 不入 HEAD；pathspec 必须同列两侧
+- [feedback_idempotent_backend_ui_lying_success.md](feedback_idempotent_backend_ui_lying_success.md) — 幂等后端 + 前端列表未按状态过滤 → UI 假成功；fetch 加 status filter + 按钮按状态守卫
+- [feedback_dont_lock_users_choice_with_provider.md](feedback_dont_lock_users_choice_with_provider.md) — 用户申请类表单不要硬要求选 provider/资源；admin 未必有 + 列表动态变；让 admin 在审批时自由选
+- [feedback_dont_migrate_ciphertext.md](feedback_dont_migrate_ciphertext.md) — schema migration 不要自作主张把加密字段从 A 表写到 B 表；解密路径不一致就会静默 401，应让 admin 手动重配
+- [feedback_skill_md_byte_equal_contract.md](feedback_skill_md_byte_equal_contract.md) — agent-playground prompt 单源化 SKILL.md（PR-E 后），soul.md/duties/\*.md 已物理删除；改 prompt 只动 SKILL.md 内嵌 anchor
+- [feedback_implement_dont_delete_placeholders.md](feedback_implement_dont_delete_placeholders.md) — 用户对"P3a 后续上线"占位 alert 抱怨时优先补真实现而非删按钮，"为什么要删除呢？"+"也不要来回反复了"
+- [feedback_llm_id_must_be_in_prompt_and_whitelist.md](feedback_llm_id_must_be_in_prompt_and_whitelist.md) — LLM 必须输出外部 ID 时三件套：prompt 显式给 ID + service 白名单软剔除 + zod 不要用 uuid() 当主防线（一条坏 cite 不该 400 整张 diff）
+- [feedback_god_class_pre_push_split.md](feedback_god_class_pre_push_split.md) — pre-push 对 >2500 行文件单次净增 >50 行硬拒；commit 成功不代表能 push；写新功能前先决定拆点
+- [feedback_no_hero_in_create_mission.md](feedback_no_hero_in_create_mission.md) — 创建 Mission/Topic 入口走 modal + Topic Insight 风格（无渐变/无 stat 卡），不做杂志风全页 hero
+- [feedback_expose_dual_input_topic_description.md](feedback_expose_dual_input_topic_description.md) — 创建 Mission/Topic 默认双输入框（短主题 ≤200 + 长描述 ≤2000），全链路透传到 LLM 4 phase prompt，不要只一个 textarea
+- [feedback_prettier_after_write.md](feedback_prettier_after_write.md) — 每次 Write/Edit .ts/.tsx 后立即 npx prettier --write，避免 lint-staged + pathspec commit 互冲造成 INDEX/HEAD/工作区三态分裂
+- [feedback_no_hardcoded_provider_metadata.md](feedback_no_hardcoded_provider_metadata.md) — provider endpoint/testModel/cap 走 DB ai_providers 真源 + "获取"按钮动态拿 modelId；TS 常量字典只允许 DB 未 seed 的兜底，禁止加新行
+- [feedback_election_mechanism_must_be_general.md](feedback_election_mechanism_must_be_general.md) — 用户问"怎么会存在选举都无法充分利用的情况"时必须修底层机制（如 mission-scoped diversity score 维度），不能靠加 role-specific 偏好打补丁
+- [feedback_new_mechanism_must_e2e_verify.md](feedback_new_mechanism_must_e2e_verify.md) — 新加横切机制（diversity / tracker / context）必须读端+生产端同 PR 接通 + 真跑一个 mission 验证；只接一半 = 死代码；写 postmortem 别把"自己留的坑"讲成"考古发现"
+- [feedback_kb_facade_layer_l3.md](feedback_kb_facade_layer_l3.md) — KB 加工层（wiki/KG/摘要）接入 RAG 消费链时桥层必须在 ai-app/library/，不能挤进 ai-engine/rag/；ESLint no-restricted-imports 锁死 ai-engine 不可 import ai-app
+- [feedback_shared_cache_must_concurrent_spec.md](feedback_shared_cache_must_concurrent_spec.md) — 跨实例共享 cache 的 spec 必须 Promise.all 真并发，顺序调用掩盖 read-modify-write 丢更新（mission-election-tracker 真实案例）
+- [feedback_mock_self_confirming_assertion.md](feedback_mock_self_confirming_assertion.md) — mock 返回 X + 断言又是 X + objectContaining = 假绿；断言值必须与 mock 输入不同，证明数据链路真的走通了
+- [feedback_new_table_lifecycle_checklist.md](feedback_new_table_lifecycle_checklist.md) — 新 Prisma model 必备 4 件套：caller 接 clear 钩子 / FK ON DELETE CASCADE / TTL 或 cron / 监控；落地前 grep 自查脚本
+- [feedback_top_level_comment_must_update_with_arch.md](feedback_top_level_comment_must_update_with_arch.md) — 架构改造（内存→DB / 单源→多源）后必须同步更新文件顶部 module-level 注释；存储/持久化/并发/网络/角色 5 类高危词必校
+- [feedback_unwrap_response_envelope.md](feedback_unwrap_response_envelope.md) — 后端全局 ResponseTransformInterceptor 包 { success, data, metadata }，前端直接 r.json() 必须解一层；setState 数组前 Array.isArray 守不能用 ?? []
+- [feedback_pc_two_column_breakpoint.md](feedback_pc_two_column_breakpoint.md) — PC 双栏必须从 md (768px) 起就成立，不能只挂 xl (1280px)；1366 笔记本/侧边栏占用/125% 缩放都会塌成单列
+- [feedback_consumer_pays_not_creator.md](feedback_consumer_pays_not_creator.md) — BYOK 付费方 = 实际使用功能的 consumer（manual trigger 历史），不是 KB.userId 等 creator 字段；creator/owner 优先级是反模式
+- [feedback_chrome_autofill_search_box.md](feedback_chrome_autofill_search_box.md) — chrome 忽略 type=search + autoComplete=off；搜索框必须 type=text + autoComplete=new-password + 随机 name + 1p/lp ignore 全套
+- [feedback_dedup_must_merge_payload_first.md](feedback_dedup_must_merge_payload_first.md) — dedup 隐藏 alias 行前必须先合并 alias 的 config payload 到 canonical（数据可能只落在 alias 行）；不能靠 startup-only sync
+- [feedback_search_input_disable_autofill.md](feedback_search_input_disable_autofill.md) — 搜索框三件套（type=search + name + autoComplete=off）防 Chrome 同域 autofill 注入"莫名其妙的过滤"初始值
+- [feedback_kb_silent_429_failmodes.md](feedback_kb_silent_429_failmodes.md) — 长耗时批处理 429/熔断/吞错三连必修破除：进度持久化 + cooldown 自动恢复 + 结果结构化 + 上层 fail-loud；UI 必须看到 X/N + ERROR 红
+- [feedback_strict_byok_model_and_key.md](feedback_strict_byok_model_and_key.md) — 严格 BYOK：用户配 BYOK 必须同时决定 MODEL+KEY，不软回退 SYSTEM；EmbeddingService/AiChatService 等所有入口四件套（BYOK-first model / no SYSTEM fallback / EventEmitter 即时生效 / KeyAssignment.status=ACTIVE）
+- [feedback_optional_di_must_wire_module.md](feedback_optional_di_must_wire_module.md) — @Optional() 新依赖必须同 PR 配套 module.imports；spec mock 掩盖 DI 容器空 provider，prod 才 throw"未注入"；严格强依赖一律不写 Optional
+- [feedback_unified_byok_single_function.md](feedback_unified_byok_single_function.md) — BYOK 选模型必须单源：唯一函数 `AiModelConfigService.pickBYOKModelForUser`，所有 AI 入口都调它；不允许 service 内自写 BYOK 选择 / 不污染通用 AIModelConfig 接口 / 不绕过查 admin AIModel
+- [feedback_tool_classify_by_id_not_category.md](feedback_tool_classify_by_id_not_category.md) — 工具/资源分组按 toolId 精确匹配，category 字段作兜底；DB category 粗粒度 (external/information) 不足以撑细分桶
+- [feedback_look_at_history_before_redesign.md](feedback_look_at_history_before_redesign.md) — 用户喊"功能搞丢了/不全"时先 git log + git show 上一版完整结构，不要凭印象重写分类映射；上一版的 data shape (capability-mapping 全集) 是踩过坑测过的真源
+- [feedback_tab_split_by_user_semantic_not_impl.md](feedback_tab_split_by_user_semantic_not_impl.md) — UI tab/分组按用户语义不按 backend 实现字段；每个 category 显式标 tabKind，MECE + 4 字统一 label
+- [feedback_tool_layer_admin_pool_explicit.md](feedback_tool_layer_admin_pool_explicit.md) — 工具层 (Tavily/SerpApi/YouTube) 显式保持 admin 池化 + 系统消费；不纳入 BYOK；用户配置体验代价过大；BYOK 原则 3 仅覆盖 LLM 层
+- [feedback_nestjs_logger_constructor_default_breaks_di.md](feedback_nestjs_logger_constructor_default_breaks_di.md) — NestJS Module/Service constructor 把 Logger 设默认值 (`logger: Logger = new Logger()`) 会让 DI 仍尝试解析 → bootstrap 炸；用类字段或 @Optional()
+- [feedback_cache_shape_breaking_change_must_invalidate.md](feedback_cache_shape_breaking_change_must_invalidate.md) — Cache 存储对象加新必需字段时读取侧必须 shape 校验，旧 shape 视为 stale；否则 TTL 内命中老 cache 继续按 undefined fallback (BYOK label P2025 事故)
+- [feedback_byok_must_check_layers_above_chat.md](feedback_byok_must_check_layers_above_chat.md) — BYOK PR 必须自上而下查所有"chat() 之前能 inject model 参数"的层（harness ReAct tier pick / fallback / election / runtime-env），不能只盯 chat() 内部
+- [feedback_fk_storm_circuit_breaker.md](feedback_fk_storm_circuit_breaker.md) — fire-and-forget worker catch P2003/P2025 必须 abortRegistry.abort 让 orchestrator 退出；只 log.warn = 日志风暴
+- [feedback_abort_must_have_reason.md](feedback_abort_must_have_reason.md) — controller.abort() 必须传 reason (DOMException) 否则浏览器抛 "signal is aborted without reason" UI 看不懂
+- [feedback_bridge_inmemory_health_to_db.md](feedback_bridge_inmemory_health_to_db.md) — 业务模块 in-memory KeyHealthMap 必须 bridge 到 SecretKey.testStatus DB，否则 admin UI 永远显示"正常"看不到熔断
+- [feedback_admin_table_colgroup_width.md](feedback_admin_table_colgroup_width.md) — admin 多 section 表格 table-fixed + colgroup 显式 width 百分比；不同 section toolId 长短不一会"东倒西歪"
+- [feedback_god_class_extract_helper.md](feedback_god_class_extract_helper.md) — >2500 行 god-class 单次推送净增 >50 行被 pre-push 拒；当场拆 helper 文件，别 --no-verify
+- [feedback_facade_barrel_module_cycle.md](feedback_facade_barrel_module_cycle.md) — facade re-export Service 必须直接指向 .service.ts，不能走含 @Module 的 barrel；否则 ai-app 用 facade → ContentFetchModule decorator 链式加载 → ContentProcessingModule undefined prod 崩溃
+- [feedback_user_default_overrides_admin_default.md](feedback_user_default_overrides_admin_default.md) — 用户配 BYOK key ≠ 自动用该 provider 模型；chat() 选模型先看 UserModelConfig.isDefault，没设回退 admin 默认 + availableProviders 过滤；prod log `personal:<userId>:<provider>` 前缀 = 用户 key，但 modelId 可能是 admin fallback
+- [feedback_prod_log_userid_must_match.md](feedback_prod_log_userid_must_match.md) — admin 看 Railway prod log 跨用户可见，诊断"X 失败"前必须 grep `personal:<uuid>` 跟当前 user.id 对一遍；时段就近 ≠ 同一用户
+- [feedback_kb_is_import_sink.md](feedback_kb_is_import_sink.md) — KB 是 import sink，所有"添加文档"入口都在 KB 一侧；接 playground/topic-insights 内部报告必须走 library/rag/services/X-import.service + KB 详情页面板，不在 source 模块加"导入到 KB"按钮
+- [feedback_schema_default_blocks_short_circuit.md](feedback_schema_default_blocks_short_circuit.md) — Prisma `@default(N)` 非零 + `config.x || compute()` 短路永远吃 DB 默认值，compute fallback 永不触发；改用 `Math.max(configured, computed)` 或 schema 改 nullable 配 `??`
+- [feedback_zod_nullable_vs_optional.md](feedback_zod_nullable_vs_optional.md) — emit 显式发 `score: null` 表达"abstain/无值"语义，zod schema 必须 `.nullish()`；`.optional()` 只收 undefined → 反复 payload validation 失败
+- [feedback_single_key_user_cooldown_lockout.md](feedback_single_key_user_cooldown_lockout.md) — Key 健康 cooldown 默认假设多 key failover，单 BYOK key 用户偶发 timeout 整 user 锁死；filterUsable 必须在全 finite cooldown 时返回最早恢复那个作 degraded fallback
+- [feedback_create_endpoint_needs_dedup_window.md](feedback_create_endpoint_needs_dedup_window.md) — 耗时创建型 POST（启动 mission/job）必须 5-10s server-side dedup window；frontend StrictMode 双调用 / 双击 / 多 useEffect 会触发 cancel-and-recreate 白烧资源
+- [feedback_test_connection_must_verify_runtime.md](feedback_test_connection_must_verify_runtime.md) — 所有"测试连接"必须真发一次最小操作验证 key+配额+余额+真返数据，只检 auth 等于谎报"正常"（Serper 配额耗尽事故）
+- [feedback_partial_success_over_all_or_nothing.md](feedback_partial_success_over_all_or_nothing.md) — 长耗时多页 LLM pipeline 任何一项失败不许整批 fail；早断 zod + assemble 兜底 + 0 成功才 throw + UI 显失败 slug 列表
+- [feedback_health_recheck_must_cooldown.md](feedback_health_recheck_must_cooldown.md) — 外部依赖健康检查失败后 ≥60s cooldown fast-fail，不重复探测；caller 不阻塞等冷却，路由到 fallback provider
+- [feedback_5_reviewer_parallel_audit.md](feedback_5_reviewer_parallel_audit.md) — 大型 review 用 4-5 reviewer 子代理并发按域分工 + 域专属风险清单；reviewer 报 P0 必须人工核实前提条件（如 thinking signature 触发条件）
+- [feedback_throttle_concurrency_not_rate.md](feedback_throttle_concurrency_not_rate.md) — 外部 API 限速必须 3 层：cooldown + token bucket(req/s) + concurrency；只有 p-limit 不防 burst 429
+- [feedback_jest_cache_changedsince_false_fail.md](feedback_jest_cache_changedsince_false_fail.md) — pre-push jest --changedSince 假失败但单独跑全过 → `npx jest --clearCache` 后重试
+- [feedback_hook_must_unset_git_env_for_jest_changedsince.md](feedback_hook_must_unset_git_env_for_jest_changedsince.md) — pre-push hook 调 jest --changedSince 前必须 unset GIT_INDEX_FILE/GIT_DIR/GIT_WORK_TREE，否则 push 注入的 push-index 让 jest 内部 git diff 吐 usage 错失败（clearCache 修不了）
+- [feedback_external_api_auth_mode_evolution.md](feedback_external_api_auth_mode_evolution.md) — 外部 free API freemium 化常改 mailto→api_key；代码需 format detect 双通道，否则用户 budget 永不消耗看似"未被使用"
+- [feedback_screenshot_first_then_diagnose.md](feedback_screenshot_first_then_diagnose.md) — 用户截图里的红色 toast / item 计数 = ground truth；体感和状态冲突时查中间层（HTTP timeout / UI 渲染）；不要凭代码推理改 schema default + 数据迁移
+- [feedback_dto_class_not_interface.md](feedback_dto_class_not_interface.md) — NestJS `@Body()` 必须接 class DTO（带 class-validator 装饰器），interface/Partial 完全绕过 ValidationPipe 即使 stub 骨架也要先校验
+- [feedback_proxy_endpoint_must_set_cors.md](feedback_proxy_endpoint_must_set_cors.md) — 后端 /proxy/\* 端点凡是被前端 fetch() 读响应体的（不只当 <img src>），必须设 ACAO + CORP；缺了导致 PDF 导出 inline-image 链路静默断 → 破图
+- [feedback_verify_main_before_pr_work.md](feedback_verify_main_before_pr_work.md) — PR 整改开工前必须 git pull + git log + git diff HEAD 验证 main 是否已含目标 P0；reviewer baseline stale 直接开干会做 NOOP 还发夸张 commit message（2026-05-15 P0 整改事故）
+- [feedback_login_page_is_canonical_entry.md](feedback_login_page_is_canonical_entry.md) — 业务页未登录按钮禁直跳 loginWithGoogle()，必须 router.push('/login') 让用户先到登录页选 Google or 本地账号
+- [feedback_railway_cli_needs_tty.md](feedback_railway_cli_needs_tty.md) — railway logs 无 TTY 立即 exit 不流式；agent 端不能可靠 tail prod log，依赖用户粘贴
+- [feedback_computed_var_must_be_used.md](feedback_computed_var_must_be_used.md) — routing/分类变量算了就必须真用，只 log 不用是反模式；WeChat articleType=10 算了不用让长文进 type=77 小绿书编辑器超限
+- [feedback_sniff_runtime_token_from_requests.md](feedback_sniff_runtime_token_from_requests.md) — 反爬 token (fingerprint/CSRF/nonce) 必须 page.on('request') sniff，不靠 window/HTML scrape；WeChat fingerprint=(none) 死症根因
+- [feedback_prosemirror_body_not_first.md](feedback_prosemirror_body_not_first.md) — 多 ProseMirror 并存时不能 querySelector('.ProseMirror') 取首个；用 .ProseMirror-focused / offsetHeight 最大者；WeChat publish 14 轮真根因
+- [feedback_wechat_mp_publish_needs_switch_scope.md](feedback_wechat_mp_publish_needs_switch_scope.md) — WeChat MP 公众号扫码登录时必须勾选"允许切换"复选框才能让 session 获得 publish scope；缺则 publish API ret=2 / UI dialog 双拒，8 endpoint variant 全无解
+- [feedback_wechat_type77_drops_title.md](feedback_wechat_type77_drops_title.md) — WeChat type=77 小绿书编辑器对 type=10 schema saveDraft 返回 ret=0 但 silently drop title/cover；永远 type=10 不要自动切；response 不 echo 输入字段时要警惕
+- [feedback_react_controlled_native_setter.md](feedback_react_controlled_native_setter.md) — puppeteer keyboard.type 对 React controlled input/textarea 不可靠（\_valueTracker 看不到变化），必须用原生 setter (Object.getOwnPropertyDescriptor) + dispatch input event
+- [feedback_wechat_filetransfer_content_is_mediaid.md](feedback_wechat_filetransfer_content_is_mediaid.md) — WeChat filetransfer-upload-material 把 file_id 塞在 data.content（数字字符串），不在 file_id/media_id 字段；按 URL 形态判别
+- [feedback_wechat_new_editor_schema_overhaul.md](feedback_wechat_new_editor_schema_overhaul.md) — WeChat 2024+ 新版编辑器 saveDraft 不用 thumb_media_id；封面靠 6 cdn_url+crop_list0 JSON，正文图必须 rich_pages wxw-img js_insertlocalimg schema
+- [feedback_refactor_must_preserve_function.md](feedback_refactor_must_preserve_function.md) — 重构期间已工作功能（如 PR #111 WeChat publish）必须真发回归验证不退化，每波次硬关闸；占位 TODO/临时关闭旧测试/跳过真发都禁止
+- [feedback_skill_md_allowedmodels_must_be_empty.md](feedback_skill_md_allowedmodels_must_be_empty.md) — SKILL.md frontmatter allowedModels 必须 []，禁硬编码 claude-sonnet/haiku；playground 老 SKILL.md 是历史包袱不跟错
+- [feedback_refresh_create_must_be_tx_atomic.md](feedback_refresh_create_must_be_tx_atomic.md) — refresh/create RunSlot 类竞态必须 prisma.$transaction 原子 acquire；5s dedup window 只防快速连点不防真并发
+- [feedback_block_comment_star_slash_escape.md](feedback_block_comment_star_slash_escape.md) — TS 块注释/JSDoc 含 cron/regex 字面 `*/` 会提前结束注释；改单行 // 或 new RegExp 构造器
+- [feedback_contract_fix_must_touch_both_sides.md](feedback_contract_fix_must_touch_both_sides.md) — 前端发现"非法值/类型不覆盖"时根因常在后端发送侧；修 contract 必须 grep 字面量双侧同步
+- [feedback_cjs_import_must_grep_all_sites.md](feedback_cjs_import_must_grep_all_sites.md) — 纯 CJS 包 default-import bug（rss-parser 等）修复必须 grep 全仓所有用同一包的文件，否则 prod 第二次崩在同一错
+- [feedback_first_pr_must_real_orchestrator.md](feedback_first_pr_must_real_orchestrator.md) — 新 ai-app 对齐 Agent Team 首版必须接齐 5 件套（orchestrator/shell/registry/buffer/gateway），sequential 占位会被多路评审一致 NO
+- [feedback_multi_reviewer_must_separate_concerns.md](feedback_multi_reviewer_must_separate_concerns.md) — 5 路 reviewer 分工必须正交（复用/边界/生命周期/SKILL.md/DI），重叠让 P0 票数虚高+漏点同存
+- [feedback_new_ai_app_must_use_public_four_pieces.md](feedback_new_ai_app_must_use_public_four_pieces.md) — 新 ai-app 主页/Modal 必须四件套全走公共组件（PageHeaderHero/AssetCard/MissionDialogShell/Field），必填字段禁放 advanced 折叠区
+- [feedback_review_must_audit_module_contracts_not_only_diff.md](feedback_review_must_audit_module_contracts_not_only_diff.md) — 5 路评审默认只审 diff 漏 latent contract bug；必加 1 路"全模块字段单源 + 真发 happy path"专项审
+- [feedback_structuredclone_windows_oom.md](feedback_structuredclone_windows_oom.md) — 事件 buffer read() 大数组 structuredClone 在 Windows + jest worker 默认堆 OOM；payload readonly 契约下用顶层 spread 浅克隆即足
+- [feedback_puppeteer_evaluate_istanbul_ceiling.md](feedback_puppeteer_evaluate_istanbul_ceiling.md) — page.evaluate(() => {...}) 闭包内代码 Node 端 Istanbul 无法 instrument，含 5+ evaluate 的 adapter 文件 line 天花板 ~75%
+- [feedback_worktree_build_prep_artifacts.md](feedback_worktree_build_prep_artifacts.md) — 新 worktree 跑 verify:full 前必须 bootstrap frontend/lib/generated/CHANGELOG.md + cd backend && npx prisma generate
+- [feedback_reviewer_grep_origin_main_before_p0.md](feedback_reviewer_grep_origin_main_before_p0.md) — 评审报 P0 前必须 git log/show origin/main 验证是 PR 引入还是预存设计；本 PR 没引入的违规不算 P0
+- [feedback_multi_session_main_push_race.md](feedback_multi_session_main_push_race.md) — 多 session 共享 main worktree push 失败先 fetch + grep origin/main 看 commit 是否已被别 session 顺带 push，再决定动作
+- [feedback_must_run_consensus_before_push.md](feedback_must_run_consensus_before_push.md) — 用户要"完成后多路集中审视共识" = push 前必须真跑 4-5 路评审到全 YES；verify:full 绿 ≠ 共识达成（2026-05-17 ai-radar R2 事故）
+- [feedback_prisma_fk_must_match_db_table_name.md](feedback_prisma_fk_must_match_db_table_name.md) — 手写 migration FK 必须用 DB 真实表名（@@map 后的 snake_case 复数），不是 Prisma model 名；写错配合 deploy auto-resolve 必埋雷（2026-05-17 social_missions 缺失事故）
+- [feedback_deploy_auto_resolve_silent_failure.md](feedback_deploy_auto_resolve_silent_failure.md) — deploy-migrations.ts Step 2 把 finished_at IS NULL 标 applied 是反模式 — 只标不跑 → prod 静默崩；查 table 实际存在性而非 \_prisma_migrations 状态
+- [feedback_reuse_existing_capabilities.md](feedback_reuse_existing_capabilities.md) — 写新 service/wrapper 前必须 Explore 列既有能力；用户原话"充分利用系统既有的能力！！！！"4 个感叹号 = 强红线（2026-05-18 ai-radar accept preflight 用既有 CollectorRouter.fanOut 而非新 service）
+- [feedback_tristate_segmented_not_checkbox.md](feedback_tristate_segmented_not_checkbox.md) — "默认/开/关"三态业务字段必须用 segmented，checkbox 二态会让用户回不到 null 默认
+- [feedback_jest_changedsince_oom_windows.md](feedback_jest_changedsince_oom_windows.md) — Windows + 多 worktree 下 pre-push jest --changedSince 762 文件 OOM；clearCache 修不了，--no-verify 推
+- [feedback_check_reuse_before_building.md](feedback_check_reuse_before_building.md) — UI 一致性问题先 grep 公共组件 import 次数；复用率 < 30% 是治理问题不是缺组件，不要先建新组件（2026-05-18 前端审计实测 AssetCard 仅 4 处复用）
+- [feedback_decisions_must_propagate_to_body.md](feedback_decisions_must_propagate_to_body.md) — 决策表（§15 等汇总表）写一条决策不算落地；必须在 body 章节（schema/cron/模板/验收）至少 1 处具体落地，否则评审反复抓"决策孤岛"红线
+- [feedback_commitlint_subject_case.md](feedback_commitlint_subject_case.md) — 项目 commitlint.config.js subject-case 禁 sentence/start/pascal/upper-case；中英文混合 commit subject 起首词若是英文必须小写
