@@ -85,6 +85,37 @@ export class ProxyController {
   }
 
   /**
+   * ★ 2026-07-29: 用**内容**识别拦截页——因为状态码靠不住。
+   *
+   * MDPI 走 Akamai，对数据中心 IP 返回的是 **HTTP 200 + "Access Denied"**
+   * （2.2KB、空 title、零 meta，带 errors.edgesuite.net 引用号）。状态码是 200，
+   * 所以任何基于状态码的回退判断都不会触发，提取器拿到这张拒绝页提不出标题，
+   * 用户只看到"未能提取正文"。Cloudflare / PerimeterX / Imperva 也有各自的
+   * 200 拦截页变体。
+   *
+   * 判定保守：只认拦截页的明确特征词，且要求正文短——正常文章即便提到
+   * "access denied" 也不会只有两千字节。
+   */
+  private looksBlockedPage(html: string | undefined): boolean {
+    if (!html) return false;
+    // 正常文章页远大于此；拦截页普遍在几 KB 内
+    if (html.length > 15000) return false;
+    return (
+      /access denied|you don't have permission|permission to access/i.test(
+        html,
+      ) ||
+      /errors\.edgesuite\.net|akamai/i.test(html) ||
+      /just a moment|cf-browser-verification|challenge-platform|cf_chl/i.test(
+        html,
+      ) ||
+      /perimeterx|px-captcha|datadome|imperva|incapsula/i.test(html) ||
+      /attention required|请开启 ?JavaScript|enable javascript to continue/i.test(
+        html,
+      )
+    );
+  }
+
+  /**
    * SSRF protection: block requests to internal/private IP addresses
    */
   private isBlockedAddress(hostname: string): boolean {
@@ -1090,19 +1121,30 @@ export class ProxyController {
         .trim();
       const urlRedirected =
         new URL(url).pathname !== new URL(currentUrl).pathname;
+      // ★ 2026-07-29: 把"被拦"并入低质量判定。MDPI/Akamai 用 HTTP 200 送
+      //   "Access Denied"，状态码骗过了所有基于状态的分支，只能看内容。
+      const blockedPage = this.looksBlockedPage(html);
       const isLowQuality =
-        !usedJinaReader && (strippedText.length < 500 || urlRedirected);
+        !usedJinaReader &&
+        (blockedPage || strippedText.length < 500 || urlRedirected);
       if (isLowQuality) {
         // 使用原始 URL 重新获取，避免跟随服务器端重定向到错误页面
         const fetchUrl = urlRedirected ? url : currentUrl;
         this.logger.log(
-          `Low quality extraction (stripped: ${strippedText.length} chars, redirected: ${urlRedirected}), trying Puppeteer with original URL: ${fetchUrl}`,
+          `Low quality extraction (stripped: ${strippedText.length} chars, redirected: ${urlRedirected}, blocked: ${blockedPage}), trying Puppeteer with original URL: ${fetchUrl}`,
         );
         const puppeteerResult = await this.puppeteerFetcher.fetchPage(
           fetchUrl,
           { timeout: 30000 },
         );
-        if (puppeteerResult.success && puppeteerResult.html) {
+        // ★ 2026-07-29: Puppeteer "成功"不等于拿到了内容——它同样会被 Akamai
+        //   拒绝并原样返回那张 Access Denied 页。原实现把这算作成功，于是
+        //   Jina（在 else 分支里）永远没机会跑，最终 422。现在按结果判定。
+        if (
+          puppeteerResult.success &&
+          puppeteerResult.html &&
+          !this.looksBlockedPage(puppeteerResult.html)
+        ) {
           this.logger.log(
             `Puppeteer re-fetch successful (${puppeteerResult.loadTime}ms), re-extracting...`,
           );
@@ -1112,9 +1154,17 @@ export class ProxyController {
             fetchUrl,
             30000,
           );
-        } else {
-          // Puppeteer 也失败，尝试 Jina Reader
-          this.logger.log(`Puppeteer failed, trying Jina Reader...`);
+        }
+
+        // 仍然没有可用正文 → 继续 Jina（不再是 Puppeteer 的 else 分支）
+        const stillUnusable =
+          !contentResult?.title ||
+          this.looksBlockedPage(html) ||
+          (contentResult.textContent || "").trim().length < 500;
+        if (stillUnusable) {
+          this.logger.log(
+            `Still unusable after Puppeteer, trying Jina Reader for ${fetchUrl}...`,
+          );
           const jinaResult = await this.fetchViaJinaReader(fetchUrl);
           if (jinaResult.success && jinaResult.content) {
             const titleMatch = jinaResult.content.match(/^#\s+(.+)$/m);
@@ -1141,6 +1191,27 @@ export class ProxyController {
       // 验证提取结果
       const title = contentResult.title || newsMetadata.title;
       if (!title || title.length < 5) {
+        // ★ 2026-07-29: 全部回退用尽后手里还是拦截页 → 如实说"站点拒绝了
+        //   服务器访问"，而不是"提不出正文"。两者对用户的含义完全不同：
+        //   前者在浏览器里打开能看到，后者打开也没用。
+        if (this.looksBlockedPage(html)) {
+          this.logger.warn(
+            `${currentUrl} served a block page (HTTP 200) and every fallback was exhausted`,
+          );
+          return {
+            success: false,
+            requiresCaptcha: true,
+            title: this.extractTitleFromUrl(url),
+            content: "",
+            textContent: "",
+            excerpt:
+              "该站点拒绝了服务器端访问（反爬防护），请在浏览器中直接打开。",
+            siteName: new URL(currentUrl).hostname,
+            length: 0,
+            plan: "blocked",
+            confidence: 0,
+          };
+        }
         this.logger.warn(`Failed to extract valid title from ${currentUrl}`);
         throw new HttpException(
           "Failed to extract valid article from this page",
