@@ -172,9 +172,12 @@ function parseSourceLines(
       return;
     }
     if (type === 'YOUTUBE') {
+      // 与后端 assertIdentifierShape 的锚定正则保持一致：host 必须紧跟协议，
+      // 不能用子串匹配（`includes('youtube.com')` 会被
+      // `https://evil.com/youtube.com` 这类 URL 绕过）。
       if (
         !/^UC[A-Za-z0-9_-]{22}$/.test(identifier) &&
-        !identifier.includes('youtube.com')
+        !/^https?:\/\/(?:www\.)?youtube\.com\//.test(identifier)
       ) {
         issues.push({
           lineNo,
