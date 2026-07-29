@@ -972,6 +972,14 @@
     "filter": {
       "noSources": "暂无可筛选的来源",
       "itemCount": "{{count}} 条"
+    },
+    "reader": {
+      "deadLinkTitle": "原文已失效",
+      "previewUnavailable": "预览不可用",
+      "deadLinkDesc": "原文链接已失效（404），可能已被删除或迁移，原始页面同样打不开。",
+      "blockedDesc": "该网站启用了人机验证，内容代理无法访问，请在浏览器中直接打开。",
+      "networkDesc": "内容获取失败，可能是网络问题，请重试或在浏览器中直接打开。",
+      "extractFailedDesc": "未能从该页面提取出正文，请点击下方按钮在浏览器中直接打开。"
     }
   },
   "aiInsights": {

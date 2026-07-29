@@ -59,6 +59,32 @@ export class ProxyController {
   ) {}
 
   /**
+   * ★ 2026-07-29: 抓取失败时该走哪级回退。
+   *
+   * 此前三处回退链都写死 `status === 403`，但**用 403 拦爬虫只是其中一种做法**：
+   * Cloudflare/Akamai 对数据中心 IP 常返 404（实测 MDPI 走 doi.org 跳转后给我们
+   * 404，同一 URL 本机直连是 200），也有返 429/451/503 的。结果是 FlareSolverr /
+   * Jina / Puppeteer 三层能力全都用不上，用户只看到"预览不可用"。
+   *
+   * 分级而非一刀切：
+   *   - full：明确的拦截/限流信号 → 值得付出 FlareSolverr(60s) + Puppeteer(30s)
+   *   - cheap：404 可能是真死链，也可能是伪装的拦截。只试 Jina（秒级）；
+   *     Jina 也拿不到就当真死链，不为死链付满链路的时间
+   *   - none：其余（真 404 之外的 4xx 语义错误、5xx 偶发）按原逻辑抛出
+   */
+  private fallbackPlanFor(
+    status: number | undefined,
+  ): "full" | "cheap" | "none" {
+    if (status === undefined) return "none";
+    // 429/451/503 = 限流/法律封锁/暂时不可用，均为典型反爬响应
+    if ([401, 403, 405, 406, 409, 418, 429, 451, 503].includes(status)) {
+      return "full";
+    }
+    if (status === 404) return "cheap";
+    return "none";
+  }
+
+  /**
    * SSRF protection: block requests to internal/private IP addresses
    */
   private isBlockedAddress(hostname: string): boolean {
@@ -910,17 +936,19 @@ export class ProxyController {
           });
           html = response.data;
         } catch (fetchError) {
-          // 如果是 403 错误，启动四层回退机制
-          if (
-            axios.isAxiosError(fetchError) &&
-            fetchError.response?.status === 403
-          ) {
+          // ★ 2026-07-29: 触发条件从"仅 403"放宽为按状态分级（见 fallbackPlanFor）。
+          //   404 只走 Jina 这一级，避免为真死链付满链路时间。
+          const status = axios.isAxiosError(fetchError)
+            ? fetchError.response?.status
+            : undefined;
+          const plan = this.fallbackPlanFor(status);
+          if (axios.isAxiosError(fetchError) && plan !== "none") {
             this.logger.log(
-              `Direct fetch returned 403, starting fallback chain for ${currentUrl}`,
+              `Direct fetch returned ${status}, starting ${plan} fallback chain for ${currentUrl}`,
             );
 
             // 回退层 1: FlareSolverr（专业 Cloudflare 绕过服务）
-            if (this.flareSolverr.getIsAvailable()) {
+            if (plan === "full" && this.flareSolverr.getIsAvailable()) {
               this.logger.log(`Trying FlareSolverr for ${currentUrl}`);
               const flareResult = await this.flareSolverr.fetchPage(
                 currentUrl,
@@ -953,18 +981,41 @@ export class ProxyController {
             }
 
             // 回退层 3: Puppeteer 无头浏览器（最后手段）
-            this.logger.log(`Trying Puppeteer for ${currentUrl}`);
-            const puppeteerResult = await this.puppeteerFetcher.fetchPage(
-              currentUrl,
-              { timeout: 30000 },
-            );
-
-            if (puppeteerResult.success && puppeteerResult.html) {
-              this.logger.log(
-                `Puppeteer successfully fetched ${currentUrl} (${puppeteerResult.loadTime}ms)`,
+            // 404 走 cheap 计划：Jina 都拿不到，基本可判定是真死链，
+            // 不值得再花 30s 开无头浏览器
+            if (plan === "full") {
+              this.logger.log(`Trying Puppeteer for ${currentUrl}`);
+              const puppeteerResult = await this.puppeteerFetcher.fetchPage(
+                currentUrl,
+                { timeout: 30000 },
               );
-              html = puppeteerResult.html;
-              break; // Puppeteer 成功，跳出重定向循环
+
+              if (puppeteerResult.success && puppeteerResult.html) {
+                this.logger.log(
+                  `Puppeteer successfully fetched ${currentUrl} (${puppeteerResult.loadTime}ms)`,
+                );
+                html = puppeteerResult.html;
+                break; // Puppeteer 成功，跳出重定向循环
+              }
+            }
+
+            // ★ 404 且回退无果 → 是真死链，如实告知，别说成"网站限制了代理"
+            if (status === 404) {
+              this.logger.warn(
+                `${currentUrl} returned 404 and fallbacks found nothing — treating as dead link`,
+              );
+              return {
+                success: false,
+                deadLink: true,
+                title: this.extractTitleFromUrl(url),
+                content: "",
+                textContent: "",
+                excerpt: "原文链接已失效（404），可能已被删除或改版迁移。",
+                siteName: urlObj.hostname,
+                length: 0,
+                plan: "dead-link",
+                confidence: 0,
+              };
             }
 
             // 所有方法都失败，返回优雅降级响应

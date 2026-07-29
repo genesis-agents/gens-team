@@ -6,6 +6,7 @@ import TableOfContents from '../content/TableOfContents';
 import { sanitizeHtml } from '@/lib/utils/sanitize';
 
 import { logger } from '@/lib/utils/logger';
+import { useTranslation } from '@/lib/i18n';
 interface ReaderViewProps {
   url: string;
   title?: string;
@@ -247,7 +248,12 @@ export default function ReaderView({
   onArticleLoaded,
 }: ReaderViewProps) {
   const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
+  /** 失败归因：决定给用户看哪句话（死链 / 被拦 / 提不出 / 网络） */
+  const [errorKind, setErrorKind] = useState<
+    'dead-link' | 'blocked' | 'extract-failed' | 'network'
+  >('extract-failed');
   const [article, setArticle] = useState<Article | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -274,6 +280,7 @@ export default function ReaderView({
     const loadArticle = async () => {
       setLoading(true);
       setError(null);
+      setErrorKind('extract-failed');
 
       try {
         // 根据资源类别选择合适的API端点
@@ -333,6 +340,20 @@ export default function ReaderView({
 
         // Check wrapper success (result.success) and article content (data.content)
         if (result.success === false || !data.content) {
+          // ★ 2026-07-29: 后端对不同失败给了不同标记，这里据此分类，
+          //   不再把死链、验证码、提取失败都说成"网站限制了代理访问"
+          const d = data as Article & {
+            plan?: string;
+            deadLink?: boolean;
+            requiresCaptcha?: boolean;
+          };
+          setErrorKind(
+            d.deadLink || d.plan === 'dead-link'
+              ? 'dead-link'
+              : d.requiresCaptcha || d.plan === 'blocked'
+                ? 'blocked'
+                : 'extract-failed'
+          );
           throw new Error('Failed to extract readable content from this page');
         }
 
@@ -571,10 +592,25 @@ export default function ReaderView({
                 />
               </svg>
               <h3 className="mt-4 text-lg font-medium text-gray-900">
-                预览不可用
+                {t(
+                  errorKind === 'dead-link'
+                    ? 'explore.reader.deadLinkTitle'
+                    : 'explore.reader.previewUnavailable'
+                )}
               </h3>
+              {/* ★ 2026-07-29: 按真实成因分述。此前无论死链、反爬拦截还是
+                  提取失败，一律说"该网站限制了内容代理访问"——对 404 死链是
+                  错误归因，用户会以为点「打开原始页面」能看到内容 */}
               <p className="mt-2 text-sm text-gray-600">
-                该网站限制了内容代理访问，请点击下方按钮在浏览器中直接打开。
+                {t(
+                  errorKind === 'dead-link'
+                    ? 'explore.reader.deadLinkDesc'
+                    : errorKind === 'blocked'
+                      ? 'explore.reader.blockedDesc'
+                      : errorKind === 'network'
+                        ? 'explore.reader.networkDesc'
+                        : 'explore.reader.extractFailedDesc'
+                )}
               </p>
               {fallbackContent && (
                 <div className="mt-4 max-h-40 overflow-y-auto rounded-lg bg-white p-4 text-left text-sm text-gray-700 shadow-inner">

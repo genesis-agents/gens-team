@@ -972,6 +972,14 @@
     "filter": {
       "noSources": "No sources available",
       "itemCount": "{{count}} items"
+    },
+    "reader": {
+      "deadLinkTitle": "Original is gone",
+      "previewUnavailable": "Preview unavailable",
+      "deadLinkDesc": "The original link returns 404 — the page was likely removed or moved, so opening it directly will not help either.",
+      "blockedDesc": "This site requires human verification, so the content proxy cannot reach it. Please open it in your browser.",
+      "networkDesc": "Could not retrieve the content, possibly a network issue. Retry or open it in your browser.",
+      "extractFailedDesc": "No readable article could be extracted from this page. Please open it in your browser."
     }
   },
   "aiInsights": {
