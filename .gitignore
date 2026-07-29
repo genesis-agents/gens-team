@@ -163,6 +163,3 @@ backend/.env.railway
 .gitleaks-report.json
 .gitleaks-tree.json
 .tmp-gitleaks/
-
-# Internal AI-collaboration memory (incident postmortems, personal prefs) — not published
-.claude/memory/
