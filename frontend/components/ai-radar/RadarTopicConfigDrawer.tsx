@@ -57,6 +57,18 @@ const SIGNAL_TYPES = [
   { value: 'key_event', label: '关键事件' },
 ];
 
+// 与 CreateRadarTopicModal 的 ENTITY_TYPES 同值域（后端 RadarEntityType enum）。
+// 2026-07-29：此前抽屉把 entityType 显示成「创建时已锁定」，但后端
+// UpdateRadarTopicDto + RadarTopicService.update 从第一版就支持 PATCH，
+// 纯属前端误锁 —— 建错主题只能删库重建，改一次数据源全丢。
+const ENTITY_TYPES = [
+  { value: 'topic', label: '话题' },
+  { value: 'company', label: '公司' },
+  { value: 'product', label: '产品' },
+  { value: 'person', label: '人物' },
+  { value: 'event', label: '事件' },
+];
+
 export function RadarTopicConfigDrawer({
   open,
   onClose,
@@ -610,20 +622,32 @@ function AdvancedTab({
         <p className="mt-1 text-xs text-gray-400">标准 5 段 cron 表达式</p>
       </div>
 
-      {/* 实体类型锁定 */}
-      {draft.entityType && (
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            实体类型锁定
-          </label>
-          <span className="inline-flex items-center rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-500">
-            {draft.entityType}
-            <span className="ml-2 text-xs text-gray-400">
-              （创建时已锁定，不可修改）
-            </span>
-          </span>
+      {/* 对象类型 */}
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-700">
+          对象类型
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {ENTITY_TYPES.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              aria-pressed={draft.entityType === t.value}
+              onClick={() => onChange({ entityType: t.value })}
+              className={`rounded-lg border px-4 py-2 text-sm font-medium ${
+                draft.entityType === t.value
+                  ? 'border-cyan-300 bg-cyan-50 text-cyan-700'
+                  : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
-      )}
+        <p className="mt-1 text-xs text-gray-400">
+          影响 AI 评分与实体抽取的判断角度，改动仅对之后的采集生效
+        </p>
+      </div>
     </div>
   );
 }

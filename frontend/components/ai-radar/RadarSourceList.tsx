@@ -1,10 +1,22 @@
 'use client';
 
-import { useState } from 'react';
-import { AlertCircle, Plus, Power, Sparkles, Trash2, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  ClipboardList,
+  Plus,
+  Power,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { EmptyState } from '@/components/ui/states/EmptyState';
+import { ErrorInline } from '@/components/ui/states/ErrorState';
+import { Modal } from '@/components/ui/dialogs/Modal';
+import { Textarea } from '@/components/ui/form/Textarea';
 import {
   acceptRecommendedSources,
+  bulkCreateSources,
   createSource,
   deleteSource,
   recommendSources,
@@ -53,6 +65,166 @@ const HEALTH_DOT: Record<RadarSource['health'], string> = {
   FAILING: 'bg-red-500',
 };
 
+// 与后端 @IsInt @Min(1) @Max(5) 值域对齐；添加表单与行内编辑共用，避免文案漂移。
+const AUTHORITY_WEIGHT_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 5, label: '5 - 一手权威信源' },
+  { value: 4, label: '4 - 高可信' },
+  { value: 3, label: '3 - 一般' },
+  { value: 2, label: '2 - 参考' },
+  { value: 1, label: '1 - 存疑' },
+];
+
+// 批量导入：后端 BulkCreateRadarSourcesDto 是 @ArrayMinSize(1) @ArrayMaxSize(20)，
+// 越界整批 400，所以提交前必须本地拦住。
+const BULK_IMPORT_MAX = 20;
+
+// 与后端 CreateRadarSourceDto 的 @MaxLength 对齐，超长同样是整批 400
+const IDENTIFIER_MAX_LENGTH = 500;
+const LABEL_MAX_LENGTH = 200;
+
+interface ParsedSourceLine {
+  /** 1-based 原始行号，用于把后端/本地错误定位回粘贴文本 */
+  lineNo: number;
+  type: CreatableRadarSourceType;
+  identifier: string;
+  label?: string;
+  /** 省略时不下发，走 DB @default(3) */
+  authorityWeight?: number;
+}
+
+interface SourceLineIssue {
+  lineNo: number;
+  reason: string;
+}
+
+function isCreatableType(v: string): v is CreatableRadarSourceType {
+  return ADDABLE_SOURCE_TYPES.some((t) => t === v);
+}
+
+/**
+ * 解析「每行一条、竖线分隔」的粘贴文本：`type | identifier | 显示名 | 权威度`。
+ *
+ * 分隔符选 `|`：RFC 3986 把它排除在合法 URI 字符外（浏览器会 percent-encode 成
+ * %7C），真实 feed URL 不会裸出现；而 `,` `;` `&` `=` `:` 都可能出现在 query
+ * string 里。identifier 只做两端 trim，内部 `?key=a&b=1,2` 原样保留。
+ *
+ * 校验只做与后端 assertIdentifierShape 同级的轻量判断（非空 / http(s) 前缀 /
+ * channelId shape），**不复制 SSRF 白名单与 preflight**，那些交后端进 skipped。
+ */
+function parseSourceLines(
+  text: string,
+  existing: ReadonlyArray<Pick<RadarSource, 'type' | 'identifier'>>
+): {
+  valid: ParsedSourceLine[];
+  duplicates: SourceLineIssue[];
+  issues: SourceLineIssue[];
+} {
+  const seen = new Set(existing.map((s) => `${s.type}\u0000${s.identifier}`));
+  const valid: ParsedSourceLine[] = [];
+  const duplicates: SourceLineIssue[] = [];
+  const issues: SourceLineIssue[] = [];
+
+  text.split('\n').forEach((raw, i) => {
+    const lineNo = i + 1;
+    const line = raw.trim();
+    // # 开头当注释，方便直接从文档整段粘贴
+    if (!line || line.startsWith('#')) return;
+
+    const parts = line.split('|');
+    const field = (idx: number) =>
+      parts.length > idx ? parts[idx].trim() : '';
+    if (parts.length > 4) {
+      issues.push({
+        lineNo,
+        reason: '字段过多，identifier 内的 | 请写成 %7C',
+      });
+      return;
+    }
+
+    const type = field(0).toUpperCase();
+    if (!isCreatableType(type)) {
+      issues.push({
+        lineNo,
+        reason: `未知类型「${field(0)}」，仅支持 RSS / YOUTUBE / CUSTOM`,
+      });
+      return;
+    }
+
+    const identifier = field(1);
+    if (!identifier) {
+      issues.push({ lineNo, reason: '缺少 identifier' });
+      return;
+    }
+    // 与后端 CreateRadarSourceDto 的 @MaxLength(500) 对齐：超长会让整批 400
+    if (identifier.length > IDENTIFIER_MAX_LENGTH) {
+      issues.push({
+        lineNo,
+        reason: `identifier 超过 ${IDENTIFIER_MAX_LENGTH} 字符`,
+      });
+      return;
+    }
+    if (type === 'YOUTUBE') {
+      if (
+        !/^UC[A-Za-z0-9_-]{22}$/.test(identifier) &&
+        !identifier.includes('youtube.com')
+      ) {
+        issues.push({
+          lineNo,
+          reason:
+            'YouTube 的 identifier 必须是 UC 开头的 channelId 或 youtube.com 链接',
+        });
+        return;
+      }
+    } else if (!/^https?:\/\//i.test(identifier)) {
+      issues.push({
+        lineNo,
+        reason: `${SOURCE_TYPE_LABEL[type]} 的 identifier 必须是 http(s) 链接`,
+      });
+      return;
+    }
+
+    const label = field(2);
+    // 与后端 @MaxLength(200) 对齐，同上
+    if (label.length > LABEL_MAX_LENGTH) {
+      issues.push({
+        lineNo,
+        reason: `显示名超过 ${LABEL_MAX_LENGTH} 字符`,
+      });
+      return;
+    }
+
+    const weightRaw = field(3);
+    let authorityWeight: number | undefined;
+    if (weightRaw) {
+      const n = Number(weightRaw);
+      if (!Number.isInteger(n) || n < 1 || n > 5) {
+        issues.push({
+          lineNo,
+          reason: `权威度必须是 1-5 的整数，实际「${weightRaw}」`,
+        });
+        return;
+      }
+      authorityWeight = n;
+    }
+
+    const key = `${type}\u0000${identifier}`;
+    if (seen.has(key)) {
+      duplicates.push({ lineNo, reason: `${type}:${identifier}` });
+      return;
+    }
+    seen.add(key);
+    valid.push({
+      lineNo,
+      type,
+      identifier,
+      label: label || undefined,
+      authorityWeight,
+    });
+  });
+
+  return { valid, duplicates, issues };
+}
+
 function relTime(iso: string | null): string {
   if (!iso) return '从未';
   const diff = Date.now() - new Date(iso).getTime();
@@ -64,6 +236,7 @@ function relTime(iso: string | null): string {
 
 export function RadarSourceList({ topicId, sources, onReload }: Props) {
   const [addOpen, setAddOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [recommendOpen, setRecommendOpen] = useState(false);
   const [recommending, setRecommending] = useState(false);
   const [candidates, setCandidates] = useState<RecommendedSource[]>([]);
@@ -71,6 +244,7 @@ export function RadarSourceList({ topicId, sources, onReload }: Props) {
   const [opError, setOpError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RadarSource | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [weightSavingId, setWeightSavingId] = useState<string | null>(null);
   // R7 2026-05-19：preflight 信息 —— "AI 生成 X 个候选，已自动过滤 Y 个不可达"
   const [preflightInfo, setPreflightInfo] = useState<{
     total: number;
@@ -100,6 +274,8 @@ export function RadarSourceList({ topicId, sources, onReload }: Props) {
     }
   };
 
+  // AI 推荐入库 / 手工批量导入两条路径共用这一条 amber 结果条带（同为
+  // "created N + skipped M" 语义），避免多加一个同形态的 state。
   const [acceptInfo, setAcceptInfo] = useState<string | null>(null);
 
   const handleAccept = async () => {
@@ -143,6 +319,22 @@ export function RadarSourceList({ topicId, sources, onReload }: Props) {
       onReload();
     } catch (e) {
       setOpError(`切换失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const handleWeightChange = async (s: RadarSource, weight: number) => {
+    if (weight === s.authorityWeight) return;
+    setWeightSavingId(s.id);
+    setOpError(null);
+    try {
+      await updateSource(s.id, { authorityWeight: weight });
+      onReload();
+    } catch (e) {
+      setOpError(
+        `权威度更新失败：${e instanceof Error ? e.message : String(e)}`
+      );
+    } finally {
+      setWeightSavingId(null);
     }
   };
 
@@ -194,6 +386,14 @@ export function RadarSourceList({ topicId, sources, onReload }: Props) {
           <button
             type="button"
             className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+            onClick={() => setBulkOpen(true)}
+          >
+            <ClipboardList className="h-3 w-3" />
+            批量导入
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
             onClick={() => setAddOpen(true)}
           >
             <Plus className="h-3 w-3" />
@@ -206,7 +406,7 @@ export function RadarSourceList({ topicId, sources, onReload }: Props) {
         <EmptyState
           size="sm"
           title="还没有数据源"
-          description="点击「AI 推荐」让 AI 列出候选，或点「添加」手动加"
+          description="点击「AI 推荐」让 AI 列出候选，点「批量导入」一次粘贴多条，或点「添加」手动加"
         />
       ) : (
         <ul className="divide-y divide-gray-100">
@@ -238,7 +438,7 @@ export function RadarSourceList({ topicId, sources, onReload }: Props) {
                   <span className="line-clamp-1">{s.lastError}</span>
                 </div>
               )}
-              <div className="mt-1 flex gap-2">
+              <div className="mt-1 flex items-center gap-2">
                 <button
                   type="button"
                   className="text-xs text-gray-500 hover:text-gray-700"
@@ -254,6 +454,21 @@ export function RadarSourceList({ topicId, sources, onReload }: Props) {
                 >
                   <Trash2 className="inline h-3 w-3" /> 删除
                 </button>
+                <select
+                  className="ml-auto rounded border border-gray-200 px-1.5 py-0.5 text-xs text-gray-600 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400 disabled:opacity-60"
+                  aria-label={`信源权威度：${s.label || s.identifier}`}
+                  value={s.authorityWeight}
+                  disabled={weightSavingId === s.id}
+                  onChange={(e) =>
+                    void handleWeightChange(s, Number(e.target.value))
+                  }
+                >
+                  {AUTHORITY_WEIGHT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </li>
           ))}
@@ -303,6 +518,19 @@ export function RadarSourceList({ topicId, sources, onReload }: Props) {
         />
       )}
 
+      {bulkOpen && (
+        <BulkImportDialog
+          topicId={topicId}
+          existing={sources}
+          onClose={() => setBulkOpen(false)}
+          onDone={(info) => {
+            setBulkOpen(false);
+            setAcceptInfo(info);
+            onReload();
+          }}
+        />
+      )}
+
       {recommendOpen && (
         <RecommendDialog
           loading={recommending}
@@ -346,6 +574,7 @@ function AddSourceForm({
   const [type, setType] = useState<CreatableRadarSourceType>('RSS');
   const [identifier, setIdentifier] = useState('');
   const [label, setLabel] = useState('');
+  const [authorityWeight, setAuthorityWeight] = useState(3);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -362,6 +591,7 @@ function AddSourceForm({
         identifier: identifier.trim(),
         label: label.trim() || undefined,
         enabled: true,
+        authorityWeight,
       });
       onAdded();
     } catch (e) {
@@ -437,11 +667,27 @@ function AddSourceForm({
               onChange={(e) => setLabel(e.target.value)}
             />
           </div>
-          {error && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-600">
-              {error}
-            </div>
-          )}
+          <div>
+            <label
+              className="block text-xs text-gray-600"
+              htmlFor="source-authority-weight"
+            >
+              信源权威度（影响每日精选排序，默认 3）
+            </label>
+            <select
+              id="source-authority-weight"
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+              value={authorityWeight}
+              onChange={(e) => setAuthorityWeight(Number(e.target.value))}
+            >
+              {AUTHORITY_WEIGHT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {error && <ErrorInline message={error} className="text-xs" />}
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <button
@@ -462,6 +708,160 @@ function AddSourceForm({
         </div>
       </div>
     </div>
+  );
+}
+
+const BULK_IMPORT_PLACEHOLDER = [
+  '# 每行一条，# 开头与空行忽略',
+  'RSS | https://openai.com/blog/rss.xml | OpenAI 官博 | 5',
+  'YOUTUBE | UCXuqSBlHAE6Xw-yeJA0Tunw | LTT',
+].join('\n');
+
+function BulkImportDialog({
+  topicId,
+  existing,
+  onClose,
+  onDone,
+}: {
+  topicId: string;
+  existing: RadarSource[];
+  onClose: () => void;
+  onDone: (info: string) => void;
+}) {
+  const [text, setText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { valid, duplicates, issues } = useMemo(
+    () => parseSourceLines(text, existing),
+    [text, existing]
+  );
+  const overLimit = valid.length > BULK_IMPORT_MAX;
+  const hasCustom = valid.some((v) => v.type === 'CUSTOM');
+
+  const submit = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const result = await bulkCreateSources(
+        topicId,
+        valid.map((v) => ({
+          type: v.type,
+          identifier: v.identifier,
+          label: v.label,
+          authorityWeight: v.authorityWeight,
+        }))
+      );
+      // 后端逐条降级的 skipped（shape 错 / preflight 不可达 / 已存在），
+      // 文案范式与 AI 推荐入库保持一致
+      if (result.skipped.length > 0) {
+        const lines = result.skipped
+          .slice(0, 5)
+          .map((s) => `• ${s.type}:${s.identifier} - ${s.reason}`)
+          .join('\n');
+        const more =
+          result.skipped.length > 5
+            ? `\n• 还有 ${result.skipped.length - 5} 条...`
+            : '';
+        onDone(
+          `已导入 ${result.created.length} 个源，跳过 ${result.skipped.length} 个：\n${lines}${more}`
+        );
+      } else {
+        onDone(`已导入 ${result.created.length} 个数据源`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="批量导入数据源"
+      subtitle="每行一条：类型 | identifier | 显示名（可选） | 权威度 1-5（可选）"
+      size="lg"
+      closeButtonDisabled={submitting}
+      closeOnOverlayClick={!submitting}
+      footer={
+        <>
+          <button
+            type="button"
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600"
+            disabled={submitting}
+            onClick={onClose}
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            disabled={submitting || valid.length === 0 || overLimit}
+            className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs text-white disabled:opacity-60"
+            onClick={() => void submit()}
+          >
+            {submitting ? '导入中...' : `导入 ${valid.length} 条`}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Textarea
+          rows={10}
+          className="font-mono text-xs"
+          aria-label="批量导入文本"
+          placeholder={BULK_IMPORT_PLACEHOLDER}
+          value={text}
+          error={issues.length > 0}
+          disabled={submitting}
+          onChange={(e) => setText(e.target.value)}
+        />
+
+        {valid.length > 0 && (
+          <p className="text-xs text-emerald-700">
+            可导入 {valid.length} 条
+            {overLimit && `（一次最多 ${BULK_IMPORT_MAX} 条，请分批粘贴）`}
+          </p>
+        )}
+
+        {duplicates.length > 0 && (
+          <div className="text-xs text-gray-500">
+            <p>跳过 {duplicates.length} 条（已存在）：</p>
+            {duplicates.map((d) => (
+              <p key={d.lineNo}>
+                第 {d.lineNo} 行 {d.reason}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {issues.length > 0 && (
+          <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-600">
+            <p>{issues.length} 行无法解析：</p>
+            {issues.map((it) => (
+              <p key={it.lineNo}>
+                第 {it.lineNo} 行：{it.reason}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {hasCustom && (
+          <div className="flex items-start gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-1 text-xs text-amber-700">
+            <AlertCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />
+            <span>{SOURCE_TYPE_WARNING.CUSTOM}</span>
+          </div>
+        )}
+
+        {error && <ErrorInline message={error} className="text-xs" />}
+
+        <p className="text-xs text-gray-400">
+          导入时会对每条源做一次真实抓取预检，20 条约需 10-30
+          秒；不可达的源不会入库，会在结果里逐条说明原因。
+        </p>
+      </div>
+    </Modal>
   );
 }
 

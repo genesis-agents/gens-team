@@ -15,6 +15,7 @@
 import { Test } from "@nestjs/testing";
 import { RadarTopicStatus } from "@prisma/client";
 import { PrismaService } from "../../../../../../../common/prisma/prisma.service";
+import { RadarEntityType } from "../../../../api/dto";
 import { RadarTopicService } from "../radar-topic.service";
 
 describe("RadarTopicService.listByUser", () => {
@@ -172,5 +173,51 @@ describe("RadarTopicService.listByUser", () => {
     const res = await service.listByUser("u-1");
     expect(res.items).toEqual([]);
     expect(res.nextCursor).toBeNull();
+  });
+});
+
+/**
+ * 2026-07-29：entityType 一直可 PATCH（DTO + service 从第一版就支持），
+ * "创建时已锁定" 只是前端 drawer 的只读文案。前端解锁入口后，这里锁住后端契约，
+ * 防止将来有人误加 "创建后不可改" 守卫。
+ */
+describe("RadarTopicService.update entityType", () => {
+  let service: RadarTopicService;
+  let prisma: {
+    radarTopic: { findUnique: jest.Mock; update: jest.Mock };
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      radarTopic: {
+        findUnique: jest.fn().mockResolvedValue({ id: "t-1", userId: "u-1" }),
+        update: jest.fn().mockResolvedValue({ id: "t-1" }),
+      },
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        RadarTopicService,
+        { provide: PrismaService, useValue: prisma },
+      ],
+    }).compile();
+    service = moduleRef.get(RadarTopicService);
+  });
+
+  it("writes entityType when provided", async () => {
+    await service.update("u-1", "t-1", {
+      entityType: RadarEntityType.COMPANY,
+    });
+    expect(prisma.radarTopic.update).toHaveBeenCalledWith({
+      where: { id: "t-1" },
+      data: { entityType: "company" },
+    });
+  });
+
+  it("omits entityType from the update payload when absent", async () => {
+    await service.update("u-1", "t-1", { name: "renamed" });
+    expect(prisma.radarTopic.update).toHaveBeenCalledWith({
+      where: { id: "t-1" },
+      data: { name: "renamed" },
+    });
   });
 });

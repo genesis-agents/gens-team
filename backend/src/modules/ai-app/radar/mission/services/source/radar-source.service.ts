@@ -52,6 +52,8 @@ export class RadarSourceService {
               ? Prisma.JsonNull
               : (dto.config as Prisma.InputJsonValue),
           enabled: dto.enabled ?? true,
+          // undefined 时交给 Prisma `@default(3)`，不在此处重复写死默认值
+          authorityWeight: dto.authorityWeight,
           isAiRecommended: false,
           isPublicSource: isPublicSource({
             type,
@@ -108,6 +110,9 @@ export class RadarSourceService {
           : (dto.config as Prisma.InputJsonValue);
     }
     if (dto.enabled !== undefined) data.enabled = dto.enabled;
+    if (dto.authorityWeight !== undefined) {
+      data.authorityWeight = dto.authorityWeight;
+    }
     return this.prisma.radarSource.update({ where: { id: sourceId }, data });
   }
 
@@ -119,7 +124,7 @@ export class RadarSourceService {
   /**
    * Preflight 探测候选源可达性 —— shape 校验 + CollectorRouter.fanOut 真发请求。
    *
-   * R7 2026-05-19：从 bulkCreateAiRecommended 抽出来变 public，让 discovery
+   * R7 2026-05-19：从 bulkCreate（原 bulkCreateAiRecommended）抽出来变 public，让 discovery
    * 推荐阶段也能用（推荐时就 preflight，前端只展示可达候选，不再"接受才发现 5/6 失败"）。
    *
    * - 不写库：纯探测，结果返回 {live, skipped} 由调用方决定怎么用
@@ -135,6 +140,8 @@ export class RadarSourceService {
       identifier: string;
       label?: string;
       config?: Record<string, unknown>;
+      authorityWeight?: number;
+      enabled?: boolean;
     }>,
   ): Promise<{
     live: Array<{
@@ -142,6 +149,8 @@ export class RadarSourceService {
       identifier: string;
       label?: string;
       config?: Record<string, unknown>;
+      authorityWeight?: number;
+      enabled?: boolean;
     }>;
     skipped: Array<{ type: string; identifier: string; reason: string }>;
   }> {
@@ -151,6 +160,8 @@ export class RadarSourceService {
       identifier: string;
       label?: string;
       config?: Record<string, unknown>;
+      authorityWeight?: number;
+      enabled?: boolean;
     }> = [];
     const skipped: Array<{ type: string; identifier: string; reason: string }> =
       [];
@@ -167,7 +178,14 @@ export class RadarSourceService {
       const type = c.type as unknown as RadarSourceType;
       try {
         this.assertIdentifierShape(type, identifier);
-        shapeOk.push({ type, identifier, label: c.label, config: c.config });
+        shapeOk.push({
+          type,
+          identifier,
+          label: c.label,
+          config: c.config,
+          authorityWeight: c.authorityWeight,
+          enabled: c.enabled,
+        });
       } catch (err) {
         this.log.warn(
           `Preflight shape-invalid ${type}:${identifier} - ${(err as Error).message}`,
@@ -208,7 +226,8 @@ export class RadarSourceService {
   }
 
   /**
-   * 批量入库 AI 推荐源。
+   * 批量入库数据源 —— AI 推荐 accept 与手工批量导入共用，仅 `opts.isAiRecommended` 不同
+   * （手工源标成 AI 推荐会污染后续按来源筛选 / AI 推荐质量评估）。
    *
    * R7 2026-05-19：preflight 抽公共 method 后，本方法简化为 preflightCandidates +
    * 入库。推荐阶段已 preflight 过的候选再次调本方法时 preflight 会重复一次 —— 接受 trade-off：
@@ -216,9 +235,10 @@ export class RadarSourceService {
    * 2) preflight 并发，开销可接受
    * 3) 不改 accept 路径行为兼容现有 e2e 测试
    *
-   * 返回值含 `skipped`：前端提示用户"接受 N，过滤 M 个不可达"。
+   * 返回值含 `skipped`：前端提示用户"接受 N，过滤 M 个不可达"。单条 P2002 降级进
+   * skipped 而非抛 409，避免一条重复源让整批失败。
    */
-  async bulkCreateAiRecommended(
+  async bulkCreate(
     userId: string,
     topicId: string,
     candidates: Array<{
@@ -226,7 +246,10 @@ export class RadarSourceService {
       identifier: string;
       label?: string;
       config?: Record<string, unknown>;
+      authorityWeight?: number;
+      enabled?: boolean;
     }>,
+    opts: { isAiRecommended: boolean },
   ): Promise<{
     created: RadarSource[];
     skipped: Array<{ type: string; identifier: string; reason: string }>;
@@ -253,8 +276,10 @@ export class RadarSourceService {
               c.config === undefined
                 ? Prisma.JsonNull
                 : (c.config as Prisma.InputJsonValue),
-            enabled: true,
-            isAiRecommended: true,
+            enabled: c.enabled ?? true,
+            // undefined 时交给 Prisma `@default(3)`，与 create() 同写法
+            authorityWeight: c.authorityWeight,
+            isAiRecommended: opts.isAiRecommended,
             isPublicSource: isPublicSource({
               type: c.type,
               identifier: c.identifier,

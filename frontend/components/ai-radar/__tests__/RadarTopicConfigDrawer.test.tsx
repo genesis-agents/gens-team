@@ -228,4 +228,35 @@ describe('RadarTopicConfigDrawer', () => {
       );
     });
   });
+
+  /**
+   * 2026-07-29：entityType 此前被前端误显示成「创建时已锁定，不可修改」，
+   * 而后端 UpdateRadarTopicDto + RadarTopicService.update 一直支持 PATCH。
+   * 下面两条锁定"可改"这一行为，防止回退成只读文案。
+   */
+  it('advanced tab: entityType 可选，不再显示锁定文案', () => {
+    renderDrawer();
+    fireEvent.click(screen.getByText('高级'));
+    expect(screen.getByText('对象类型')).toBeInTheDocument();
+    for (const label of ['话题', '公司', '产品', '人物', '事件']) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
+    }
+    expect(screen.queryByText(/创建时已锁定/)).not.toBeInTheDocument();
+  });
+
+  it('advanced tab: 选中对象类型后保存，onUpdate 收到 entityType', async () => {
+    const { onUpdate } = renderDrawer();
+    fireEvent.click(screen.getByText('高级'));
+    const companyBtn = screen.getByRole('button', { name: '公司' });
+    expect(companyBtn).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(companyBtn);
+    expect(companyBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('保存')).not.toBeDisabled();
+    fireEvent.click(screen.getByText('保存'));
+    await waitFor(() => {
+      expect(onUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ entityType: 'company' })
+      );
+    });
+  });
 });

@@ -11,6 +11,7 @@
  *  - 多种分隔符（空格 / 逗号 / 中文逗号）解析关键词
  *  - 提交成功后 onCreated + onClose 链路
  *  - createTopic 抛错时显示 error
+ *  - 匹配模式（semantic / literal / hybrid）在高级区可选并透传给 createTopic
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -65,9 +66,9 @@ describe('CreateRadarTopicModal', () => {
 
   it('advanced 折叠默认关闭（首次打开 entityType=topic + cron=default）', () => {
     render(<CreateRadarTopicModal {...baseProps} />);
-    // 折叠区只剩对象类型 + 刷新频率（R3 修复后 keywords 已移到 primary）
+    // 折叠区只剩对象类型 + 匹配模式 + 刷新频率（R3 修复后 keywords 已移到 primary）
     expect(
-      screen.getByText('高级设置（对象类型 / 刷新频率）')
+      screen.getByText('高级设置（对象类型 / 匹配模式 / 刷新频率）')
     ).toBeInTheDocument();
     // 折叠关时，对象类型按钮不可见
     expect(screen.queryByRole('button', { name: '话题' })).toBeNull();
@@ -75,7 +76,9 @@ describe('CreateRadarTopicModal', () => {
 
   it('点击高级设置展开后显示对象类型 + 刷新频率', () => {
     render(<CreateRadarTopicModal {...baseProps} />);
-    fireEvent.click(screen.getByText('高级设置（对象类型 / 刷新频率）'));
+    fireEvent.click(
+      screen.getByText('高级设置（对象类型 / 匹配模式 / 刷新频率）')
+    );
     expect(screen.getByRole('button', { name: '话题' })).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: '每 6 小时' })
@@ -138,6 +141,8 @@ describe('CreateRadarTopicModal', () => {
       name: 'GPT-5 watch',
       entityType: 'topic',
       keywords: ['gpt-5', 'openai', 'sam-altman'],
+      // 不动高级区时默认 semantic，与后端默认一致（只暴露开关、不改行为）
+      matchMode: 'semantic',
       refreshCron: '0 */6 * * *',
     });
     expect(onCreated).toHaveBeenCalledWith(fakeTopic);
@@ -208,12 +213,80 @@ describe('CreateRadarTopicModal', () => {
 
   it('cron preset selection updates internal state', () => {
     render(<CreateRadarTopicModal {...baseProps} />);
-    fireEvent.click(screen.getByText('高级设置（对象类型 / 刷新频率）'));
+    fireEvent.click(
+      screen.getByText('高级设置（对象类型 / 匹配模式 / 刷新频率）')
+    );
     fireEvent.click(screen.getByRole('button', { name: '每 12 小时' }));
     // active 样式 = border-blue-500
     expect(
       screen.getByRole('button', { name: '每 12 小时' }).className
     ).toMatch(/border-blue-500/);
+  });
+
+  it('展开高级设置后显示三种匹配模式 + 文案（与 RadarTopicConfigDrawer 一致）', () => {
+    render(<CreateRadarTopicModal {...baseProps} />);
+    fireEvent.click(
+      screen.getByText('高级设置（对象类型 / 匹配模式 / 刷新频率）')
+    );
+    expect(screen.getByText('智能语义')).toBeInTheDocument();
+    expect(screen.getByText('精确匹配')).toBeInTheDocument();
+    expect(screen.getByText('混合加分')).toBeInTheDocument();
+    expect(
+      screen.getByText('仅由 AI 按主题语义评分（默认）')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('标题或正文必须含任一关键词，否则淘汰')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('命中关键词的内容加分，但不淘汰未命中项')
+    ).toBeInTheDocument();
+  });
+
+  it('选中「精确匹配」后提交，createTopic 收到 matchMode=literal', async () => {
+    createTopicMock.mockResolvedValueOnce({ id: 'x' });
+    render(<CreateRadarTopicModal {...baseProps} />);
+    fireEvent.click(
+      screen.getByText('高级设置（对象类型 / 匹配模式 / 刷新频率）')
+    );
+    // 卡片内含 label + hint 两段文本，accessible name 是拼接结果，用正则匹配
+    fireEvent.click(screen.getByRole('button', { name: /精确匹配/ }));
+    fireEvent.change(screen.getByPlaceholderText(/例如：GPT-5 发布动态/), {
+      target: { value: 'GPT-5 watch' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('GPT-5, OpenAI, Sam Altman'), {
+      target: { value: 'gpt-5' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /创建雷达/ }));
+    await waitFor(() => {
+      expect(createTopicMock).toHaveBeenCalledTimes(1);
+    });
+    expect(createTopicMock.mock.calls[0]?.[0]).toMatchObject({
+      matchMode: 'literal',
+    });
+  });
+
+  it('matchMode selection updates internal state', () => {
+    render(<CreateRadarTopicModal {...baseProps} />);
+    fireEvent.click(
+      screen.getByText('高级设置（对象类型 / 匹配模式 / 刷新频率）')
+    );
+    fireEvent.click(screen.getByRole('button', { name: /混合加分/ }));
+    // active 样式 = border-blue-500
+    expect(screen.getByRole('button', { name: /混合加分/ }).className).toMatch(
+      /border-blue-500/
+    );
+  });
+
+  it('changing matchMode opens advanced by default next render（isAdvancedCustomized）', () => {
+    const { rerender } = render(<CreateRadarTopicModal {...baseProps} />);
+    fireEvent.click(
+      screen.getByText('高级设置（对象类型 / 匹配模式 / 刷新频率）')
+    );
+    fireEvent.click(screen.getByRole('button', { name: /精确匹配/ }));
+    rerender(<CreateRadarTopicModal {...baseProps} open={false} />);
+    rerender(<CreateRadarTopicModal {...baseProps} open={true} />);
+    // 选了非默认匹配模式后 isAdvancedCustomized=true → 默认展开
+    expect(screen.getByText('精确匹配')).toBeInTheDocument();
   });
 
   it('submit button shows "创建中…" while submitting', async () => {
@@ -242,7 +315,9 @@ describe('CreateRadarTopicModal', () => {
     // 一次 render：默认 topic，advanced 收起
     const { rerender } = render(<CreateRadarTopicModal {...baseProps} />);
     // 展开 advanced 切换 entityType
-    fireEvent.click(screen.getByText('高级设置（对象类型 / 刷新频率）'));
+    fireEvent.click(
+      screen.getByText('高级设置（对象类型 / 匹配模式 / 刷新频率）')
+    );
     fireEvent.click(screen.getByRole('button', { name: '公司' }));
     // close 然后重开：MissionDialogShell 用 isOpen + defaultAdvancedOpen 控
     rerender(<CreateRadarTopicModal {...baseProps} open={false} />);

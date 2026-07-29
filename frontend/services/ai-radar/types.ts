@@ -91,6 +91,8 @@ export interface RadarSource {
   config: Record<string, unknown> | null;
   enabled: boolean;
   isAiRecommended: boolean;
+  /** 信源权威性 1-5 星，参与 Stage A 打分（scoring.ts authority 分量） */
+  authorityWeight: number;
   health: RadarSourceHealth;
   consecutiveFailures: number;
   cooldownUntil: string | null;
@@ -260,6 +262,8 @@ export interface CreateRadarSourceInput {
   label?: string;
   config?: Record<string, unknown>;
   enabled?: boolean;
+  /** 信源权威性 1-5 星，参与 Stage A 打分；省略时后端走 DB 默认 3 */
+  authorityWeight?: number;
 }
 
 /**
