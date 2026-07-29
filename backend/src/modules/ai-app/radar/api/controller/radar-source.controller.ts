@@ -17,6 +17,7 @@ import {
 import type { RequestWithUser } from "../../../../../common/types/express-request.types";
 import {
   AcceptRecommendedSourcesDto,
+  BulkCreateRadarSourcesDto,
   CreateRadarSourceDto,
   RecommendSourcesDto,
   UpdateRadarSourceDto,
@@ -31,7 +32,8 @@ import { RadarPipelineDispatcher } from "../../mission/pipeline/radar-pipeline-d
  * Topic-scoped 数据源 CRUD + AI 推荐入口走 mission pipeline 框架：
  *   - recommend: 走 RadarPipelineDispatcher.runDiscoveryMission，从 stage 输出
  *     拿 candidates；不入库
- *   - accept: 走 RadarSourceService.bulkCreateAiRecommended（用户勾选后入库）
+ *   - accept: 走 RadarSourceService.bulkCreate（用户勾选后入库，isAiRecommended=true）
+ *   - bulk: 手工批量导入，同一个 bulkCreate，isAiRecommended=false
  */
 @Controller("radar")
 @UseGuards(JwtAuthGuard, RateLimitGuard)
@@ -49,6 +51,24 @@ export class RadarSourceController {
     @Body() dto: CreateRadarSourceDto,
   ) {
     return this.sources.create(req.user.id, topicId, dto);
+  }
+
+  /**
+   * 手工批量导入数据源（人工逐条核对过的高质量源）。
+   *
+   * 与 /recommend/accept 共用 RadarSourceService.bulkCreate，仅 isAiRecommended 不同。
+   * 与单条 POST 的差别：逐条 preflight，不可达源进 skipped 而非整批 400。
+   */
+  @Post("topics/:topicId/sources/bulk")
+  @RateLimit({ maxRequests: 20, windowSeconds: 60 })
+  async bulkCreate(
+    @Request() req: RequestWithUser,
+    @Param("topicId") topicId: string,
+    @Body() dto: BulkCreateRadarSourcesDto,
+  ) {
+    return this.sources.bulkCreate(req.user.id, topicId, dto.sources, {
+      isAiRecommended: false,
+    });
   }
 
   @Get("topics/:topicId/sources")
@@ -125,7 +145,7 @@ export class RadarSourceController {
   /**
    * 接受 AI 推荐源 → 批量入库（isAiRecommended=true 标记）。
    *
-   * 走 RadarSourceService.bulkCreateAiRecommended（DTO nested 校验已经在
+   * 走 RadarSourceService.bulkCreate（DTO nested 校验已经在
    * AcceptRecommendedSourcesDto 完成，identifier shape 在 service 内再校验）。
    */
   @Post("topics/:topicId/sources/recommend/accept")
@@ -135,11 +155,9 @@ export class RadarSourceController {
     @Param("topicId") topicId: string,
     @Body() dto: AcceptRecommendedSourcesDto,
   ) {
-    return this.sources.bulkCreateAiRecommended(
-      req.user.id,
-      topicId,
-      dto.candidates,
-    );
+    return this.sources.bulkCreate(req.user.id, topicId, dto.candidates, {
+      isAiRecommended: true,
+    });
   }
 }
 

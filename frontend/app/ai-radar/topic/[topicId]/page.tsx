@@ -307,6 +307,9 @@ export default function RadarTopicDetailPage() {
       ...(patch.refreshCron !== undefined && {
         refreshCron: patch.refreshCron,
       }),
+      ...(patch.entityType !== undefined && {
+        entityType: patch.entityType,
+      }),
     } as Parameters<typeof updateTopic>[1];
     await updateTopic(topic.id, payload);
     await reloadTopic();

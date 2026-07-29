@@ -295,13 +295,15 @@ export async function createSource(
 }
 
 /**
- * Backend UpdateRadarSourceDto 只允许改 label / config / enabled；
+ * Backend UpdateRadarSourceDto 只允许改 label / config / enabled / authorityWeight；
  * type / identifier 改了会被 ValidationPipe whitelist strip。
  */
 export interface UpdateRadarSourceInput {
   label?: string;
   config?: Record<string, unknown>;
   enabled?: boolean;
+  /** 信源权威性 1-5 星 */
+  authorityWeight?: number;
 }
 
 export async function updateSource(
@@ -348,6 +350,29 @@ export interface AcceptRecommendedSourcesResult {
   created: RadarSource[];
   /** preflight 后剔除的源（不可达 / 死链 / shape 错），前端可提示用户 */
   skipped: Array<{ type: string; identifier: string; reason: string }>;
+}
+
+/**
+ * POST /topics/:id/sources/bulk 的响应 —— 与 accept 路径同型（后端复用同一个
+ * bulkCreate，只是 isAiRecommended 传 false），故直接复用该结构不另立类型。
+ */
+export type BulkCreateSourcesResult = AcceptRecommendedSourcesResult;
+
+/**
+ * 手工批量导入数据源（一次 1-20 条，后端 @ArrayMaxSize(20)）。
+ *
+ * 越界 / 含非法 type / identifier 超长 → 后端 nested 校验整批 400，故前端必须
+ * 提交前本地校验；逐条的 shape 失败 / preflight 不可达 / 重复（P2002）不抛错，
+ * 降级进 skipped。20 条 = 20 个并发出网 preflight，UI 需给「导入中」loading。
+ */
+export async function bulkCreateSources(
+  topicId: string,
+  sources: CreateRadarSourceInput[]
+): Promise<BulkCreateSourcesResult> {
+  return request<BulkCreateSourcesResult>(`/topics/${topicId}/sources/bulk`, {
+    method: 'POST',
+    body: JSON.stringify({ sources }),
+  });
 }
 
 export async function acceptRecommendedSources(

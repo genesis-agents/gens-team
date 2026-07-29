@@ -11,10 +11,12 @@
 
 import { useState, type ReactNode } from 'react';
 import { MissionDialogShell } from '@/components/common/dialogs/MissionDialogShell';
+import { useTranslation } from '@/lib/i18n';
 import { createTopic } from '@/services/ai-radar/api';
 import type {
   CreateRadarTopicInput,
   RadarEntityType,
+  RadarMatchMode,
   RadarTopic,
 } from '@/services/ai-radar/types';
 
@@ -24,13 +26,17 @@ interface Props {
   onCreated: (topic: RadarTopic) => void;
 }
 
-const ENTITY_TYPES: Array<{ value: RadarEntityType; label: string }> = [
-  { value: 'topic', label: '话题' },
-  { value: 'company', label: '公司' },
-  { value: 'product', label: '产品' },
-  { value: 'person', label: '人物' },
-  { value: 'event', label: '事件' },
+// 文案走 i18n radar.entityType.* / radar.matchMode.*，与 RadarTopicConfigDrawer
+// 共用同一组 key —— 两处只保留值域，不再各存一份 label/hint 需要人工同步。
+const ENTITY_TYPES: RadarEntityType[] = [
+  'topic',
+  'company',
+  'product',
+  'person',
+  'event',
 ];
+
+const MATCH_MODES: RadarMatchMode[] = ['semantic', 'literal', 'hybrid'];
 
 const CRON_PRESETS = [
   { value: '0 */6 * * *', label: '每 6 小时' },
@@ -47,16 +53,20 @@ const SAMPLE_NAMES = [
 ];
 
 export function CreateRadarTopicModal({ open, onClose, onCreated }: Props) {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [entityType, setEntityType] = useState<RadarEntityType>('topic');
+  const [matchMode, setMatchMode] = useState<RadarMatchMode>('semantic');
   const [keywordsRaw, setKeywordsRaw] = useState('');
   const [refreshCron, setRefreshCron] = useState('0 */6 * * *');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isAdvancedCustomized =
-    entityType !== 'topic' || refreshCron !== '0 */6 * * *';
+    entityType !== 'topic' ||
+    matchMode !== 'semantic' ||
+    refreshCron !== '0 */6 * * *';
 
   const handleSubmit = async () => {
     setError(null);
@@ -78,6 +88,7 @@ export function CreateRadarTopicModal({ open, onClose, onCreated }: Props) {
       description: description.trim() || undefined,
       entityType,
       keywords,
+      matchMode,
       refreshCron,
     };
     setSubmitting(true);
@@ -174,23 +185,52 @@ export function CreateRadarTopicModal({ open, onClose, onCreated }: Props) {
           </Field>
         </>
       }
-      advancedLabel="高级设置（对象类型 / 刷新频率）"
+      advancedLabel={t('radar.createTopic.advancedLabel')}
       advanced={
         <>
-          <Field label="对象类型">
+          <Field label={t('radar.entityType.label')}>
             <div className="flex flex-wrap gap-1.5">
-              {ENTITY_TYPES.map((t) => (
+              {ENTITY_TYPES.map((value) => (
                 <button
-                  key={t.value}
+                  key={value}
                   type="button"
-                  onClick={() => setEntityType(t.value)}
+                  onClick={() => setEntityType(value)}
                   className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
-                    entityType === t.value
+                    entityType === value
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
                       : 'border-gray-200 text-gray-600 hover:border-gray-300'
                   }`}
                 >
-                  {t.label}
+                  {t(`radar.entityType.${value}`)}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          <Field
+            label={t('radar.matchMode.label')}
+            hintInline={t('radar.matchMode.createHint')}
+          >
+            <div className="space-y-1.5">
+              {MATCH_MODES.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  // 选中态只靠颜色传达对 AT 不可见，补 aria-pressed 让屏幕阅读器可播报
+                  aria-pressed={matchMode === mode}
+                  onClick={() => setMatchMode(mode)}
+                  className={`w-full rounded-lg border px-3 py-1.5 text-left transition-all ${
+                    matchMode === mode
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="text-xs font-medium">
+                    {t(`radar.matchMode.${mode}.label`)}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {t(`radar.matchMode.${mode}.hint`)}
+                  </div>
                 </button>
               ))}
             </div>

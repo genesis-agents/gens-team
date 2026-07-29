@@ -7842,6 +7842,77 @@
       "whatsNext": "接下来看什么：",
       "viewTopic": "查看主题",
       "retry": "重试"
+    },
+    "matchMode": {
+      "label": "匹配模式",
+      "createHint": "默认智能语义——每条内容都过一次 AI 评分；精确匹配会跳过未命中项的评分，可显著降低成本",
+      "semantic": {
+        "label": "智能语义",
+        "hint": "仅由 AI 按主题语义评分（默认）"
+      },
+      "literal": {
+        "label": "精确匹配",
+        "hint": "标题或正文必须含任一关键词，否则淘汰"
+      },
+      "hybrid": {
+        "label": "混合加分",
+        "hint": "命中关键词的内容加分，但不淘汰未命中项"
+      }
+    },
+    "entityType": {
+      "label": "对象类型",
+      "hint": "影响 AI 评分与实体抽取的判断角度，改动仅对之后的采集生效",
+      "topic": "话题",
+      "company": "公司",
+      "product": "产品",
+      "person": "人物",
+      "event": "事件"
+    },
+    "createTopic": {
+      "advancedLabel": "高级设置（对象类型 / 匹配模式 / 刷新频率）"
+    },
+    "sourceList": {
+      "bulkImport": "批量导入",
+      "emptyTitle": "还没有数据源",
+      "emptyDescription": "点击「AI 推荐」让 AI 列出候选，点「批量导入」一次粘贴多条，或点「添加」手动加",
+      "authorityLabel": "信源权威度（影响每日精选排序，默认 3）",
+      "authorityAriaLabel": "信源权威度：{{name}}",
+      "weightUpdateFailed": "权威度更新失败：{{message}}",
+      "authorityOption": {
+        "w5": "5 - 一手权威信源",
+        "w4": "4 - 高可信",
+        "w3": "3 - 一般",
+        "w2": "2 - 参考",
+        "w1": "1 - 存疑"
+      },
+      "issue": {
+        "tooManyFields": "字段过多，identifier 内的 | 请写成 %7C",
+        "unknownType": "未知类型「{{type}}」，仅支持 RSS / YOUTUBE / CUSTOM",
+        "missingIdentifier": "缺少 identifier",
+        "identifierTooLong": "identifier 超过 {{max}} 字符",
+        "youtubeIdentifier": "YouTube 的 identifier 必须是 UC 开头的 channelId 或 youtube.com 链接",
+        "identifierNotUrl": "{{type}} 的 identifier 必须是 http(s) 链接",
+        "labelTooLong": "显示名超过 {{max}} 字符",
+        "invalidWeight": "权威度必须是 1-5 的整数，实际「{{value}}」"
+      },
+      "bulk": {
+        "title": "批量导入数据源",
+        "subtitle": "每行一条：类型 | identifier | 显示名（可选） | 权威度 1-5（可选）",
+        "textareaLabel": "批量导入文本",
+        "placeholder": "# 每行一条，# 开头与空行忽略\nRSS | https://openai.com/blog/rss.xml | OpenAI 官博 | 5\nYOUTUBE | UCXuqSBlHAE6Xw-yeJA0Tunw | LTT",
+        "submitting": "导入中...",
+        "submit": "导入 {{count}} 条",
+        "validCount": "可导入 {{count}} 条",
+        "overLimit": "（一次最多 {{max}} 条，请分批粘贴）",
+        "duplicateCount": "跳过 {{count}} 条（已存在）：",
+        "duplicateLine": "第 {{lineNo}} 行 {{reason}}",
+        "issueCount": "{{count}} 行无法解析：",
+        "issueLine": "第 {{lineNo}} 行：{{reason}}",
+        "preflightNote": "导入时会对每条源做一次真实抓取预检，{{max}} 条约需 10-30 秒；不可达的源不会入库，会在结果里逐条说明原因。",
+        "moreSkipped": "还有 {{count}} 条...",
+        "doneWithSkipped": "已导入 {{created}} 个源，跳过 {{skipped}} 个：",
+        "done": "已导入 {{count}} 个数据源"
+      }
     }
   }
 }
