@@ -35,6 +35,12 @@ export interface RadarBriefingPanelProps {
   topicName: string;
   onRerun?: () => void;
   rerunCount?: number;
+  /**
+   * 非空时按钮置灰并把这句话显示在按钮下方，说明为什么点不了。
+   * 用于「主题已暂停 → 后端 refresh 必然 400」这类点了一定失败的情形：
+   * 与其让用户点出一个错误横幅，不如提前讲清楚。
+   */
+  rerunBlockedReason?: string | null;
   onRetry?: () => void;
   favoritedIds?: Set<string>;
 }
@@ -70,6 +76,7 @@ export function RadarBriefingPanel({
   topicName,
   onRerun,
   rerunCount = 0,
+  rerunBlockedReason,
   onRetry,
   favoritedIds,
 }: RadarBriefingPanelProps) {
@@ -114,17 +121,27 @@ export function RadarBriefingPanel({
           <div className="flex flex-col items-end gap-0.5">
             <button
               onClick={onRerun}
-              disabled={!canRerun || aggregateStatus === 'generating'}
+              disabled={
+                !canRerun ||
+                aggregateStatus === 'generating' ||
+                !!rerunBlockedReason
+              }
               className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label={t('radar.detail.rerunBriefing')}
             >
               <RefreshCw className="h-4 w-4" />
               {t('radar.detail.rerunBriefing')}
             </button>
-            {rerunCount > 0 && (
-              <span className="text-xs text-slate-400">
-                {t('radar.detail.alreadyRerunToday', { count: rerunCount })}
+            {rerunBlockedReason ? (
+              <span className="text-xs text-slate-500">
+                {rerunBlockedReason}
               </span>
+            ) : (
+              rerunCount > 0 && (
+                <span className="text-xs text-slate-400">
+                  {t('radar.detail.alreadyRerunToday', { count: rerunCount })}
+                </span>
+              )
             )}
           </div>
         )}

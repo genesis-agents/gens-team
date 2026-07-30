@@ -40,16 +40,22 @@ export class CollectorRouter {
     ]);
   }
 
+  /**
+   * @param perSourceSince 逐源覆盖采集起点（sourceId → since）。缺省或查不到时
+   *   用 ctx.since。窗口该给谁由 caller（S2）决定，这里只查表，不含业务规则。
+   */
   async fanOut(
     sources: RadarSource[],
     ctx: CollectContext,
     onResult?: (r: CollectResult) => void,
+    perSourceSince?: ReadonlyMap<string, Date>,
   ): Promise<CollectResult[]> {
     if (sources.length === 0) return [];
     // 每个源一完成就回调（实时进度）——不等 Promise.all 全部 resolve，
     // 这样前端能在采集进行中逐源点亮，而非结束后一次性出现。
     const tasks = sources.map(async (s) => {
-      const r = await this.fetchOne(s, ctx);
+      const since = perSourceSince?.get(s.id);
+      const r = await this.fetchOne(s, since ? { ...ctx, since } : ctx);
       onResult?.(r);
       return r;
     });
