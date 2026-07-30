@@ -63,9 +63,11 @@ describe("prompt-policy.contract", () => {
       },
     );
 
-    // leader 双副本已 DIFFERS（playground=243f64dc3c1bf7f6 vs
-    // deep-insight=134544a703f26193，2026-07-02 实测）：以哪版为准 / 有意分叉
+    // leader 双副本已 DIFFERS（playground=a4be5984517907d0 vs
+    // deep-insight=84fbde1af5f9549a，2026-07-30 实测）：以哪版为准 / 有意分叉
     // 待开放点拍板（设计稿 §九.4）。拍板前 leader 不接共享 key，此断言留闸。
+    // 两侧 hash 均在 1e4b1ed1d（品牌改名 GenesisPod -> gens.team）后变化，
+    // 但改名对两副本逐字节同样施加，DIFFERS 这一事实本身未变。
     it.skip("leader：待开放点拍板后解闸（当前双副本 DIFFERS）", () => {
       expect(hashPrompt(readPlaygroundSkillDoc("leader"))).toBe(
         hashPrompt(readDeepInsightSkillDoc("leader")),
@@ -81,12 +83,17 @@ describe("prompt-policy.contract", () => {
           hashPrompt(readPlaygroundSkillDoc(roleId)),
         ]),
       );
+      // 2026-07-30 更新 leader / writer 两项：1e4b1ed1d（docs(brand): rename
+      // GenesisPod -> gens.team (batch 3)）改了这两个角色 SKILL.md 各一行正文
+      // （"你是 GenesisPod Mission 的…" -> "你是 gens.team Mission 的…"），
+      // 未同步本锚点，导致 main 上此 spec 一直红。改名符合"禁硬编码品牌名"
+      // 规范，故更新锚点而非回退文案；其余 6 角色文本未动，hash 保持原值。
       expect(hashes).toEqual({
-        leader: "243f64dc3c1bf7f6",
+        leader: "a4be5984517907d0",
         researcher: "6af03a8a2bc4f1d3",
         reconciler: "006eac6d00b866d3",
         analyst: "9f3f5a208abcfa68",
-        writer: "272f85f69d13c90f",
+        writer: "d5a86a213764ff78",
         reviewer: "1b0be547c575622e",
         verifier: "64e2e271600d08f6",
         steward: "16004c1c466c66b2",
