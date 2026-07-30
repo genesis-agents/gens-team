@@ -90,6 +90,24 @@ export const RADAR_PIPELINE_DEFAULTS = {
 } as const;
 
 /**
+ * 新源首次采集的回捞窗口（2026-07-30）。
+ *
+ * 背景：topic 级 since 分三档（S1：首轮 24h / 定时 lastRunAt-5min / 手动 30 天），
+ * 但那是按 **topic** 算的。往一个跑了很久的 topic 里新加一个源时，该源会直接套用
+ * topic 当前的窗口——定时档只有 5 分钟，等于新源的存量内容一条都进不来，用户加完
+ * 源看到 0 产出，无从判断是"源不对"还是"还没到时间"。
+ *
+ * 因此：source.lastFetchAt 为空（从未成功抓取过）时改用这个更长的窗口回捞一次，
+ * 抓完 lastFetchAt 被 SourceHealthService 写上，后续自动回到 topic 级窗口。
+ *
+ * 注意这是**时间窗**而非条数窗：源在 90 天内没发过东西仍然是 0 产出（例如
+ * karpathy.bearblog.dev 最近一篇是 2026-04-30，落在 90 天外）。真要覆盖这类
+ * 低频源，得把窗口调大或改成"首次采集不按时间过滤、直接取 feed 最新 N 条"。
+ * 改窗口只需动这一个常量。
+ */
+export const RADAR_FIRST_COLLECTION_LOOKBACK_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
  * Item 实体抽取上限（防 LLM 输出爆炸）。
  */
 export const RADAR_MAX_ENTITIES_PER_ITEM = 10;

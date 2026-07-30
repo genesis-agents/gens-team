@@ -12,8 +12,10 @@
  *   - SourceHealthService 状态变化通过 EventBus emit radar.source.health-changed
  */
 import { Injectable, Logger } from "@nestjs/common";
+import type { RadarSource } from "@prisma/client";
 import {
   RADAR_EVENTS,
+  RADAR_FIRST_COLLECTION_LOOKBACK_MS,
   RADAR_PIPELINE_DEFAULTS,
 } from "../../../runtime/radar.constants";
 import { CollectorRouter } from "../../services/collectors/collector-router.service";
@@ -24,6 +26,25 @@ import type {
   RadarStageHookArgs,
   RadarStageRunner,
 } from "./radar-stage-types";
+
+/**
+ * 逐源决定采集起点：从未成功抓取过的源（lastFetchAt 为空）用 90 天回捞窗口，
+ * 其余沿用 S1 算出的 topic 级 since。
+ *
+ * 取两者中**更早**的那个，而不是无条件覆盖：手动「重新精选」的 topic 窗口是
+ * 30 天，若某天把首采窗口调到比它更短，这里不能反而把范围缩小。
+ */
+export function resolveSourceSince(
+  source: Pick<RadarSource, "lastFetchAt">,
+  topicSince: Date,
+  now: Date,
+): Date {
+  if (source.lastFetchAt) return topicSince;
+  const firstCollectionSince = new Date(
+    now.getTime() - RADAR_FIRST_COLLECTION_LOOKBACK_MS,
+  );
+  return firstCollectionSince < topicSince ? firstCollectionSince : topicSince;
+}
 
 @Injectable()
 export class RadarS2CollectStage implements RadarStageRunner {
@@ -54,6 +75,20 @@ export class RadarS2CollectStage implements RadarStageRunner {
       sources.map((s) => [s.id, s.label?.trim() || s.identifier]),
     );
 
+    // 新源首采回捞：sourceId → 该源本次实际使用的 since
+    const now = new Date();
+    const sinceBySourceId = new Map(
+      sources.map((s) => [s.id, resolveSourceSince(s, since, now)]),
+    );
+    const backfilled = sources.filter((s) => !s.lastFetchAt);
+    if (backfilled.length > 0) {
+      this.log.log(
+        `[${ctx.missionId}] S2 首采回捞 ${backfilled.length} 个新源（窗口 ${
+          RADAR_FIRST_COLLECTION_LOOKBACK_MS / 86_400_000
+        } 天）: ${backfilled.map((s) => s.label?.trim() || s.identifier).join(", ")}`,
+      );
+    }
+
     const results = await this.router.fanOut(
       sources,
       {
@@ -79,6 +114,7 @@ export class RadarS2CollectStage implements RadarStageRunner {
           })),
         });
       },
+      sinceBySourceId,
     );
 
     const rawItems: RadarRawItem[] = [];
