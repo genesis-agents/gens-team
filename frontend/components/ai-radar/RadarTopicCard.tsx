@@ -32,6 +32,7 @@ import {
   type AssetVisibilityOption,
 } from '@/components/ui/cards/asset-card';
 import { Switch } from '@/components/ui/primitives/switch';
+import { TOPIC_STATUS_BADGE } from '@/components/ai-radar/topic-status';
 import type {
   RadarTopic,
   RadarTopicWithCounts,
@@ -73,24 +74,6 @@ const VISIBILITY_OPTIONS: Record<AssetVisibility, AssetVisibilityOption> = {
   },
 };
 
-const STATUS_BADGE: Record<
-  RadarTopic['status'],
-  { label: string; className: string }
-> = {
-  ACTIVE: {
-    label: '运行中',
-    className: 'bg-cyan-50 text-cyan-700',
-  },
-  PAUSED: {
-    label: '已暂停',
-    className: 'bg-gray-100 text-gray-600',
-  },
-  ARCHIVED: {
-    label: '已归档',
-    className: 'bg-gray-100 text-gray-500',
-  },
-};
-
 export function RadarTopicCard({
   topic,
   onDelete,
@@ -99,7 +82,7 @@ export function RadarTopicCard({
   toggling,
 }: Props) {
   const router = useRouter();
-  const status = STATUS_BADGE[topic.status];
+  const status = TOPIC_STATUS_BADGE[topic.status];
 
   const badges: AssetCardBadge[] = [
     {

@@ -17,6 +17,8 @@ import {
   getTopic,
   listRuns,
   listSources,
+  pauseTopic,
+  resumeTopic,
   triggerRefresh,
   updateTopic,
 } from '@/services/ai-radar/api';
@@ -24,6 +26,9 @@ import type {
   RadarSource,
   RadarTopicWithCounts,
 } from '@/services/ai-radar/types';
+import { Switch } from '@/components/ui/primitives/switch';
+import { TOPIC_STATUS_BADGE } from '@/components/ai-radar/topic-status';
+import { useTranslation } from '@/lib/i18n';
 import { RadarBriefingPanel } from '@/components/ai-radar/RadarBriefingPanel';
 import { RadarHistoricalItemsPanel } from '@/components/ai-radar/RadarHistoricalItemsPanel';
 import { RadarTopicConfigDrawer } from '@/components/ai-radar/RadarTopicConfigDrawer';
@@ -64,6 +69,7 @@ export default function RadarTopicDetailPage() {
   const params = useParams<{ topicId: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
   const topicId = params?.topicId;
 
   // R14 2026-05-19: 4 bucket URL-synced
@@ -89,6 +95,7 @@ export default function RadarTopicDetailPage() {
   const [sources, setSources] = useState<RadarSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [togglingAutoRefresh, setTogglingAutoRefresh] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [stageStatus, setStageStatus] = useState<{
@@ -259,6 +266,41 @@ export default function RadarTopicDetailPage() {
     }
   };
 
+  /**
+   * 自动刷新开关 —— 与列表页卡片上的开关同一语义（ACTIVE=开 / PAUSED=关）。
+   *
+   * 详情页此前没有这个入口：新建主题一律落 PAUSED（后端 RadarTopicService.create
+   * 刻意为之，避免调度器静默烧配额），而详情页既不显示状态也没有恢复入口，
+   * 用户点「重新精选」只会撞上 400「请先 resume」，那条错误在这一页无法自解。
+   */
+  const handleToggleAutoRefresh = async (nextEnabled: boolean) => {
+    if (!topic) return;
+    setTogglingAutoRefresh(true);
+    setError(null);
+    try {
+      const updated = nextEnabled
+        ? await resumeTopic(topic.id)
+        : await pauseTopic(topic.id);
+      // pause/resume 只回 RadarTopic（无 counts），保留原 counts 免得侧边栏
+      // 数据源统计瞬间归零
+      setTopic((cur) =>
+        cur
+          ? { ...cur, status: updated.status, nextDueAt: updated.nextDueAt }
+          : cur
+      );
+    } catch (e) {
+      setError(
+        `${
+          nextEnabled
+            ? t('radar.detail.resumeFailed')
+            : t('radar.detail.pauseFailed')
+        }${e instanceof Error ? e.message : String(e)}`
+      );
+    } finally {
+      setTogglingAutoRefresh(false);
+    }
+  };
+
   const handleDeleteConfirm = async () => {
     if (!topic) return;
     setDeleting(true);
@@ -410,6 +452,11 @@ export default function RadarTopicDetailPage() {
             <h1 className="text-xl font-semibold text-gray-900 md:text-2xl">
               {topic.name}
             </h1>
+            <span
+              className={`rounded-md px-2 py-0.5 text-xs font-medium ${TOPIC_STATUS_BADGE[topic.status].className}`}
+            >
+              {TOPIC_STATUS_BADGE[topic.status].label}
+            </span>
             <button
               type="button"
               onClick={() => setConfigOpen(true)}
@@ -436,6 +483,29 @@ export default function RadarTopicDetailPage() {
             {topic.counts.sources} 源 · 下次刷新 {nextRefreshIn}
           </p>
         </div>
+
+        {/* 自动刷新开关（归档态没有意义，不显示）。PAUSED 时补一句说明为什么
+            没有信号进来——否则页面看起来只是"空的"，而不是"关着的"。 */}
+        {topic.status !== 'ARCHIVED' && (
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-1.5">
+              <Switch
+                checked={topic.status === 'ACTIVE'}
+                disabled={togglingAutoRefresh}
+                onCheckedChange={(next) => void handleToggleAutoRefresh(next)}
+                aria-label={t('radar.detail.autoRefresh')}
+              />
+              <span className="text-xs text-gray-500">
+                {t('radar.detail.autoRefresh')}
+              </span>
+            </div>
+            {topic.status === 'PAUSED' && (
+              <span className="max-w-xs text-right text-xs text-gray-400">
+                {t('radar.detail.pausedHint')}
+              </span>
+            )}
+          </div>
+        )}
       </header>
 
       {/* Inline error banner */}
@@ -490,6 +560,11 @@ export default function RadarTopicDetailPage() {
             topicName={topic.name}
             onRerun={() => void handleRefresh()}
             rerunCount={0}
+            rerunBlockedReason={
+              topic.status === 'ACTIVE'
+                ? null
+                : t('radar.detail.rerunBlockedNotActive')
+            }
           />
 
           {/* R13.5 2026-05-19：已收录信号面板 —— 即便今日 briefing 0 信号，

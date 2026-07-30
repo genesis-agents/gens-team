@@ -7737,7 +7737,12 @@
       "weeklyTitle": "Weekly · {{start}} — {{end}}",
       "weeklyEmpty": "No top-tier signals this week · skipping weekly",
       "weeklyView": "View full weekly →",
-      "weeklyStats": "{{tier3Count}} · narratives {{narrativeCount}} · candidates {{candidatesTotal}}"
+      "weeklyStats": "{{tier3Count}} · narratives {{narrativeCount}} · candidates {{candidatesTotal}}",
+      "autoRefresh": "Auto refresh",
+      "pausedHint": "Auto refresh is off. Turn it on to start collecting on schedule.",
+      "rerunBlockedNotActive": "Auto refresh is off. Turn it on to rerun the briefing.",
+      "resumeFailed": "Failed to turn on auto refresh: ",
+      "pauseFailed": "Failed to turn off auto refresh: "
     },
     "share": {
       "favorite": "Favorite",

@@ -7737,7 +7737,12 @@
       "weeklyTitle": "周报 · {{start}} — {{end}}",
       "weeklyEmpty": "本周暂无最高评级信号 · 周报跳过",
       "weeklyView": "查看完整周报 →",
-      "weeklyStats": "{{tier3Count}} · 延续叙事 {{narrativeCount}} · 候选总 {{candidatesTotal}}"
+      "weeklyStats": "{{tier3Count}} · 延续叙事 {{narrativeCount}} · 候选总 {{candidatesTotal}}",
+      "autoRefresh": "自动刷新",
+      "pausedHint": "自动刷新已关闭，开启后才会按计划采集",
+      "rerunBlockedNotActive": "自动刷新已关闭，开启后才能精选",
+      "resumeFailed": "开启自动刷新失败：",
+      "pauseFailed": "关闭自动刷新失败："
     },
     "share": {
       "favorite": "收藏",
