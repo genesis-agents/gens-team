@@ -734,6 +734,64 @@ describe("AiModelConfigService", () => {
       });
     });
 
+    // ─── UserModelConfig 去重键必须含 modelType（2026-07-31）────────────
+    // 背景：UserModelConfig 唯一键是 [userId, provider, modelId, modelType]，
+    // schema 注释明写「同一 modelId 可以在不同 modelType 下重复，让一键 AI 配置
+    // 把单个 provider 的 Key 铺满所有适配类型」。去重键此前只有 (provider,
+    // modelId)，导致 admin 一条同名模型就能把用户该 provider 下**所有类型**的
+    // 自配模型全部滤掉——包括 AI Ask 唯一认的 CHAT / CHAT_FAST，表现为
+    // 「配了模型但下拉是空的」。
+    it("admin AIModel 不得吃掉同 (provider, modelId) 但不同 modelType 的用户自配模型", async () => {
+      (prismaService.aIModel.findMany as jest.Mock).mockResolvedValue([
+        { ...mockChatModel, modelType: "CHAT" as AIModelType }, // openai / gpt-4o / CHAT
+      ]);
+      (prismaService.userModelConfig.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: "ucfg-1",
+          modelId: "gpt-4o",
+          displayName: "我的 GPT-4o 快速档",
+          provider: "openai",
+          modelType: "CHAT_FAST" as AIModelType,
+          isDefault: true,
+        },
+      ]);
+
+      const models = await service.getEnabledModelsForFrontend(
+        undefined,
+        "user-1",
+      );
+
+      // admin 的 CHAT 与用户的 CHAT_FAST 是两条不同记录，必须都在
+      expect(models).toHaveLength(2);
+      const fast = models.find((m) => m.modelType === "CHAT_FAST");
+      expect(fast).toBeDefined();
+      expect(fast?.isUserKey).toBe(true);
+    });
+
+    it("完全相同的 (provider, modelId, modelType) 仍然去重，admin 优先", async () => {
+      (prismaService.aIModel.findMany as jest.Mock).mockResolvedValue([
+        { ...mockChatModel, modelType: "CHAT" as AIModelType },
+      ]);
+      (prismaService.userModelConfig.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: "ucfg-2",
+          modelId: "gpt-4o",
+          displayName: "重复的 GPT-4o",
+          provider: "openai",
+          modelType: "CHAT" as AIModelType,
+          isDefault: false,
+        },
+      ]);
+
+      const models = await service.getEnabledModelsForFrontend(
+        undefined,
+        "user-1",
+      );
+
+      expect(models).toHaveLength(1);
+      expect(models[0].isUserKey).toBeUndefined();
+    });
+
     it("should include icon URLs", async () => {
       // Arrange
       (prismaService.aIModel.findMany as jest.Mock).mockResolvedValue([

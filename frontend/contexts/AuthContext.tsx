@@ -14,6 +14,7 @@ import {
   isUserAdmin,
 } from '@/lib/utils/auth';
 import { config } from '@/lib/utils/config';
+import { clearAIModelsCache } from '@/hooks/features/useAIModels';
 
 import { logger } from '@/lib/utils/logger';
 interface AuthContextType extends AuthState {
@@ -68,6 +69,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Only clear on explicit 401 (token rejected by backend)
           logger.warn('Token validation failed (401), clearing auth state');
           clearAuthTokens();
+          // 与 logout 同理：token 失效后缓存里那份带 BYOK 的模型列表必须丢弃
+          clearAIModelsCache();
         } else {
           // 5xx or other errors: keep cached state, don't log user out
           logger.warn(
@@ -105,6 +108,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       accessToken,
       refreshToken,
     });
+    // 2026-07-31：模型列表随登录态变化（带 token 才会并入用户自己的 BYOK 模型），
+    // 但 useAIModels 的 effect 只依赖 revision、不依赖登录态——它内部那句
+    // `cachedAuthState === currentAuth` 只有在重新挂载时才有机会生效。若匿名态下
+    // 已缓存过一份（只含 admin 模型），登录后不主动失效就会一直沿用，用户看到
+    // 「配了 BYOK 模型却不出现在下拉里」。这里主动 bump revision 触发重取。
+    clearAIModelsCache();
   };
 
   const logout = () => {
@@ -114,6 +123,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       accessToken: null,
       refreshToken: null,
     });
+    // 反向同理：登出后必须丢弃带 BYOK 的那份缓存，否则下一个用户会看到上一个人的模型
+    clearAIModelsCache();
     authLogout();
   };
 

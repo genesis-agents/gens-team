@@ -52,8 +52,16 @@ function notifyCacheCleared() {
 }
 
 /**
- * 去重模型列表 - 按 modelId 去重，每个实际模型只保留一个
+ * 去重模型列表 - 按 (provider, modelId, modelType) 去重
  * 优先保留标记为默认的模型
+ *
+ * 2026-07-31 修：此前只按 `modelId` 去重，有两个后果——
+ *   1. 跨 provider 同名模型互吃：OpenRouter 的 gpt-4o 和 OpenAI 的 gpt-4o 只剩一个，
+ *      留哪个取决于 isDefault，用户的 BYOK 模型可能被静默吃掉
+ *   2. 同一模型的不同用途被折叠：gpt-4o 同时作 CHAT 和 CODE 时只剩一条，若留下的是
+ *      CODE，AI Ask 按 CHAT/CHAT_FAST 过滤时就什么都不剩
+ * 后端 getEnabledModelsForFrontend 用的是 (provider, modelId, modelType) 三元组，
+ * 这里与之对齐，避免两端口径不一致。
  */
 function deduplicateModels(models: AIModel[]): AIModel[] {
   // Guard against undefined/null models
@@ -64,7 +72,9 @@ function deduplicateModels(models: AIModel[]): AIModel[] {
   const modelMap = new Map<string, AIModel>();
 
   for (const model of models) {
-    const key = model.modelId; // 按实际模型 ID 去重
+    const key = `${(model.provider || '').toLowerCase()}::${(
+      model.modelId || ''
+    ).toLowerCase()}::${model.modelType}`;
     const existing = modelMap.get(key);
 
     if (!existing) {
