@@ -11,9 +11,15 @@ import {
   type CreateUserModelConfigInput,
 } from '@/hooks/features/useUserModelConfigs';
 import { useUserApiKeys } from '@/hooks/features/useUserApiKeys';
+import { useTranslation } from '@/lib/i18n';
 
 interface Props {
   provider: string;
+  /**
+   * 从「模型需求概览」点「立即添加」带进来的目标类型。
+   * 不传则沿用旧行为（默认 CHAT）。
+   */
+  initialModelType?: UserModelType;
   /** 表单里当前 API Key（从外层传入，用于「获取可用模型」按钮实时调 provider） */
   apiKey: string;
   apiEndpoint?: string;
@@ -79,6 +85,7 @@ function deriveSlugFromEndpoint(endpoint: string): string {
 
 export function UserModelConfigModal({
   provider: initialProvider,
+  initialModelType,
   apiKey,
   apiEndpoint,
   initial,
@@ -91,17 +98,19 @@ export function UserModelConfigModal({
     providers,
     loading: providersLoading,
   } = useUserApiKeys();
+  const { t } = useTranslation();
   const isEdit = !!initial;
 
   // Provider 预设：单一数据源 = DB ai_providers（经 /user/api-keys 返回），
   // 取代此前硬编码的 KNOWN_PROVIDERS。新增内置 provider 走 seed catalog，前端自动出现。
-  const knownProviders = useMemo(
+  const allProviders = useMemo(
     () =>
       providers.map((p) => ({
         slug: p.id,
         label: p.name,
         endpoint: p.endpoint,
         apiFormat: p.apiFormat || 'openai',
+        capabilities: p.capabilities,
       })),
     [providers]
   );
@@ -112,7 +121,7 @@ export function UserModelConfigModal({
   );
   // 表单字段
   const [modelType, setModelType] = useState<UserModelType>(
-    initial?.modelType ?? 'CHAT'
+    initial?.modelType ?? initialModelType ?? 'CHAT'
   );
   const [modelId, setModelId] = useState(initial?.modelId ?? '');
   const [displayName, setDisplayName] = useState(initial?.displayName ?? '');
@@ -122,6 +131,54 @@ export function UserModelConfigModal({
   const [endpoint, setEndpoint] = useState(
     normalizeEndpointBase(initial?.apiEndpoint ?? '')
   );
+
+  // 2026-08-01：按 modelType 过滤可选服务商。
+  //
+  // ai_providers.capabilities 这个字段本就是为此存在的（schema 注释：「驱动
+  // capabilities 路由」），但 UI 一直没用它。后果很具体：用户只有 xAI 的 Key
+  // （capabilities = CHAT / CHAT_FAST，**不提供 embedding**），却在「向量嵌入」
+  // 卡片点「立即添加」——弹层默认选中 xAI、类型默认标准聊天，点「获取」拉到的
+  // xAI 模型列表里当然没有 embedding，用户撞进死路且得不到任何解释。
+  //
+  // capabilities 为空的 provider 不过滤掉（老数据 / 自定义 provider 容错），
+  // 编辑态也不过滤（不能让已存在的配置因为过滤而选不中自己）。
+  const knownProviders = useMemo(() => {
+    if (isEdit) return allProviders;
+    return allProviders.filter(
+      (p) =>
+        !p.capabilities ||
+        p.capabilities.length === 0 ||
+        p.capabilities.includes(modelType)
+    );
+  }, [allProviders, modelType, isEdit]);
+
+  // 切换模型类型后，若当前选中的 provider 不支持该类型，清空选择——
+  // 否则 select 会停留在一个做不到这件事的服务商上（正是 xAI + 向量嵌入那个死路）。
+  useEffect(() => {
+    if (isEdit || !provider) return;
+    const hit = allProviders.find((p) => p.slug === provider);
+    if (!hit) return; // 自定义 provider，不干预
+    if (!hit.capabilities || hit.capabilities.length === 0) return;
+    if (!hit.capabilities.includes(modelType)) {
+      setProvider('');
+      setEndpoint('');
+    }
+  }, [modelType, provider, allProviders, isEdit]);
+
+  // 复用既有类型标签（USER_MODEL_TYPE_OPTIONS 是唯一真源，不另造一份映射）
+  const modelTypeLabel = (t: UserModelType) =>
+    USER_MODEL_TYPE_OPTIONS.find((o) => o.value === t)?.label ?? t;
+
+  // 支持当前类型、但用户尚未配置 Key 的服务商（用于给出「该去配谁」的指引）
+  const capableWithoutKey = useMemo(() => {
+    const owned = new Set(
+      (userKeys ?? []).map((k) => (k.provider || '').toLowerCase())
+    );
+    return knownProviders
+      .filter((p) => !owned.has(p.slug.toLowerCase()))
+      .map((p) => p.label);
+  }, [knownProviders, userKeys]);
+
   // 2026-05-27 BYOK：该模型运行时使用哪把用户 Key（UserApiKey.id），空 = provider 默认
   const [apiKeyId, setApiKeyId] = useState(initial?.apiKeyId ?? '');
   const [maxTokens, setMaxTokens] = useState(
@@ -345,6 +402,29 @@ export function UserModelConfigModal({
                 ))}
                 <option value={CUSTOM_SLUG}>其它 / 自定义...</option>
               </select>
+              {/* 该类型在全部服务商里都无人支持时，别让用户对着空下拉猜 */}
+              {!providersLoading && knownProviders.length === 0 && (
+                <p className="mt-1 text-xs text-amber-600">
+                  {t('me.models.noProviderSupports', {
+                    type: modelTypeLabel(modelType),
+                  })}
+                </p>
+              )}
+              {/* 有支持者但都不是你已配 Key 的服务商 —— 这是最常见的死路，
+                  直接把"需要去配谁的 Key"说出来，而不是只显示一个空选择 */}
+              {!providersLoading &&
+                knownProviders.length > 0 &&
+                !provider &&
+                capableWithoutKey.length > 0 && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    {t('me.models.needKeyFor', {
+                      type: modelTypeLabel(modelType),
+                      providers:
+                        capableWithoutKey.slice(0, 5).join(' / ') +
+                        (capableWithoutKey.length > 5 ? ' …' : ''),
+                    })}
+                  </p>
+                )}
               {treatProviderAsCustom && (
                 <input
                   value={provider}

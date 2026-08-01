@@ -7618,7 +7618,10 @@
         "getKeyFor": "前往 {{provider}} 申请 API Key",
         "emptyTitle": "暂无可用服务商",
         "emptyDescription": "管理员尚未配置任何 AI 服务商，请联系管理员在「AI 服务商」维护页添加。"
-      }
+      },
+      "selectProvider": "选择服务商…",
+      "advanced": "高级选项",
+      "derivedSummary": "将保存为「{{displayName}}」，标识符 {{name}}"
     },
     "tools": {
       "title": "我的工具",
@@ -7699,6 +7702,12 @@
       "requestThis": "申请",
       "catalogEmptyTitle": "暂无可用技能",
       "catalogEmptyDesc": "系统尚未注册任何技能"
+    },
+    "models": {
+      "noProviderSupports": "没有内置服务商支持「{{type}}」，请选「其它 / 自定义」手工填写 Endpoint。",
+      "needKeyFor": "你已配置 Key 的服务商都不支持「{{type}}」。支持的有：{{providers}}，需先到「我的密钥」配置其中一个的 Key。",
+      "needKeyBanner": "你现有的服务商都不支持此类型，需先配置下列任一服务商的 Key：",
+      "applyKeyFor": "{{provider}} 申请 Key →"
     }
   },
   "radar": {

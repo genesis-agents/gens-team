@@ -7618,7 +7618,10 @@
         "getKeyFor": "Get an API key from {{provider}}",
         "emptyTitle": "No providers available",
         "emptyDescription": "No AI providers are configured yet. Ask an admin to add them on the AI Providers page."
-      }
+      },
+      "selectProvider": "Select a provider…",
+      "advanced": "Advanced",
+      "derivedSummary": "Will be saved as \"{{displayName}}\", identifier {{name}}"
     },
     "tools": {
       "title": "My Tools",
@@ -7699,6 +7702,12 @@
       "requestThis": "Request",
       "catalogEmptyTitle": "No skills available",
       "catalogEmptyDesc": "No skills are registered in the system yet"
+    },
+    "models": {
+      "noProviderSupports": "No built-in provider supports \"{{type}}\". Choose \"Other / Custom\" and enter the endpoint manually.",
+      "needKeyFor": "None of the providers you have keys for supports \"{{type}}\". Supported: {{providers}}. Add a key for one of them under My Keys first.",
+      "needKeyBanner": "None of your current providers supports this type. Add a key for one of these first:",
+      "applyKeyFor": "Get a {{provider}} key →"
     }
   },
   "radar": {
