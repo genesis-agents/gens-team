@@ -1393,19 +1393,28 @@ export class AiModelConfigService {
         ...(isUserKey ? { isUserKey: true } : {}),
       });
 
-      // (provider, modelId) 已被 admin AIModel 或 userExtraModels 覆盖的，不再重复添加 UserModelConfig
+      // (provider, modelId, modelType) 已被 admin AIModel 或 userExtraModels 覆盖的，
+      // 不再重复添加 UserModelConfig。
+      //
+      // 2026-07-31 修：此前键是 (provider, modelId)，**丢了 modelType**。而
+      // UserModelConfig 的唯一键是 [userId, provider, modelId, modelType]，schema
+      // 注释明写「同一 modelId 可以在不同 modelType 下重复，让一键 AI 配置把单个
+      // provider 的 Key 铺满所有适配类型」。两边口径不一致的后果：admin 只要启用了
+      // 一个同 (provider, modelId) 的模型（哪怕它是 RERANK），用户在该 provider 下
+      // **所有类型**的自配模型会被一次性全部滤掉——包括 AI Ask 唯一认的 CHAT /
+      // CHAT_FAST，表现为「配了模型但下拉是空的」。
+      const dedupKey = (provider: string, modelId: string, modelType: string) =>
+        `${provider.toLowerCase()}::${modelId.toLowerCase()}::${modelType}`;
       const existingProviderModelKeys = new Set([
-        ...models.map(
-          (m) => `${m.provider.toLowerCase()}::${m.modelId.toLowerCase()}`,
-        ),
-        ...userExtraModels.map(
-          (m) => `${m.provider.toLowerCase()}::${m.modelId.toLowerCase()}`,
+        ...models.map((m) => dedupKey(m.provider, m.modelId, m.modelType)),
+        ...userExtraModels.map((m) =>
+          dedupKey(m.provider, m.modelId, m.modelType),
         ),
       ]);
       const userPersonalUnique = userPersonalConfigs.filter(
         (c) =>
           !existingProviderModelKeys.has(
-            `${c.provider.toLowerCase()}::${c.modelId.toLowerCase()}`,
+            dedupKey(c.provider, c.modelId, c.modelType),
           ),
       );
 

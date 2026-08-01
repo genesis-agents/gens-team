@@ -12,6 +12,7 @@ import {
   Optional,
   NotFoundException,
   UseGuards,
+  Header,
 } from "@nestjs/common";
 import { AIModelType } from "@prisma/client";
 import { ConfigService } from "@nestjs/config";
@@ -79,10 +80,20 @@ export class AiController {
   /**
    * 获取已启用的 AI 模型列表（公共 API，无需认证）
    * GET /api/v1/ai/models
+   *
+   * ★ 缓存语义（2026-07-31 修）：本端点虽标 @Public()，**响应内容随
+   *   Authorization 变化**——带 token 时会并入调用者的 UserModelConfig（BYOK
+   *   自配模型）。此前响应头是 `Cache-Control: public` 且 `Vary` 只有
+   *   `Origin, Accept-Encoding`，等于告诉任何共享缓存（CDN / 反代 / 浏览器）
+   *   "这份响应人人通用"——轻则登录用户拿到匿名列表（看不到自己的 BYOK 模型），
+   *   重则跨用户串号。故显式声明 private + no-store，并把 Authorization 纳入
+   *   Vary 作为双保险（即使某层缓存忽略 no-store 也不会错误命中）。
    */
   @Get("models")
   @Public()
   @UseGuards(OptionalJwtAuthGuard)
+  @Header("Cache-Control", "private, no-store")
+  @Header("Vary", "Authorization")
   async getEnabledModels(@Req() req: Request) {
     const userId = (req as unknown as { user?: { id?: string } }).user?.id;
     this.logger.log(

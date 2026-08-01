@@ -163,6 +163,86 @@ describe('useAIModels', () => {
     expect(result.current.models[0].name).toBe('First');
   });
 
+  // 2026-07-31：去重键补齐 provider 与 modelType（与后端
+  // getEnabledModelsForFrontend 的三元组对齐）。此前只按 modelId，导致下面两种
+  // 情形被静默折叠——用户的 BYOK 模型凭空消失。
+  it('same modelId across different providers must both survive', async () => {
+    const models = [
+      makeModel({
+        id: 'a',
+        provider: 'OpenAI',
+        modelId: 'gpt-4o',
+        isDefault: true,
+      }),
+      makeModel({
+        id: 'b',
+        provider: 'OpenRouter',
+        modelId: 'gpt-4o',
+        isUserKey: true,
+      }),
+    ];
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, data: models }),
+    });
+
+    const { result } = renderHook(() => useAIModels());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.models).toHaveLength(2);
+    // 用户自己的 BYOK 那条不能被 admin 的同名模型吃掉
+    expect(result.current.models.some((m) => m.isUserKey)).toBe(true);
+  });
+
+  it('same provider+modelId under different modelType must both survive', async () => {
+    const models = [
+      makeModel({ id: 'a', modelId: 'gpt-4o', modelType: 'CODE' }),
+      makeModel({ id: 'b', modelId: 'gpt-4o', modelType: 'CHAT' }),
+    ];
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, data: models }),
+    });
+
+    const { result } = renderHook(() => useAIModels());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.models).toHaveLength(2);
+    // AI Ask 只认 CHAT / CHAT_FAST——CHAT 那条被折叠掉就会出现「下拉是空的」
+    expect(result.current.models.some((m) => m.modelType === 'CHAT')).toBe(
+      true
+    );
+  });
+
+  it('identical (provider, modelId, modelType) still dedupes, preferring default', async () => {
+    const models = [
+      makeModel({
+        id: 'a',
+        provider: 'OpenAI',
+        modelId: 'gpt-4o',
+        modelType: 'CHAT',
+        isDefault: false,
+      }),
+      makeModel({
+        id: 'b',
+        provider: 'OpenAI',
+        modelId: 'gpt-4o',
+        modelType: 'CHAT',
+        isDefault: true,
+      }),
+    ];
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, data: models }),
+    });
+
+    const { result } = renderHook(() => useAIModels());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.models).toHaveLength(1);
+    expect(result.current.models[0].isDefault).toBe(true);
+  });
+
   // ==================== Error Handling ====================
 
   it('should fallback to default models on network error', async () => {
