@@ -32,6 +32,8 @@ export interface AiProviderSeed {
   capabilities: string[];
   /** 下拉排序，越小越靠前；预留间隔便于插入 */
   displayOrder: number;
+  /** 申领 API Key 的控制台页（区别于 docUrl 文档首页）；本地部署类留空 */
+  apiKeyUrl?: string;
   docUrl?: string;
   freeTierNote?: string;
   description?: string;
@@ -55,6 +57,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     ],
     displayOrder: 10,
     docUrl: "https://platform.openai.com/docs",
+    apiKeyUrl: "https://platform.openai.com/api-keys",
   },
   {
     slug: "anthropic",
@@ -65,6 +68,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST", "CODE", "MULTIMODAL"],
     displayOrder: 20,
     docUrl: "https://docs.anthropic.com",
+    apiKeyUrl: "https://console.anthropic.com/settings/keys",
   },
   {
     slug: "google",
@@ -82,6 +86,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     displayOrder: 30,
     freeTierNote: "免费层每分钟 1500 req",
     docUrl: "https://ai.google.dev/docs",
+    apiKeyUrl: "https://aistudio.google.com/apikey",
   },
   {
     slug: "xai",
@@ -92,6 +97,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST"],
     displayOrder: 40,
     docUrl: "https://docs.x.ai",
+    apiKeyUrl: "https://console.x.ai",
   },
   {
     slug: "deepseek",
@@ -102,6 +108,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CODE"],
     displayOrder: 50,
     docUrl: "https://api-docs.deepseek.com",
+    apiKeyUrl: "https://platform.deepseek.com/api_keys",
   },
   {
     slug: "cohere",
@@ -113,6 +120,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     displayOrder: 70,
     freeTierNote: "免费 trial 100 calls/min",
     docUrl: "https://docs.cohere.com",
+    apiKeyUrl: "https://dashboard.cohere.com/api-keys",
   },
   {
     slug: "mistral",
@@ -123,6 +131,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST", "CODE", "EMBEDDING"],
     displayOrder: 80,
     docUrl: "https://docs.mistral.ai",
+    apiKeyUrl: "https://console.mistral.ai/api-keys",
   },
   {
     slug: "perplexity",
@@ -133,6 +142,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST"],
     displayOrder: 90,
     docUrl: "https://docs.perplexity.ai",
+    apiKeyUrl: "https://www.perplexity.ai/settings/api",
   },
 
   // ───────────────── 国产模型厂商 ─────────────────
@@ -145,6 +155,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST", "EMBEDDING"],
     displayOrder: 200,
     docUrl: "https://help.aliyun.com/zh/dashscope",
+    apiKeyUrl: "https://dashscope.console.aliyun.com/apiKey",
   },
   {
     slug: "zhipu",
@@ -155,6 +166,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST", "EMBEDDING"],
     displayOrder: 210,
     docUrl: "https://open.bigmodel.cn/dev/api",
+    apiKeyUrl: "https://bigmodel.cn/usercenter/apikeys",
   },
   {
     slug: "glm",
@@ -165,6 +177,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST", "EMBEDDING"],
     displayOrder: 215,
     docUrl: "https://open.bigmodel.cn/dev/api",
+    apiKeyUrl: "https://bigmodel.cn/usercenter/apikeys",
   },
   {
     slug: "moonshot",
@@ -175,6 +188,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST"],
     displayOrder: 220,
     docUrl: "https://platform.moonshot.cn/docs",
+    apiKeyUrl: "https://platform.moonshot.cn/console/api-keys",
   },
   {
     slug: "kimi",
@@ -185,6 +199,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST"],
     displayOrder: 225,
     docUrl: "https://platform.moonshot.cn/docs",
+    apiKeyUrl: "https://platform.moonshot.cn/console/api-keys",
   },
   {
     slug: "doubao",
@@ -195,6 +210,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST", "MULTIMODAL"],
     displayOrder: 230,
     docUrl: "https://www.volcengine.com/docs/82379",
+    apiKeyUrl: "https://console.volcengine.com/ark",
   },
   {
     slug: "bytedance",
@@ -205,6 +221,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST", "MULTIMODAL"],
     displayOrder: 235,
     docUrl: "https://www.volcengine.com/docs/82379",
+    apiKeyUrl: "https://console.volcengine.com/ark",
   },
   {
     slug: "hunyuan",
@@ -235,6 +252,8 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT"],
     displayOrder: 260,
     docUrl: "https://platform.minimaxi.com/document/notice",
+    apiKeyUrl:
+      "https://platform.minimaxi.com/user-center/basic-information/interface-key",
   },
   {
     slug: "01ai",
@@ -265,6 +284,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST", "EMBEDDING", "RERANK"],
     displayOrder: 290,
     docUrl: "https://docs.siliconflow.cn",
+    apiKeyUrl: "https://cloud.siliconflow.cn/account/ak",
   },
   {
     // 新加坡 Sapiens AI 一方多模态模型。base 以官方文档为准（agnes-ai.com/doc §2）：
@@ -293,6 +313,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST", "CODE", "MULTIMODAL"],
     displayOrder: 400,
     docUrl: "https://openrouter.ai/docs",
+    apiKeyUrl: "https://openrouter.ai/keys",
   },
   {
     slug: "together",
@@ -303,6 +324,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST", "CODE"],
     displayOrder: 410,
     docUrl: "https://docs.together.ai",
+    apiKeyUrl: "https://api.together.xyz/settings/api-keys",
   },
   {
     slug: "fireworks",
@@ -313,6 +335,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST", "CODE"],
     displayOrder: 420,
     docUrl: "https://docs.fireworks.ai",
+    apiKeyUrl: "https://fireworks.ai/account/api-keys",
   },
   {
     slug: "deepinfra",
@@ -323,6 +346,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["CHAT", "CHAT_FAST", "EMBEDDING"],
     displayOrder: 430,
     docUrl: "https://deepinfra.com/docs",
+    apiKeyUrl: "https://deepinfra.com/dash/api_keys",
   },
   {
     slug: "novita",
@@ -346,6 +370,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     displayOrder: 500,
     freeTierNote: "免费层有节流",
     docUrl: "https://console.groq.com/docs",
+    apiKeyUrl: "https://console.groq.com/keys",
   },
   {
     slug: "cerebras",
@@ -389,6 +414,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     displayOrder: 600,
     freeTierNote: "200M tokens/月免费",
     docUrl: "https://docs.voyageai.com",
+    apiKeyUrl: "https://dashboard.voyageai.com/organization/api-keys",
   },
   {
     slug: "jina",
@@ -399,6 +425,7 @@ export const AI_PROVIDER_CATALOG: AiProviderSeed[] = [
     capabilities: ["EMBEDDING", "RERANK"],
     displayOrder: 610,
     docUrl: "https://jina.ai/embeddings",
+    apiKeyUrl: "https://jina.ai/api-dashboard/",
   },
 
   // ───────────────── 本地 / 自托管运行时（endpoint 为 localhost 默认值，用户按需改）─────────────────

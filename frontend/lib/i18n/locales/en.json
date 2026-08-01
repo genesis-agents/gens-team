@@ -7608,7 +7608,17 @@
       "test": "Test",
       "testing": "Testing…",
       "testSuccess": "Key exists and passed validation",
-      "testFailed": "Key test failed"
+      "testFailed": "Key test failed",
+      "help": {
+        "title": "Where to get an API key",
+        "subtitle": "Pick your provider and open its console to create a key. Keys are stored under your account and used only for your own calls.",
+        "getKey": "Get key",
+        "viewDocs": "View docs",
+        "noKeyNeeded": "Local — no key needed",
+        "getKeyFor": "Get an API key from {{provider}}",
+        "emptyTitle": "No providers available",
+        "emptyDescription": "No AI providers are configured yet. Ask an admin to add them on the AI Providers page."
+      }
     },
     "tools": {
       "title": "My Tools",

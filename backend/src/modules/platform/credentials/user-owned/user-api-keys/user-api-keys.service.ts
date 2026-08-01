@@ -705,6 +705,8 @@ export class UserApiKeysService {
         iconUrl: p.iconUrl,
         freeTierNote: p.freeTierNote,
         docUrl: p.docUrl,
+        // 「去哪申请 Key」的直达地址；为空时前端回落到 docUrl（文档首页）
+        apiKeyUrl: p.apiKeyUrl,
         capabilities: p.capabilities,
         scope: p.scope,
         isCustom: p.scope === "user",

@@ -7608,7 +7608,17 @@
       "test": "测试",
       "testing": "测试中…",
       "testSuccess": "Key 存在，校验通过",
-      "testFailed": "Key 测试失败"
+      "testFailed": "Key 测试失败",
+      "help": {
+        "title": "去哪里获取 API Key",
+        "subtitle": "选择你的服务商，前往其控制台申领。密钥仅保存在你的账户下，用于你自己的调用。",
+        "getKey": "申请 Key",
+        "viewDocs": "查看文档",
+        "noKeyNeeded": "本地部署，无需 Key",
+        "getKeyFor": "前往 {{provider}} 申请 API Key",
+        "emptyTitle": "暂无可用服务商",
+        "emptyDescription": "管理员尚未配置任何 AI 服务商，请联系管理员在「AI 服务商」维护页添加。"
+      }
     },
     "tools": {
       "title": "我的工具",
