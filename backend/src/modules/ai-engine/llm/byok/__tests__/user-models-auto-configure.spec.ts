@@ -263,6 +263,123 @@ describe("AutoConfigureService", () => {
   });
 
   // =========================================================================
+  // 跳过原因必须可解释（2026-07-31）
+  //
+  // 上面这些用例此前只断言 createdCount===0 —— 正是"静默失败"本身：用户点完
+  // 一键配置看到少了几个类型（最常见 CHAT_FAST），界面上零解释。档位本来就无法
+  // 从 provider 的 /v1/models 推断（那里没有任何 tier 标记），只能靠模型名正则
+  // 猜，模型一改名就失效。既然猜不准是结构性的，至少要让"猜失败了"可见。
+  // =========================================================================
+
+  it("正则一个都没匹配上时，记录 no-pattern-match 并带出正则原文", async () => {
+    mocks.userApiKeys.listUserApiKeys.mockResolvedValue([
+      { isActive: true, mode: "personal", provider: "openai" },
+    ]);
+    mocks.userApiKeys.getPersonalKey.mockResolvedValue({ apiKey: "sk-test" });
+    mocks.userModelConfigs.listByUser.mockResolvedValue([]);
+    mocks.modelDiscovery.fetchAvailableModels.mockResolvedValue({
+      success: true,
+      models: [{ id: "gpt-3.5-turbo" }],
+    });
+    mocks.recommendations.getForProvider.mockResolvedValue([
+      {
+        provider: "openai",
+        modelType: AIModelType.CHAT_FAST,
+        patterns: ["^gpt-[4-9].*-mini"],
+      },
+    ]);
+
+    const result = await service.runForUser("user-1");
+
+    const fast = result.unconfigured.find(
+      (u) => u.modelType === AIModelType.CHAT_FAST,
+    );
+    expect(fast).toBeDefined();
+    const hit = fast?.attempts.find((a) => a.provider === "openai");
+    expect(hit?.reason).toBe("no-pattern-match");
+    // 带出正则原文，admin 才能直接去 /admin/ai/recommendations 改那一条
+    expect(hit?.detail).toContain("^gpt-[4-9].*-mini");
+  });
+
+  it("provider 没返回任何模型时记录 no-models-returned", async () => {
+    mocks.userApiKeys.listUserApiKeys.mockResolvedValue([
+      { isActive: true, mode: "personal", provider: "openai" },
+    ]);
+    mocks.userApiKeys.getPersonalKey.mockResolvedValue({ apiKey: "sk-test" });
+    mocks.userModelConfigs.listByUser.mockResolvedValue([]);
+    mocks.modelDiscovery.fetchAvailableModels.mockResolvedValue({
+      success: true,
+      models: [],
+    });
+
+    const result = await service.runForUser("user-1");
+
+    const chat = result.unconfigured.find(
+      (u) => u.modelType === AIModelType.CHAT,
+    );
+    expect(
+      chat?.attempts.some(
+        (a) => a.provider === "openai" && a.reason === "no-models-returned",
+      ),
+    ).toBe(true);
+  });
+
+  it("该 (provider, type) 没配推荐正则时记录 no-recommendation", async () => {
+    mocks.userApiKeys.listUserApiKeys.mockResolvedValue([
+      { isActive: true, mode: "personal", provider: "openai" },
+    ]);
+    mocks.userApiKeys.getPersonalKey.mockResolvedValue({ apiKey: "sk-test" });
+    mocks.userModelConfigs.listByUser.mockResolvedValue([]);
+    mocks.modelDiscovery.fetchAvailableModels.mockResolvedValue({
+      success: true,
+      models: [{ id: "gpt-4o" }],
+    });
+    mocks.recommendations.getForProvider.mockResolvedValue([]);
+
+    const result = await service.runForUser("user-1");
+
+    const chat = result.unconfigured.find(
+      (u) => u.modelType === AIModelType.CHAT,
+    );
+    expect(
+      chat?.attempts.some(
+        (a) => a.provider === "openai" && a.reason === "no-recommendation",
+      ),
+    ).toBe(true);
+  });
+
+  it("用户没有该 provider 的 Key 时记录 no-key", async () => {
+    mocks.userApiKeys.listUserApiKeys.mockResolvedValue([
+      { isActive: true, mode: "personal", provider: "openai" },
+    ]);
+    // openai 有 key，但偏好表里其他 provider（anthropic/google…）没有
+    mocks.userApiKeys.getPersonalKey.mockResolvedValue({ apiKey: "sk-test" });
+    mocks.userModelConfigs.listByUser.mockResolvedValue([]);
+    mocks.modelDiscovery.fetchAvailableModels.mockResolvedValue({
+      success: true,
+      models: [],
+    });
+
+    const result = await service.runForUser("user-1");
+
+    const chat = result.unconfigured.find(
+      (u) => u.modelType === AIModelType.CHAT,
+    );
+    expect(chat?.attempts.some((a) => a.reason === "no-key")).toBe(true);
+  });
+
+  it("一把 Key 都没有时，也要显式列出未配置类型而非留空", async () => {
+    mocks.userApiKeys.listUserApiKeys.mockResolvedValue([]);
+
+    const result = await service.runForUser("user-1");
+
+    expect(result.unconfigured.map((u) => u.modelType)).toEqual([
+      AIModelType.CHAT,
+      AIModelType.EMBEDDING,
+    ]);
+  });
+
+  // =========================================================================
   // Probe fails for all candidates
   // =========================================================================
 

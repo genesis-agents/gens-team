@@ -5,6 +5,7 @@ import { Loader2, Sparkles } from 'lucide-react';
 import { Modal } from '@/components/ui/dialogs/Modal';
 import { apiClient } from '@/lib/api/client';
 import { toast } from '@/stores';
+import { useTranslation } from '@/lib/i18n';
 
 export interface AutoConfigureResult {
   createdCount: number;
@@ -18,6 +19,27 @@ export interface AutoConfigureResult {
   }>;
   missingTypes: string[];
   providersScanned?: string[];
+  /**
+   * 没配成的 modelType 及逐 provider 的原因（2026-07-31）。
+   *
+   * 后端核心循环原本有 4 个静默 continue，用户点完只看到少了几个类型（最常见
+   * CHAT_FAST），界面上零解释。档位本来就无法从 provider 的 /v1/models 推断，
+   * 只能靠模型名正则猜，模型改名就失效——既然猜不准是结构性的，至少要让
+   * "猜失败了"可见，并告诉用户下一步该干嘛。
+   */
+  unconfigured?: Array<{
+    modelType: string;
+    attempts: Array<{
+      provider: string;
+      reason:
+        | 'no-key'
+        | 'no-models-returned'
+        | 'no-recommendation'
+        | 'no-pattern-match'
+        | 'all-probes-failed';
+      detail?: string;
+    }>;
+  }>;
 }
 
 export interface AutoConfigureButtonProps {
@@ -170,6 +192,69 @@ export function AutoConfigureButton({
   );
 }
 
+/**
+ * 逐类型解释「为什么没配上」，并给出该原因对应的下一步动作。
+ *
+ * 只展示**最有解释力的那一条** attempt：优先级为
+ *   no-pattern-match（正则失效，最常见且可自助修）
+ *   > all-probes-failed（匹配到但调不通）
+ *   > no-models-returned > no-recommendation > no-key
+ * 全列出来会变成一堵墙——偏好表里十几个 provider 大多只是"用户没配 Key"。
+ */
+function UnconfiguredReasons({
+  unconfigured,
+}: {
+  unconfigured?: AutoConfigureResult['unconfigured'];
+}) {
+  const { t } = useTranslation();
+  if (!unconfigured || unconfigured.length === 0) return null;
+
+  const PRIORITY: Array<
+    NonNullable<
+      AutoConfigureResult['unconfigured']
+    >[number]['attempts'][number]['reason']
+  > = [
+    'no-pattern-match',
+    'all-probes-failed',
+    'no-models-returned',
+    'no-recommendation',
+    'no-key',
+  ];
+
+  return (
+    <div className="space-y-1.5 rounded-md border border-slate-200 bg-slate-50 p-3">
+      <p className="text-xs font-medium text-slate-700">
+        {t('modelConfig.autoConfigure.whyMissing')}
+      </p>
+      {unconfigured.map((u) => {
+        const best = PRIORITY.map((r) =>
+          u.attempts.find((a) => a.reason === r)
+        ).find(Boolean);
+        return (
+          <div key={u.modelType} className="text-xs text-slate-600">
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">
+              {u.modelType}
+            </span>{' '}
+            {best
+              ? t(`modelConfig.autoConfigure.reason.${best.reason}`, {
+                  provider: best.provider,
+                })
+              : t('modelConfig.autoConfigure.reason.no-key', { provider: '-' })}
+            {best?.reason === 'no-pattern-match' && best.detail && (
+              <span className="font-mono ml-1 break-all text-[11px] text-slate-400">
+                {best.detail}
+              </span>
+            )}
+          </div>
+        );
+      })}
+      <p className="pt-1 text-xs text-slate-500">
+        {t('modelConfig.autoConfigure.whyMissingNextStep')}
+      </p>
+    </div>
+  );
+}
+
 function AutoConfigureResultModal({
   result,
   onClose,
@@ -203,6 +288,7 @@ function AutoConfigureResultModal({
             。建议手动添加或为这些类型的 Provider 配置 Key。
           </div>
         )}
+        <UnconfiguredReasons unconfigured={result.unconfigured} />
         {result.providersScanned && result.providersScanned.length > 0 && (
           <div className="rounded-md border border-gray-200 bg-gray-50 p-2 text-xs text-gray-600">
             已扫描 Provider：
