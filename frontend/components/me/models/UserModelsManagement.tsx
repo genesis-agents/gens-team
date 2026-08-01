@@ -30,6 +30,7 @@ import {
   type ModelImportance,
 } from '@/hooks/features/useUserModelConfigs';
 import { useUserApiKeys } from '@/hooks/features/useUserApiKeys';
+import { useTranslation } from '@/lib/i18n';
 import {
   useMyKeyAssignments,
   useMyKeyRequests,
@@ -156,7 +157,7 @@ function assignmentToRow(a: UserAssignmentView): UnifiedModelRow {
 export function UserModelsManagement() {
   const { items, loading, update, remove, setDefault, refresh } =
     useUserModelConfigs();
-  const { keys: apiKeys } = useUserApiKeys();
+  const { keys: apiKeys, providers: allProviders } = useUserApiKeys();
   const { assignments } = useMyKeyAssignments();
   const {
     requests: myRequests,
@@ -282,6 +283,38 @@ export function UserModelsManagement() {
     return map;
   }, [rows]);
 
+  // 逐 modelType 计算「该去配谁的 Key」——仅当**你已配 Key 的服务商全都做不到**
+  // 该类型时才给建议。数据全部来自 ai_providers：capabilities 判断谁做得到，
+  // apiKeyUrl 给申领链接（缺失则回落 docUrl）。两个字段都已随 /user/api-keys 返回。
+  const suggestionsByType = useMemo(() => {
+    const owned = new Set(
+      apiKeys
+        .filter((k) => k.isActive)
+        .map((k) => (k.provider || '').toLowerCase())
+    );
+    const map = new Map<
+      UserModelType,
+      Array<{ name: string; href: string | null }>
+    >();
+    for (const opt of USER_MODEL_TYPE_OPTIONS) {
+      const capable = allProviders.filter(
+        (p) => p.capabilities?.includes(opt.value) ?? false
+      );
+      // 已配 Key 的服务商里有人做得到 → 不是「缺 Key」问题，不给建议
+      if (capable.some((p) => owned.has(p.id.toLowerCase()))) {
+        map.set(opt.value, []);
+        continue;
+      }
+      map.set(
+        opt.value,
+        capable
+          .slice(0, 4)
+          .map((p) => ({ name: p.name, href: p.apiKeyUrl || p.docUrl || null }))
+      );
+    }
+    return map;
+  }, [allProviders, apiKeys]);
+
   const missingRequired = USER_MODEL_TYPE_OPTIONS.filter(
     (o) => o.importance === 'required' && !coverage.get(o.value)?.hasEnabled
   );
@@ -370,6 +403,7 @@ export function UserModelsManagement() {
                   count={c.count}
                   hasEnabled={c.hasEnabled}
                   hasDefault={c.hasDefault}
+                  suggestions={suggestionsByType.get(opt.value) ?? []}
                   onAdd={() => {
                     setAddModelType(opt.value);
                     setShowAdd(true);
@@ -823,6 +857,7 @@ function CoverageCard({
   hasEnabled,
   hasDefault,
   onAdd,
+  suggestions,
 }: {
   label: string;
   description: string;
@@ -832,7 +867,13 @@ function CoverageCard({
   hasEnabled: boolean;
   hasDefault: boolean;
   onAdd: () => void;
+  /**
+   * 该类型「你已配 Key 的服务商都做不到」时的补救建议：支持该类型且带申领页
+   * 地址的服务商。为空表示要么已能配、要么无从建议。
+   */
+  suggestions: Array<{ name: string; href: string | null }>;
 }) {
+  const { t } = useTranslation();
   const importanceBadge = {
     required: {
       text: '必需',
@@ -881,7 +922,7 @@ function CoverageCard({
       </div>
       <div className="mt-2 flex items-center justify-between">
         <span className="text-[11px] text-gray-500">{count} 个已配置</span>
-        {!hasEnabled && (
+        {!hasEnabled && suggestions.length === 0 && (
           <button
             onClick={onAdd}
             className="text-xs text-blue-600 hover:text-blue-700"
@@ -890,6 +931,38 @@ function CoverageCard({
           </button>
         )}
       </div>
+
+      {/* 你已配 Key 的服务商都做不到这个类型时，别只说「未配置」——直接说清
+          需要哪家的 Key，并给申领链接。典型场景：用户只有 xAI 的 Key，而 xAI
+          的 capabilities 是 [CHAT, CHAT_FAST]，不提供 embedding，「向量嵌入」
+          这个必需类型永远配不出来，此前界面只显示「未配置 / 立即添加」，点进去
+          还是死路。 */}
+      {!hasEnabled && suggestions.length > 0 && (
+        <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2">
+          <p className="text-[11px] text-amber-800">
+            {t('me.models.needKeyBanner')}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            {suggestions.map((sg) =>
+              sg.href ? (
+                <a
+                  key={sg.name}
+                  href={sg.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 text-[11px] text-amber-900 underline hover:text-amber-950"
+                >
+                  {t('me.models.applyKeyFor', { provider: sg.name })}
+                </a>
+              ) : (
+                <span key={sg.name} className="text-[11px] text-amber-700">
+                  {sg.name}
+                </span>
+              )
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

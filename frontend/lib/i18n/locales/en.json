@@ -7705,7 +7705,9 @@
     },
     "models": {
       "noProviderSupports": "No built-in provider supports \"{{type}}\". Choose \"Other / Custom\" and enter the endpoint manually.",
-      "needKeyFor": "None of the providers you have keys for supports \"{{type}}\". Supported: {{providers}}. Add a key for one of them under My Keys first."
+      "needKeyFor": "None of the providers you have keys for supports \"{{type}}\". Supported: {{providers}}. Add a key for one of them under My Keys first.",
+      "needKeyBanner": "None of your current providers supports this type. Add a key for one of these first:",
+      "applyKeyFor": "Get a {{provider}} key →"
     }
   },
   "radar": {
