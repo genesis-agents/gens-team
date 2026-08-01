@@ -7919,5 +7919,18 @@
         "done": "已导入 {{count}} 个数据源"
       }
     }
+  },
+  "modelConfig": {
+    "autoConfigure": {
+      "whyMissing": "为什么这些类型没配上",
+      "whyMissingNextStep": "可在「我的模型」手动添加；若是匹配规则失效，管理员可在「AI 推荐矩阵」改一条正则即可修复，无需发版。",
+      "reason": {
+        "no-key": "{{provider}}：你没有配置该服务商的 Key",
+        "no-models-returned": "{{provider}}：该服务商没有返回此类型可用的模型",
+        "no-recommendation": "{{provider}}：没有为该类型配置匹配规则",
+        "no-pattern-match": "{{provider}}：匹配规则未命中任何返回的模型（模型改名后最常见）",
+        "all-probes-failed": "{{provider}}：匹配到模型但实际调用全部失败（权限 / 额度 / 已下线）"
+      }
+    }
   }
 }

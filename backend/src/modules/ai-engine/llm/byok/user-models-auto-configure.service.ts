@@ -20,6 +20,27 @@ import {
 } from "../models/selection/default-recommendations.config";
 import { inferIsReasoning } from "../types/model.utils";
 
+/**
+ * 某个 (modelType, provider) 组合没配成的原因。
+ *
+ * 2026-07-31：核心循环里原本有 4 个 `continue`，其中 3 个连日志都没有，只有
+ * 「候选全部 probe 失败」写了一条 warn。结果是用户点完「一键配置」看到少了几个
+ * 类型（最常见是 CHAT_FAST），界面上零解释、零补救入口——而档位本来就无法从
+ * provider 的 /v1/models 推断（那里没有任何 tier 标记），只能靠模型名正则猜，
+ * 模型一改名就静默失效。既然猜不准是结构性的，至少要让"猜失败了"可见。
+ */
+export type AutoConfigureSkipReason =
+  /** 用户没有该 provider 的 Personal Key */
+  | "no-key"
+  /** provider 的 /v1/models 没返回该类型可用的模型 */
+  | "no-models-returned"
+  /** 该 (provider, modelType) 没有配推荐正则（DB 与硬编码默认都没有） */
+  | "no-recommendation"
+  /** 有正则但一个都没匹配上——模型改名后最常见的失效方式 */
+  | "no-pattern-match"
+  /** 匹配到候选但实际调用全部失败（权限/额度/下线） */
+  | "all-probes-failed";
+
 export interface AutoConfigureResult {
   createdCount: number;
   skippedCount: number;
@@ -31,6 +52,20 @@ export interface AutoConfigureResult {
     reason?: string;
   }>;
   missingTypes: AIModelType[];
+  /**
+   * 没能配成的 modelType 及逐 provider 的失败原因。前端据此告诉用户
+   * 「CHAT_FAST 没配上，因为 openai 返回的模型里没有匹配上推荐正则」，
+   * 并给出手动添加入口，而不是让他对着少掉的类型自己猜。
+   */
+  unconfigured: Array<{
+    modelType: AIModelType;
+    attempts: Array<{
+      provider: string;
+      reason: AutoConfigureSkipReason;
+      /** 补充信息：未匹配的正则、探测失败的候选等 */
+      detail?: string;
+    }>;
+  }>;
 }
 
 type PersonalUserApiKey = Awaited<
@@ -105,11 +140,16 @@ export class AutoConfigureService {
     );
 
     if (activePersonal.length === 0) {
+      // 一把可用 Key 都没有：两个基础类型都配不了，原因就是 no-key。
+      // 显式列出而不是留空，前端才能给出「先去配 Key」的引导。
       return {
         createdCount: 0,
         skippedCount: 0,
         items: [],
         missingTypes: [AIModelType.CHAT, AIModelType.EMBEDDING],
+        unconfigured: [AIModelType.CHAT, AIModelType.EMBEDDING].map(
+          (modelType) => ({ modelType, attempts: [] }),
+        ),
       };
     }
 
@@ -118,6 +158,7 @@ export class AutoConfigureService {
       skippedCount: 0,
       items: [],
       missingTypes: [],
+      unconfigured: [],
     };
 
     // provider → apiKey 映射（用户保存的 Personal Key），用于按偏好顺序查找
@@ -162,12 +203,18 @@ export class AutoConfigureService {
       if (defaultedTypes.has(modelType)) continue;
 
       let created = false;
+      // 本 modelType 逐 provider 的失败原因，用于在 UI 上解释"为什么少了这个类型"
+      const attempts: AutoConfigureResult["unconfigured"][number]["attempts"] =
+        [];
 
       for (const provider of preferredProviders) {
         if (created) break;
 
         const apiKey = providerKeyMap.get(provider);
-        if (!apiKey) continue; // 用户没配这个 provider 的 Key
+        if (!apiKey) {
+          attempts.push({ provider, reason: "no-key" });
+          continue; // 用户没配这个 provider 的 Key
+        }
 
         // 拉可用模型（per-type 过滤，如 EMBEDDING 只返回 embedding 模型）
         const availableIds = await this.getAvailableIds(
@@ -176,7 +223,10 @@ export class AutoConfigureService {
           modelType,
           discoveryCache,
         );
-        if (!availableIds || availableIds.length === 0) continue;
+        if (!availableIds || availableIds.length === 0) {
+          attempts.push({ provider, reason: "no-models-returned" });
+          continue;
+        }
 
         // 取 recommendation（DB 优先、默认 fallback、别名兜底）
         const providerRecs =
@@ -185,14 +235,30 @@ export class AutoConfigureService {
           (recommendation: ProviderRecommendation) =>
             recommendation.modelType === modelType,
         );
-        if (!rec || rec.patterns.length === 0) continue;
+        if (!rec || rec.patterns.length === 0) {
+          attempts.push({ provider, reason: "no-recommendation" });
+          continue;
+        }
 
         // ★ 变成**可验证的迭代**：按 pattern 匹配的顺序取出所有候选 modelId，
         // 依次用最小 prompt 实际探测 chat 是否通；第一个通过的才写入。
         // 避免把"OpenAI 列表返回但 chat 无权限"的模型（如用户 key 权限不全的
         // gpt-4o-2024-11-20）写进去导致后续 Topic Insights 疯狂撞失败。
         const candidates = this.allMatches(availableIds, rec.patterns);
-        if (candidates.length === 0) continue;
+        if (candidates.length === 0) {
+          // 最常见的静默失效：模型改名后正则匹配不上。把正则原样带出去，
+          // admin 在 /admin/ai/recommendations 改一条即可修复，不用发版。
+          attempts.push({
+            provider,
+            reason: "no-pattern-match",
+            detail: rec.patterns.join(" | "),
+          });
+          this.logger.warn(
+            `[user-auto-configure] No pattern match for ${provider}/${modelType}: ` +
+              `patterns=[${rec.patterns.join(", ")}] against ${availableIds.length} available model(s)`,
+          );
+          continue;
+        }
 
         let matchedId: string | undefined;
         for (const cand of candidates) {
@@ -211,6 +277,11 @@ export class AutoConfigureService {
           );
         }
         if (!matchedId) {
+          attempts.push({
+            provider,
+            reason: "all-probes-failed",
+            detail: candidates.join(" | "),
+          });
           this.logger.warn(
             `[user-auto-configure] All candidates failed probe for ${provider}/${modelType}: ${candidates.join(", ")}`,
           );
@@ -305,6 +376,13 @@ export class AutoConfigureService {
           });
           if (isDuplicate) created = true;
         }
+      }
+
+      // 该 modelType 走完全部候选 provider 仍未配成 → 记录原因供 UI 解释。
+      // attempts 为空表示 preferredProviders 是空列表（该类型没配偏好），也要记，
+      // 否则用户依然看不出为什么少了这个类型。
+      if (!created) {
+        result.unconfigured.push({ modelType, attempts });
       }
     }
 

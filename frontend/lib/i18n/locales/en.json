@@ -7919,5 +7919,18 @@
         "done": "Imported {{count}} sources"
       }
     }
+  },
+  "modelConfig": {
+    "autoConfigure": {
+      "whyMissing": "Why these types were not configured",
+      "whyMissingNextStep": "You can add them manually under My Models. If a match rule went stale, an admin can fix it by editing one regex in the AI recommendation matrix — no release needed.",
+      "reason": {
+        "no-key": "{{provider}}: no API key configured for this provider",
+        "no-models-returned": "{{provider}}: the provider returned no usable model for this type",
+        "no-recommendation": "{{provider}}: no match rule configured for this type",
+        "no-pattern-match": "{{provider}}: match rules hit none of the returned models (most common after a model rename)",
+        "all-probes-failed": "{{provider}}: models matched but every call failed (permission / quota / retired)"
+      }
+    }
   }
 }
