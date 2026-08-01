@@ -163,19 +163,35 @@ describe("TaskProfileMapperService (extended coverage)", () => {
       expect(result.maxTokens).toBe(28000);
     });
 
-    // ★ 钉住 grok-4.5 的真实行为（本次事故的直接成因）。
+    // ★ 回归守护：grok-4.5 不得被 ["grok-4", 16384] 的前缀匹配吃掉。
     //
-    // MODEL_KNOWN_LIMITS 是**前缀匹配**表，其中 ["grok-4", 16384]。grok-4.5 命中
-    // "grok-4" 前缀，因此无论 DB 里 maxTokens 配多大、无论提升逻辑怎么放宽，
-    // 输出都被硬封在 16384。这意味着：
-    //   1. 「调大我的模型的 Max Tokens」对 grok-4.5 无效
-    //   2. 11 维度深度报告的单次 JSON 组装在 grok-4.5 上必然截断
-    // 这条测试存在的意义是让这个约束显式、可发现，而不是让人再花一小时去追。
-    it("grok-4.5 被 MODEL_KNOWN_LIMITS 前缀硬封在 16384（调大配置无效）", () => {
+    // 事故成因：MODEL_KNOWN_LIMITS 是有序前缀表，grok-4.5 命中 "grok-4" 前缀被
+    // 硬封 16384，导致 11 维度深度报告在 grok-4.5 上必然截断，且用户调大
+    // 「我的模型」的 Max Tokens 也无效（这道闸先生效）。
+    //
+    // 2026-08-01 实查 docs.x.ai / OpenRouter：xAI 未公布 grok-4.5 的单独 output
+    // 上限，只公布 context window 500K。表中已补 ["grok-4.5", 131072] 排在
+    // "grok-4" 之前。本用例锁住顺序，防止后续有人把新条目加到后面而复现事故。
+    it("grok-4.5 不被 grok-4 前缀吃掉（extended 可提升到 32000）", () => {
       const modelConfig = createModelConfig({
         isReasoning: false,
-        maxTokens: 128000, // 配得再大也没用
+        maxTokens: 64000,
         modelId: "grok-4.5",
+      });
+
+      const result = service.mapToParameters(
+        { outputLength: "extended" },
+        modelConfig,
+      );
+
+      expect(result.maxTokens).toBe(32000);
+    });
+
+    it("grok-4 本身仍受 16384 硬限（未误伤既有条目）", () => {
+      const modelConfig = createModelConfig({
+        isReasoning: false,
+        maxTokens: 64000,
+        modelId: "grok-4",
       });
 
       const result = service.mapToParameters(
