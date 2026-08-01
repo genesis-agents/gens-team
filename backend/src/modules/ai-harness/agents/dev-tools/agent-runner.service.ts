@@ -278,6 +278,16 @@ export class InsufficientToolsError extends Error {
   }
 }
 
+/**
+ * extractJsonFromAIResponse 中「对残缺 JSON 做过修复」的 method 取值。
+ * 命中其一 = 模型输出很可能被 token 上限截断，而非模型不会按 schema 输出。
+ */
+const TRUNCATION_REPAIR_METHODS = new Set([
+  "repaired",
+  "unclosedJsonBlock",
+  "unclosedJsonBlockRepaired",
+]);
+
 @Injectable()
 export class AgentRunner {
   private readonly logger = new Logger(AgentRunner.name);
@@ -406,10 +416,24 @@ export class AgentRunner {
       // 改走 extractJsonFromAIResponse 的 7 策略抽取器（含 <think> 剥离、
       // 任意位置 brace counting、truncated JSON repair）。
       let candidate = finalOutput;
+      // ★ 2026-08-01：记录抽取是否走了「截断修复」路径。
+      //
+      // 背景（生产事故）：SingleShotWriter 的 JSON 里 conclusion / citations 排在
+      // 巨大的 sections 数组之后。长报告写到一半撞 token 上限被截断，抽取器的
+      // truncated-JSON repair 把残缺内容修成**合法对象**——但尾部字段已经没了，
+      // 于是 zod 报 `conclusion: Required`。用户看到的是「schema 不匹配」，据此
+      // 合理地怀疑是模型能力问题，真相却是「输出预算不够」。
+      //
+      // provider 的 finishReason==="length" 虽在 adapter 层拿得到，但一路透传到
+      // 这里很侵入；而抽取器的 method 已经如实标记了修复路径，直接用它当截断信号。
+      let repairedFromTruncation = false;
       if (typeof candidate === "string") {
         const extracted = extractJsonFromAIResponse(candidate);
         if (extracted.success) {
           candidate = extracted.data;
+          repairedFromTruncation = TRUNCATION_REPAIR_METHODS.has(
+            extracted.method ?? "",
+          );
         }
         // failed extraction → 保留 string，schema 自己 reject (state=failed)
       }
@@ -454,20 +478,30 @@ export class AgentRunner {
             typeof candidate === "string"
               ? candidate.slice(0, 500)
               : JSON.stringify(candidate).slice(0, 500);
+          // 截断导致的 schema 失败必须说人话：报「输出被截断」而不是让人对着
+          // 缺失字段名去猜模型能力。缺失字段一律是排在 JSON 尾部的那几个。
+          const message = repairedFromTruncation
+            ? `Output truncated before completion (hit the model's max output tokens). ` +
+              `Missing trailing field(s): ${schemaError}. ` +
+              `Raise this model's Max Tokens, or shorten the requested output.`
+            : `Output schema validation failed: ${schemaError}`;
           events.push({
             type: "error",
             agentId: agent.id,
             timestamp: Date.now(),
             payload: {
-              message: `Output schema validation failed: ${schemaError}`,
+              message,
               recoverable: false,
-              failureCode: "RUNNER_OUTPUT_SCHEMA_MISMATCH",
+              failureCode: repairedFromTruncation
+                ? "RUNNER_OUTPUT_TRUNCATED"
+                : "RUNNER_OUTPUT_SCHEMA_MISMATCH",
               diagnostic: {
                 schemaError,
                 actualOutputSnippet: candidateSnippet,
                 actualOutputType: typeof candidate,
                 specId: meta.id,
                 hasUpstreamFailure,
+                truncated: repairedFromTruncation,
               },
             },
           });
@@ -858,6 +892,9 @@ export class AgentRunner {
       exitReason = "empty_response";
     } else if (
       failureCode === "RUNNER_OUTPUT_SCHEMA_MISMATCH" ||
+      // 截断是 schema 失败的一个特例，退出语义相同（都是产出不合格达上限）；
+      // 分开 failureCode 只为让 message / diagnostic 说清真实原因。
+      failureCode === "RUNNER_OUTPUT_TRUNCATED" ||
       failureCode === "REFLEXION_VERIFIER_LOW_SCORE"
     ) {
       exitReason = "validation_rejected_max";

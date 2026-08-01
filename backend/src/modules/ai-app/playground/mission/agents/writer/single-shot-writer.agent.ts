@@ -170,9 +170,17 @@ export class SingleShotWriterAgent extends AgentSpec<
       `  with only generic prose; ground every paragraph in 1-2 specific findings if possible.`,
       ``,
       `## Report shape (return EXACTLY this JSON; field names must match)`,
+      // ★ 2026-08-01 字段顺序刻意如此：conclusion / citations 排在 sections **之前**。
+      //   sections 是整篇报告里最大的一块（deep 档 11 维度可达数万 token）。若它排在
+      //   前面，输出一旦撞 max_tokens，被截掉的就是尾部的 conclusion / citations，
+      //   schema 校验报 `conclusion: Required`——看起来像模型不听话，实为预算不足。
+      //   把短而关键的结论字段前置：即使截断，拿到的也是「有结论、章节不全」的
+      //   可用降级产物，而不是整份作废。
       `{`,
       `  "title": "<<= 80 chars, specific not generic — name the angle>",`,
       `  "summary": "<3-5 sentence executive summary leading with the single most important finding>",`,
+      `  "conclusion": "<actionable takeaways: 3-5 bullet points starting with action verbs>",`,
+      `  "citations": ["<https://...>", ...],  // unique union of all section sources, deduplicated`,
       `  "sections": [`,
       `    {`,
       `      "heading": "<descriptive heading, NOT 'Introduction' / 'Background' / 'Conclusion'>",`,
@@ -180,10 +188,11 @@ export class SingleShotWriterAgent extends AgentSpec<
       `      "sources": ["<https://...>", ...]  // 1-5 valid http(s) URLs that back this section`,
       `    }`,
       `    // produce ${plan.sectionCount} sections`,
-      `  ],`,
-      `  "conclusion": "<actionable takeaways: 3-5 bullet points starting with action verbs>",`,
-      `  "citations": ["<https://...>", ...]  // unique union of all section sources, deduplicated`,
+      `  ]`,
       `}`,
+      ``,
+      `IMPORTANT: emit "conclusion" and "citations" BEFORE "sections" — they are short and`,
+      `must not be lost if the response runs long. Plan them from the analysis you already have.`,
       ``,
       `Field names exactly as shown. All URLs must start with http(s):// and be sourced from the insights — do not fabricate.`,
     ].join("\n");

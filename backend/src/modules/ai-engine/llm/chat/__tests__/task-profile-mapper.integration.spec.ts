@@ -126,6 +126,82 @@ describe("TaskProfileMapperService (extended coverage)", () => {
       expect(result.maxTokens).toBe(4000);
     });
 
+    // ★ 2026-08-01：长输出提升不再限定推理模型。
+    //
+    // 生产事故：SingleShotWriter 组装 11 维度深度报告，声明
+    // outputLength:"extended"，但 grok-4.5 在能力目录里是 reasoning.kind="none"，
+    // 提升块当时包在 `if (isReasoning)` 里，于是只拿到基础 16000 → 输出截断 →
+    // JSON 尾部的 conclusion 丢失 → 报 `conclusion: Required`，看起来像模型不听话。
+    it("非推理模型 + extended：模型上限足够且无已知硬限时提升到 32000", () => {
+      const modelConfig = createModelConfig({
+        isReasoning: false,
+        maxTokens: 64000,
+        // 用不在 MODEL_KNOWN_LIMITS 里的 modelId，避免被硬限表兜回
+        modelId: "some-custom-long-output-model",
+      });
+
+      const result = service.mapToParameters(
+        { outputLength: "extended" },
+        modelConfig,
+      );
+
+      expect(result.maxTokens).toBe(32000);
+    });
+
+    it("非推理模型 + long：同上，提升到 28000", () => {
+      const modelConfig = createModelConfig({
+        isReasoning: false,
+        maxTokens: 64000,
+        modelId: "some-custom-long-output-model",
+      });
+
+      const result = service.mapToParameters(
+        { outputLength: "long" },
+        modelConfig,
+      );
+
+      expect(result.maxTokens).toBe(28000);
+    });
+
+    // ★ 回归守护：grok-4.5 不得被 ["grok-4", 16384] 的前缀匹配吃掉。
+    //
+    // 事故成因：MODEL_KNOWN_LIMITS 是有序前缀表，grok-4.5 命中 "grok-4" 前缀被
+    // 硬封 16384，导致 11 维度深度报告在 grok-4.5 上必然截断，且用户调大
+    // 「我的模型」的 Max Tokens 也无效（这道闸先生效）。
+    //
+    // 2026-08-01 实查 docs.x.ai / OpenRouter：xAI 未公布 grok-4.5 的单独 output
+    // 上限，只公布 context window 500K。表中已补 ["grok-4.5", 131072] 排在
+    // "grok-4" 之前。本用例锁住顺序，防止后续有人把新条目加到后面而复现事故。
+    it("grok-4.5 不被 grok-4 前缀吃掉（extended 可提升到 32000）", () => {
+      const modelConfig = createModelConfig({
+        isReasoning: false,
+        maxTokens: 64000,
+        modelId: "grok-4.5",
+      });
+
+      const result = service.mapToParameters(
+        { outputLength: "extended" },
+        modelConfig,
+      );
+
+      expect(result.maxTokens).toBe(32000);
+    });
+
+    it("grok-4 本身仍受 16384 硬限（未误伤既有条目）", () => {
+      const modelConfig = createModelConfig({
+        isReasoning: false,
+        maxTokens: 64000,
+        modelId: "grok-4",
+      });
+
+      const result = service.mapToParameters(
+        { outputLength: "extended" },
+        modelConfig,
+      );
+
+      expect(result.maxTokens).toBe(16384);
+    });
+
     it("caps extended output (16000) to a small model maxTokens", () => {
       const modelConfig = createModelConfig({
         isReasoning: false,

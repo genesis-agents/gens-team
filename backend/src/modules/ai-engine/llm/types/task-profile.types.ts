@@ -404,6 +404,21 @@ export const MODEL_KNOWN_LIMITS: Array<[string, number]> = [
   ["gemini-3", 65536],
   // xAI
   ["grok-3", 131072],
+  // ★ 2026-08-01：grok-4.5 必须排在 "grok-4" 之前 —— 本表是**有序前缀匹配**，
+  // 否则 grok-4.5 会被 ["grok-4", 16384] 吃掉，被硬封在 16384。
+  //
+  // 生产事故：深度长报告（十余个维度一次性组装）在 grok-4.5 上必然截断，
+  // 调大模型配置里的 Max Tokens 也无效——这道闸先生效。
+  // （L2 不得提及上层业务唯一名，故此处只描述场景形态，见架构边界 spec R0-A5）
+  //
+  // 取值依据（2026-08-01 实查 docs.x.ai 模型页 / model detail 页 / OpenRouter /
+  // promptfoo）：xAI **没有公布 grok-4.5 的单独 output 上限**，只公布 context
+  // window = 500K，约束是「输入+输出共享 context」。有聚合站称 30K，但更严谨的
+  // 来源明确说无独立 output 上限，该数字无法交叉验证，故不采信。
+  // 这里沿用同族 grok-3 的 131072：它是本表既有先例，且新模型输出上限不应低于
+  // 旧模型。本表定位是「防 DB 配错的第二道网」，第一道仍是 modelConfig.maxTokens
+  // （运营方声明值），所以取值偏宽不会直接向 provider 索取超额输出。
+  ["grok-4.5", 131072],
   ["grok-4", 16384],
   // DeepSeek
   ["deepseek-reasoner", 65536],
