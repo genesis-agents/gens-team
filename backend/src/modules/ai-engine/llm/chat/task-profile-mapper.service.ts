@@ -101,19 +101,6 @@ export class TaskProfileMapperService {
         effectiveMaxTokens = Math.max(baseMaxTokens, reasoningMin);
       }
 
-      // 对于 extended/long 输出，如果模型有足够空间才提升
-      if (
-        profile.outputLength === "extended" &&
-        (!modelMaxTokens || modelMaxTokens >= 32000)
-      ) {
-        effectiveMaxTokens = Math.max(effectiveMaxTokens, 32000);
-      } else if (
-        profile.outputLength === "long" &&
-        (!modelMaxTokens || modelMaxTokens >= 28000)
-      ) {
-        effectiveMaxTokens = Math.max(effectiveMaxTokens, 28000);
-      }
-
       if (effectiveMaxTokens !== originalTokens) {
         this.logger.log(
           `[mapToParameters] ★ Reasoning model token boost: ` +
@@ -121,6 +108,36 @@ export class TaskProfileMapperService {
             `(outputLength=${profile.outputLength || "default"}, modelMax=${modelMaxTokens ?? "unknown"})`,
         );
       }
+    }
+
+    // ★ 2026-08-01：长输出提升**不再限定推理模型**。
+    //
+    // 此前这段在 `if (isReasoning)` 里，非推理模型（如 grok-4.5，能力目录标
+    // reasoning.kind="none"）声明 outputLength:"extended" 也只拿到基础 16000。
+    // 生产事故：SingleShotWriter 组装 11 维度深度报告时输出被截断，而 JSON 里
+    // conclusion / citations 排在巨大的 sections 之后，于是尾部字段丢失、
+    // 报成 `conclusion: Required`，看起来像模型不听话，实为预算不足。
+    //
+    // 「写长文」这个需求与模型是否做内部 CoT 无关——推理模型需要额外预算是因为
+    // CoT 吃 token，非推理模型需要是因为**可见输出本身就长**。两者都该提升。
+    //
+    // modelMaxTokens 闸保持不变：不向模型索取超过它声明上限的输出。
+    // 注意与推理模型分支的差异：那里保留了「modelMaxTokens 未知也提升」的逃生口
+    // （推理模型需要尽可能多的 CoT 空间，且该行为是既有的）。通用路径**不能**这样
+    // ——对上限未知的模型索取 28k/32k 输出，provider 可能直接 400。因此这里要求
+    // modelMaxTokens 明确存在且足够大，未知一律不提升，保持原有保守行为。
+    if (
+      profile.outputLength === "extended" &&
+      modelMaxTokens &&
+      modelMaxTokens >= 32000
+    ) {
+      effectiveMaxTokens = Math.max(effectiveMaxTokens, 32000);
+    } else if (
+      profile.outputLength === "long" &&
+      modelMaxTokens &&
+      modelMaxTokens >= 28000
+    ) {
+      effectiveMaxTokens = Math.max(effectiveMaxTokens, 28000);
     }
 
     // 3. 处理模型配置的最大值（推理/非推理统一逻辑）

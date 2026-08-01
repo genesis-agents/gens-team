@@ -283,7 +283,16 @@ describe("TaskProfileMapperService", () => {
 
     it("should not cap when modelId is unknown and modelConfig.maxTokens is high enough", () => {
       // 守护：完全未知 model (knownLimit=null) + modelConfig.maxTokens=32000
-      // 走 outputLength 直出，不被 cap (16000 < 32000)
+      // → 不被 cap 下去。
+      //
+      // ★ 2026-08-01 期望值 16000 → 32000：长输出提升不再限定推理模型（见
+      // task-profile-mapper.service.ts 该分支注释）。本用例的**原意是断言"不被
+      // cap 下去"**，而非"不许提升上去"；模型配置已明确声明支持 32000，按声明
+      // 索取即为正确行为。
+      //
+      // BYOK 保护本身未被削弱——同 describe 下「封顶到 8192 / 4096 / claude-3-opus
+      // 硬限」等用例全部保持通过，且通用提升路径要求 modelMaxTokens 明确存在且
+      // 足够大（未知模型一律不提升）。
       const modelConfig = createMockModelConfig({
         isReasoning: false,
         modelId: "unknown-model-xyz",
@@ -295,8 +304,7 @@ describe("TaskProfileMapperService", () => {
         modelConfig,
       );
 
-      // outputLength=extended 原值，不被 cap
-      expect(result.maxTokens).toBe(16000);
+      expect(result.maxTokens).toBe(32000);
     });
   });
 

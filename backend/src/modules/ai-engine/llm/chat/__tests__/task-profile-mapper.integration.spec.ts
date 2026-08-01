@@ -126,6 +126,66 @@ describe("TaskProfileMapperService (extended coverage)", () => {
       expect(result.maxTokens).toBe(4000);
     });
 
+    // ★ 2026-08-01：长输出提升不再限定推理模型。
+    //
+    // 生产事故：SingleShotWriter 组装 11 维度深度报告，声明
+    // outputLength:"extended"，但 grok-4.5 在能力目录里是 reasoning.kind="none"，
+    // 提升块当时包在 `if (isReasoning)` 里，于是只拿到基础 16000 → 输出截断 →
+    // JSON 尾部的 conclusion 丢失 → 报 `conclusion: Required`，看起来像模型不听话。
+    it("非推理模型 + extended：模型上限足够且无已知硬限时提升到 32000", () => {
+      const modelConfig = createModelConfig({
+        isReasoning: false,
+        maxTokens: 64000,
+        // 用不在 MODEL_KNOWN_LIMITS 里的 modelId，避免被硬限表兜回
+        modelId: "some-custom-long-output-model",
+      });
+
+      const result = service.mapToParameters(
+        { outputLength: "extended" },
+        modelConfig,
+      );
+
+      expect(result.maxTokens).toBe(32000);
+    });
+
+    it("非推理模型 + long：同上，提升到 28000", () => {
+      const modelConfig = createModelConfig({
+        isReasoning: false,
+        maxTokens: 64000,
+        modelId: "some-custom-long-output-model",
+      });
+
+      const result = service.mapToParameters(
+        { outputLength: "long" },
+        modelConfig,
+      );
+
+      expect(result.maxTokens).toBe(28000);
+    });
+
+    // ★ 钉住 grok-4.5 的真实行为（本次事故的直接成因）。
+    //
+    // MODEL_KNOWN_LIMITS 是**前缀匹配**表，其中 ["grok-4", 16384]。grok-4.5 命中
+    // "grok-4" 前缀，因此无论 DB 里 maxTokens 配多大、无论提升逻辑怎么放宽，
+    // 输出都被硬封在 16384。这意味着：
+    //   1. 「调大我的模型的 Max Tokens」对 grok-4.5 无效
+    //   2. 11 维度深度报告的单次 JSON 组装在 grok-4.5 上必然截断
+    // 这条测试存在的意义是让这个约束显式、可发现，而不是让人再花一小时去追。
+    it("grok-4.5 被 MODEL_KNOWN_LIMITS 前缀硬封在 16384（调大配置无效）", () => {
+      const modelConfig = createModelConfig({
+        isReasoning: false,
+        maxTokens: 128000, // 配得再大也没用
+        modelId: "grok-4.5",
+      });
+
+      const result = service.mapToParameters(
+        { outputLength: "extended" },
+        modelConfig,
+      );
+
+      expect(result.maxTokens).toBe(16384);
+    });
+
     it("caps extended output (16000) to a small model maxTokens", () => {
       const modelConfig = createModelConfig({
         isReasoning: false,

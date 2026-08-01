@@ -206,6 +206,11 @@ export type HarnessFailureCode =
   | "REFLEXION_CONSECUTIVE_EMPTY"
   // L2 Runner
   | "RUNNER_OUTPUT_SCHEMA_MISMATCH"
+  // 输出撞模型 max_tokens 被截断，导致 JSON 尾部字段缺失而未过 schema。
+  // 与 PROVIDER_TRUNCATED 不同：那个是**输入 context 超长**（context_too_long），
+  // 这个是**输出预算不够**，两种故障的处置完全不同（一个要压缩输入、一个要调大
+  // 输出上限），不能混用同一个 code。
+  | "RUNNER_OUTPUT_TRUNCATED"
   | "RUNNER_INPUT_SCHEMA_MISMATCH"
   | "RUNNER_WALL_TIME_EXCEEDED"
   // L6 Tool
