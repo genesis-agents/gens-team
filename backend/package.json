@@ -85,7 +85,7 @@
     "@octokit/rest": "^22.0.1",
     "@prisma/client": "^6.19.3",
     "archiver": "^7.0.1",
-    "axios": "^1.13.2",
+    "axios": "^1.18.0",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.76.10",
     "cache-manager": "^7.2.8",
