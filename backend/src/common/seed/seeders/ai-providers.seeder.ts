@@ -42,6 +42,7 @@ export class AiProvidersSeeder implements ISeeder {
           capabilities: p.capabilities,
           displayOrder: p.displayOrder,
           docUrl: p.docUrl ?? null,
+          apiKeyUrl: p.apiKeyUrl ?? null,
           freeTierNote: p.freeTierNote ?? null,
           description: p.description ?? null,
           isEnabled: true,

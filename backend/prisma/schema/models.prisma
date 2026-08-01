@@ -10476,6 +10476,10 @@ model AIProvider {
   iconUrl         String?  @map("icon_url") @db.VarChar(500)
   description     String?  @db.Text
   docUrl          String?  @map("doc_url") @db.VarChar(500)
+  /// 申领 API Key 的控制台页地址（区别于 docUrl 的文档首页）。
+  /// 用户在「API Keys」页点帮助时直达此处；为空则前端回落到 docUrl。
+  /// 本地部署类 provider（ollama / vLLM / LM Studio）无需 Key，恒为 null。
+  apiKeyUrl       String?  @map("api_key_url") @db.VarChar(500)
   freeTierNote    String?  @map("free_tier_note") @db.VarChar(300)
   /// 模型探测正则（一键自动配置时按此 patterns 匹配 GET /v1/models 返回的 ids）
   /// 形如 [{"modelType": "EMBEDDING", "patterns": ["^voyage-3"]}]

@@ -35,6 +35,13 @@ export interface ProviderInfo {
   capabilities?: string[];
   scope?: string;
   isCustom?: boolean;
+  iconUrl?: string;
+  /** 文档首页 */
+  docUrl?: string;
+  /** 申领 API Key 的控制台页；为空时回落到 docUrl */
+  apiKeyUrl?: string;
+  /** 免费额度说明（如「免费层每分钟 1500 req」） */
+  freeTierNote?: string;
 }
 
 interface UserApiKeysResponse {

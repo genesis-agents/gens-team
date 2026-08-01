@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import {
+  ExternalLink,
   Eye,
+  HelpCircle,
   Key,
   KeyRound,
   Pencil,
@@ -31,7 +33,11 @@ import {
   type CreateSecretBody,
   type UpdateSecretBody,
 } from '@/hooks/features/useUserSecrets';
-import { useUserApiKeys } from '@/hooks/features/useUserApiKeys';
+import {
+  useUserApiKeys,
+  type ProviderInfo,
+} from '@/hooks/features/useUserApiKeys';
+import { ProviderKeyHelpModal } from './ProviderKeyHelpModal';
 import { UserApiKeyDrawer } from '@/components/me/api-keys/UserApiKeyDrawer';
 import { SecretKeysDrawer } from '@/components/admin/secrets/SecretKeysDrawer';
 import { SecretValueModal } from '@/components/admin/secrets/SecretValueModal';
@@ -41,9 +47,11 @@ import { SecretValueModal } from '@/components/admin/secrets/SecretValueModal';
 interface AddKeyModalProps {
   onClose: () => void;
   onSubmit: (body: CreateSecretBody) => Promise<boolean>;
+  /** 供 provider 字段做「去哪申请 Key」的上下文直达链接 */
+  providers: ProviderInfo[];
 }
 
-function AddKeyModal({ onClose, onSubmit }: AddKeyModalProps) {
+function AddKeyModal({ onClose, onSubmit, providers }: AddKeyModalProps) {
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState('');
@@ -56,6 +64,17 @@ function AddKeyModal({ onClose, onSubmit }: AddKeyModalProps) {
 
   // AI_MODEL 类密钥后端强制要求 provider（路由到对应 LLM provider），其余类别可选
   const providerMissing = category === 'AI_MODEL' && !provider.trim();
+
+  // 按已输入的 provider 在 ai_providers 里找申领页（slug 或显示名，大小写不敏感）；
+  // apiKeyUrl 缺失时回落 docUrl，都没有（本地部署类）则不显示链接
+  const matchedProviderHref = useMemo(() => {
+    const q = provider.trim().toLowerCase();
+    if (!q) return null;
+    const hit = providers.find(
+      (p) => p.id.toLowerCase() === q || p.name.toLowerCase() === q
+    );
+    return hit?.apiKeyUrl || hit?.docUrl || null;
+  }, [provider, providers]);
 
   const handleSubmit = async () => {
     if (!name.trim() || !value.trim() || providerMissing) return;
@@ -155,6 +174,18 @@ function AddKeyModal({ onClose, onSubmit }: AddKeyModalProps) {
             <p className="mt-1 text-xs text-amber-600">
               {t('me.apiKeys.fieldProviderAiModelHint')}
             </p>
+          )}
+          {/* 已填 provider 且能在 ai_providers 里匹配到时，直接给申领页入口 */}
+          {matchedProviderHref && (
+            <a
+              href={matchedProviderHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              {t('me.apiKeys.help.getKeyFor', { provider: provider.trim() })}
+              <ExternalLink className="h-3 w-3" />
+            </a>
           )}
         </div>
         <div>
@@ -417,11 +448,14 @@ export function UserApiKeysTab() {
 
   // ★ 2026-05-29 P4：AI_MODEL 行的同名多 Key 管理（admin 同款 UserApiKeyDrawer + MultiKeyTable）
   const apiKeys = useUserApiKeys();
+  // ai_providers 单一真源，供「去哪申请 Key」帮助与表单内直达链接共用
+  const providers = apiKeys.providers;
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
+  const [showKeyHelp, setShowKeyHelp] = useState(false);
   const [editingItem, setEditingItem] = useState<UserSecretItem | null>(null);
   // ★ 揭示密钥明文（与 admin SecretsManager 同款 SecretValueModal）
   const [viewingItem, setViewingItem] = useState<UserSecretItem | null>(null);
@@ -520,6 +554,16 @@ export function UserApiKeysTab() {
           <Plus className="mr-1.5 h-4 w-4" />
           {t('me.apiKeys.addKey')}
         </Button>
+        {/* 「去哪申请 Key」帮助——此前整个页面没有任何获取指引 */}
+        <button
+          type="button"
+          onClick={() => setShowKeyHelp(true)}
+          className="rounded-lg border border-gray-300 p-2 transition-colors hover:bg-gray-100"
+          title={t('me.apiKeys.help.title')}
+          aria-label={t('me.apiKeys.help.title')}
+        >
+          <HelpCircle className="h-4 w-4 text-gray-500" />
+        </button>
       </div>
 
       {/* Table */}
@@ -606,6 +650,14 @@ export function UserApiKeysTab() {
         <AddKeyModal
           onClose={() => setShowAddModal(false)}
           onSubmit={createSecret}
+          providers={providers}
+        />
+      )}
+      {showKeyHelp && (
+        <ProviderKeyHelpModal
+          open
+          onClose={() => setShowKeyHelp(false)}
+          providers={providers}
         />
       )}
       {editingItem && (

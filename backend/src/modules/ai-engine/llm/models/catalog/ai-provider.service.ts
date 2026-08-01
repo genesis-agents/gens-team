@@ -16,6 +16,8 @@ export interface AiProviderInput {
   iconUrl?: string;
   description?: string;
   docUrl?: string;
+  /** 申领 API Key 的控制台页；为空时前端回落到 docUrl */
+  apiKeyUrl?: string;
   freeTierNote?: string;
   displayOrder?: number;
   isEnabled?: boolean;

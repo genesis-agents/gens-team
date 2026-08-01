@@ -71,6 +71,12 @@ class UpsertAIProviderDto {
   @MaxLength(500)
   docUrl?: string;
 
+  /** 申领 API Key 的控制台页（区别于 docUrl 的文档首页），admin 可维护 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  apiKeyUrl?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(300)
