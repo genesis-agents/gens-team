@@ -150,6 +150,17 @@ jobs:
       - name: Fix rollup optional dep (npm bug #4828)
         run: npm install @rollup/rollup-linux-x64-gnu --no-save || true
 
+      - name: Frontend Docker lockfile sync check
+        # 2026-07-31：与 backend 那道门对称。frontend 同样维护独立
+        # package-lock.json 供 Dockerfile npm ci 使用，但此前没有这道校验——
+        # 加上 Dockerfile 当时用的是 npm install（会静默吸收漂移），导致
+        # frontend/package-lock.json 漂了一段时间（缺 @xyflow/react、vitest
+        # 版本对不上）都没人发现，直到 backend 因用 npm ci 当场炸才被顺带查出。
+        # --workspaces=false 是关键：不加会解析到根 workspace lock，校验不到
+        # Docker 真实路径（COPY 到 /app 后上面没有 workspace）。
+        run: npm ci --dry-run --workspaces=false
+        working-directory: ./frontend
+
       - name: Run tests
         run: npm run test:ci -- --coverage
         working-directory: ./frontend
