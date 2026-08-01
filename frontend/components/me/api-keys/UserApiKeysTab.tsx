@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import {
+  ChevronRight,
   ExternalLink,
   Eye,
   HelpCircle,
@@ -44,44 +45,96 @@ import { SecretValueModal } from '@/components/admin/secrets/SecretValueModal';
 
 // ─── Add Key Modal ─────────────────────────────────────────────────────────────
 
+/**
+ * 由 provider slug 推导一个在同用户下不冲突的标识符。
+ *
+ * name 的唯一约束是 (name, userId)（见 Secret model 注释），所以不能直接用
+ * provider 当 name——同一服务商配第二把 Key 会撞。这里按 `<slug>-key-N` 递增。
+ */
+export function deriveKeyName(
+  providerSlug: string,
+  takenNames: string[]
+): string {
+  const base = (providerSlug || 'api').toLowerCase().trim() || 'api';
+  const taken = new Set(takenNames.map((n) => n.toLowerCase()));
+  for (let i = 1; i < 500; i++) {
+    const candidate = `${base}-key-${i}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  // 理论上不可达（同一 provider 500 把 Key）；兜底避免返回已占用值
+  return `${base}-key-${Date.now()}`;
+}
+
 interface AddKeyModalProps {
   onClose: () => void;
   onSubmit: (body: CreateSecretBody) => Promise<boolean>;
-  /** 供 provider 字段做「去哪申请 Key」的上下文直达链接 */
+  /** ai_providers 单一真源：驱动服务商下拉 + 申领页直达链接 */
   providers: ProviderInfo[];
+  /** 已存在的密钥标识符，用于自动生成时避开冲突 */
+  takenNames: string[];
 }
 
-function AddKeyModal({ onClose, onSubmit, providers }: AddKeyModalProps) {
+/**
+ * 添加密钥 —— 极简表单（2026-08-01 重做）。
+ *
+ * 改之前要填 6 个字段（标识符 / 显示名 / 类别 / Provider / 密钥值 / 描述），
+ * 但真正只有两条信息是用户独有的：**哪个服务商** 和 **密钥值**。其余全可推导：
+ *   - 标识符：<provider>-key-N，按已有 Key 递增避开 (name, userId) 唯一冲突
+ *   - 显示名：服务商显示名
+ *   - 类别：本页 AI_MODEL 是压倒性主路径
+ *
+ * 另一处更实质的修复：Provider 原本是**自由文本**。后端 canonicalizeProvider
+ * 只归一少数别名（claude→anthropic 等），打成 open-ai / azure 之类会顺利存下，
+ * 之后解析 endpoint 时查不到 ai_providers，表现为「配了却不生效」。而我们本来
+ * 就有 37 个服务商的权威清单（ai_providers，/user/api-keys 已返回）——让用户手打
+ * 一个已知枚举是设计错误。现改为下拉，打错的可能性归零。
+ */
+function AddKeyModal({
+  onClose,
+  onSubmit,
+  providers,
+  takenNames,
+}: AddKeyModalProps) {
   const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
-  const [name, setName] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [category, setCategory] = useState<SecretCategory>('AI_MODEL');
   const [provider, setProvider] = useState('');
   const [value, setValue] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  // 高级项：留空则用推导值；用户改过就以用户输入为准
+  const [nameOverride, setNameOverride] = useState('');
+  const [displayNameOverride, setDisplayNameOverride] = useState('');
+  const [category, setCategory] = useState<SecretCategory>('AI_MODEL');
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
 
   // AI_MODEL 类密钥后端强制要求 provider（路由到对应 LLM provider），其余类别可选
   const providerMissing = category === 'AI_MODEL' && !provider.trim();
 
-  // 按已输入的 provider 在 ai_providers 里找申领页（slug 或显示名，大小写不敏感）；
-  // apiKeyUrl 缺失时回落 docUrl，都没有（本地部署类）则不显示链接
-  const matchedProviderHref = useMemo(() => {
-    const q = provider.trim().toLowerCase();
-    if (!q) return null;
-    const hit = providers.find(
-      (p) => p.id.toLowerCase() === q || p.name.toLowerCase() === q
-    );
-    return hit?.apiKeyUrl || hit?.docUrl || null;
-  }, [provider, providers]);
+  const selectedProvider = useMemo(
+    () => providers.find((p) => p.id === provider),
+    [provider, providers]
+  );
+
+  // 申领页优先，回落文档首页；本地部署类（两者皆无）不显示链接
+  const matchedProviderHref =
+    selectedProvider?.apiKeyUrl || selectedProvider?.docUrl || null;
+
+  const derivedName = useMemo(
+    () => (provider ? deriveKeyName(provider, takenNames) : ''),
+    [provider, takenNames]
+  );
+  const derivedDisplayName = selectedProvider?.name || provider;
+
+  const effectiveName = nameOverride.trim() || derivedName;
+  const effectiveDisplayName =
+    displayNameOverride.trim() || derivedDisplayName || undefined;
 
   const handleSubmit = async () => {
-    if (!name.trim() || !value.trim() || providerMissing) return;
+    if (!effectiveName || !value.trim() || providerMissing) return;
     setSubmitting(true);
     const ok = await onSubmit({
-      name: name.trim(),
-      displayName: displayName.trim() || undefined,
+      name: effectiveName,
+      displayName: effectiveDisplayName,
       category,
       provider: provider.trim() || undefined,
       value: value.trim(),
@@ -114,7 +167,7 @@ function AddKeyModal({ onClose, onSubmit, providers }: AddKeyModalProps) {
             size="sm"
             onClick={handleSubmit}
             disabled={
-              submitting || !name.trim() || !value.trim() || providerMissing
+              submitting || !effectiveName || !value.trim() || providerMissing
             }
           >
             {submitting ? t('me.apiKeys.saving') : t('me.apiKeys.save')}
@@ -123,59 +176,25 @@ function AddKeyModal({ onClose, onSubmit, providers }: AddKeyModalProps) {
       }
     >
       <div className="space-y-4">
+        {/* ① 服务商 —— 下拉而非自由文本：ai_providers 是权威清单，手打会静默配错 */}
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-700">
-            {t('me.apiKeys.fieldName')} *
-          </label>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. openai-key-1"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700">
-            {t('me.apiKeys.fieldDisplayName')}
-          </label>
-          <Input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="e.g. OpenAI Production Key"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700">
-            {t('me.apiKeys.fieldCategory')} *
+            {t('me.apiKeys.fieldProviderRequired')} *
           </label>
           <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as SecretCategory)}
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
             className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary"
           >
-            {SECRET_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
+            <option value="">{t('me.apiKeys.selectProvider')}</option>
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.freeTierNote ? ` · ${p.freeTierNote}` : ''}
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700">
-            {category === 'AI_MODEL'
-              ? `${t('me.apiKeys.fieldProviderRequired')} *`
-              : t('me.apiKeys.fieldProvider')}
-          </label>
-          <Input
-            value={provider}
-            onChange={(e) => setProvider(e.target.value)}
-            placeholder="e.g. openai"
-          />
-          {category === 'AI_MODEL' && !provider.trim() && (
-            <p className="mt-1 text-xs text-amber-600">
-              {t('me.apiKeys.fieldProviderAiModelHint')}
-            </p>
-          )}
-          {/* 已填 provider 且能在 ai_providers 里匹配到时，直接给申领页入口 */}
+          {/* 选中即给申领页入口，省掉「先去哪申请」这一步 */}
           {matchedProviderHref && (
             <a
               href={matchedProviderHref}
@@ -183,11 +202,15 @@ function AddKeyModal({ onClose, onSubmit, providers }: AddKeyModalProps) {
               rel="noopener noreferrer"
               className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
             >
-              {t('me.apiKeys.help.getKeyFor', { provider: provider.trim() })}
+              {t('me.apiKeys.help.getKeyFor', {
+                provider: derivedDisplayName,
+              })}
               <ExternalLink className="h-3 w-3" />
             </a>
           )}
         </div>
+
+        {/* ② 密钥值 */}
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-700">
             {t('me.apiKeys.fieldValue')} *
@@ -200,27 +223,95 @@ function AddKeyModal({ onClose, onSubmit, providers }: AddKeyModalProps) {
             placeholder={t('me.apiKeys.fieldValuePlaceholder')}
           />
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700">
-            {t('me.apiKeys.fieldDescription')}
-          </label>
-          <Input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder=""
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="add-isActive"
-            checked={isActive}
-            onChange={(e) => setIsActive(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-          />
-          <label htmlFor="add-isActive" className="text-sm text-gray-700">
-            {t('me.apiKeys.fieldIsActive')}
-          </label>
+
+        {/* 其余字段全部可推导 / 有合理默认，收进高级区 */}
+        <div className="border-t border-gray-100 pt-3">
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
+          >
+            <ChevronRight
+              className={`h-3.5 w-3.5 transition-transform ${
+                showAdvanced ? 'rotate-90' : ''
+              }`}
+            />
+            {t('me.apiKeys.advanced')}
+          </button>
+
+          {!showAdvanced && provider && (
+            <p className="mt-1.5 text-xs text-gray-400">
+              {t('me.apiKeys.derivedSummary', {
+                name: effectiveName,
+                displayName: effectiveDisplayName ?? '',
+              })}
+            </p>
+          )}
+
+          {showAdvanced && (
+            <div className="mt-3 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  {t('me.apiKeys.fieldName')}
+                </label>
+                <Input
+                  value={nameOverride}
+                  onChange={(e) => setNameOverride(e.target.value)}
+                  placeholder={derivedName || 'e.g. openai-key-1'}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  {t('me.apiKeys.fieldDisplayName')}
+                </label>
+                <Input
+                  value={displayNameOverride}
+                  onChange={(e) => setDisplayNameOverride(e.target.value)}
+                  placeholder={derivedDisplayName || 'e.g. OpenAI'}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  {t('me.apiKeys.fieldCategory')} *
+                </label>
+                <select
+                  value={category}
+                  onChange={(e) =>
+                    setCategory(e.target.value as SecretCategory)
+                  }
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  {SECRET_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700">
+                  {t('me.apiKeys.fieldDescription')}
+                </label>
+                <Input
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder=""
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="add-isActive"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                <label htmlFor="add-isActive" className="text-sm text-gray-700">
+                  {t('me.apiKeys.fieldIsActive')}
+                </label>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Modal>
@@ -651,6 +742,7 @@ export function UserApiKeysTab() {
           onClose={() => setShowAddModal(false)}
           onSubmit={createSecret}
           providers={providers}
+          takenNames={secrets.map((s) => s.name)}
         />
       )}
       {showKeyHelp && (

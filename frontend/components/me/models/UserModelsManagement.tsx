@@ -171,6 +171,12 @@ export function UserModelsManagement() {
   const [search, setSearch] = useState('');
   const [providerFilter, setProviderFilter] = useState<string>('');
   const [showAdd, setShowAdd] = useState(false);
+  // 从「模型需求概览」点「立即添加」时带上目标类型——此前不传，弹层用默认值
+  // （标准聊天 + 你唯一那把 Key 的服务商）打开，用户点「向量嵌入」却进到一个
+  // 配不出 embedding 的组合里，且得不到任何解释。
+  const [addModelType, setAddModelType] = useState<UserModelType | undefined>(
+    undefined
+  );
   const [editing, setEditing] = useState<UserModelConfig | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, TestResult>>(
@@ -364,7 +370,10 @@ export function UserModelsManagement() {
                   count={c.count}
                   hasEnabled={c.hasEnabled}
                   hasDefault={c.hasDefault}
-                  onAdd={() => setShowAdd(true)}
+                  onAdd={() => {
+                    setAddModelType(opt.value);
+                    setShowAdd(true);
+                  }}
                 />
               );
             })}
@@ -777,13 +786,16 @@ export function UserModelsManagement() {
           apiKey=""
           apiEndpoint={addApiKeyHint?.apiEndpoint ?? undefined}
           initial={editing}
+          initialModelType={addModelType}
           onClose={() => {
             setShowAdd(false);
             setEditing(null);
+            setAddModelType(undefined);
           }}
           onSaved={() => {
             setShowAdd(false);
             setEditing(null);
+            setAddModelType(undefined);
             void refresh();
           }}
         />
