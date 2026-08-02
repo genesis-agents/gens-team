@@ -335,6 +335,61 @@ describe("ReActLoop — Extended coverage", () => {
     expect(validationCallCount).toBe(3);
   });
 
+  // ── 2026-08-02 回归：force-accept 收下截断的字符串当产物 ──────────────────
+  //
+  // 用户实证 prod：grok-4.5 输出被 maxTokens 截断 → JSON 抽取失败 → 兜底把 raw
+  // 字符串当 finalize.output → 三次 finalize 全挂 → force-accept。
+  // issues 里明写 `<root>: Expected object, received string`，而那段字符串是
+  // **断在半截的 JSON**。把它当产物传下去，下游要么解析崩、要么把半截数据当完整
+  // 结果 —— 比没有产物更坏，因为它看起来"成功了"。
+  it("force-accept 时若产物是字符串而 schema 要对象 → 吐空串，不把截断内容传给下游", async () => {
+    const truncated =
+      '{"factTable":[{"id":"fact-1","entity":"某基准","attribute":"得分","value":"45.9%","sour';
+    const chat = mkChat([
+      { content: truncated },
+      { content: truncated },
+      { content: truncated },
+    ]);
+    const reg = mkToolRegistry({});
+    const hooks = new HookRegistry();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invoker = new ToolInvoker(reg as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const loop = new ReActLoop(chat as any, invoker, hooks);
+
+    // 模拟真实 zod 报文：根节点期望对象、实际收到字符串
+    const outputSchemaValidator = (output: unknown) =>
+      typeof output === "string"
+        ? {
+            ok: false as const,
+            issues:
+              "Schema: <root>: Expected object, received string (code=invalid_type)",
+          }
+        : { ok: true as const };
+
+    const events = await drain(
+      loop.run(makeEnvelope(), criteria, {
+        agentId: "trunc1",
+        outputSchemaValidator,
+      }),
+    );
+
+    const outputEvt = events.find((e) => e.type === "output");
+    expect(outputEvt).toBeDefined();
+    // 关键断言：不许把断掉的 JSON 片段当产物
+    expect(outputEvt!.payload.output).toBe("");
+    expect(outputEvt!.payload.output).not.toContain("factTable");
+
+    // 诊断里要留下线索，便于排障时一眼看出是截断而非模型不听话
+    const errEvt = events.find(
+      (e) =>
+        e.type === "error" &&
+        (e.payload as { diagnostic?: Record<string, unknown> }).diagnostic
+          ?.truncatedStringInFinalizeSlot === true,
+    );
+    expect(errEvt).toBeDefined();
+  });
+
   it("accepts suboptimal output after MAX_FINALIZE_REJECTS (3) consecutive rejections", async () => {
     // All finalize outputs are bad
     const chat = mkChat([

@@ -1481,6 +1481,13 @@ export class ReActLoop implements IAgentLoop {
               issues: issuesParts.join("; "),
               candidateOutput: output,
             });
+            // ★ 2026-08-02：schema 期待结构化产物、实际拿到字符串 —— 典型是输出被
+            //   maxTokens 截断后 JSON 抽取失败、兜底把 raw 当 finalize.output。
+            //   这种"产物"不可用，force-accept 时必须挡在下游之外（见下方 output 事件）。
+            const forceAcceptIsBrokenString =
+              typeof output === "string" &&
+              issuesParts.some((p) => /received string/i.test(p));
+
             // 防死循环：连续 N 次 finalize 不达标 → 强制退出，不再让 LLM 改
             if (finalizeRejectCount >= MAX_FINALIZE_REJECTS) {
               this.logger.warn(
@@ -1496,11 +1503,22 @@ export class ReActLoop implements IAgentLoop {
                   rejectCount: finalizeRejectCount,
                   lastIssues: issuesParts.join("; "),
                   toolCallInFinalizeSlot: finalizeIsToolCallEnvelope,
+                  truncatedStringInFinalizeSlot: forceAcceptIsBrokenString,
                 },
               });
-              // tool-call 信封不是合法产物 → 吐空串，避免下游把 {kind:tool_call} 当 findings
+              // 两类"不是合法产物"的东西不许流向下游，一律吐空串：
+              //   1. tool-call 信封 —— 下游会把 {kind:tool_call} 当 findings
+              //   2. ★ 2026-08-02 新增：schema 要对象、实际是字符串。
+              //      用户实证 prod：grok-4.5 输出被 maxTokens 截断，三次 finalize
+              //      全挂，force-accept 收下一段**断在半截的 JSON 字符串**，
+              //      issues 里明写 `<root>: Expected object, received string`。
+              //      把它当产物传下去，下游要么解析崩、要么把半截数据当完整结果
+              //      —— 比没有产物更坏，因为它看起来"成功了"。
               yield this.makeEvent(agentId, "output", {
-                output: finalizeIsToolCallEnvelope ? "" : (output ?? ""),
+                output:
+                  finalizeIsToolCallEnvelope || forceAcceptIsBrokenString
+                    ? ""
+                    : (output ?? ""),
               });
               stopReason = "completed";
               yield this.makeEvent(agentId, "terminated", {

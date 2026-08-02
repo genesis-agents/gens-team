@@ -142,10 +142,41 @@ export class TaskProfileMapperService {
 
     // 3. 处理模型配置的最大值（推理/非推理统一逻辑）
     if (modelMaxTokens && effectiveMaxTokens > modelMaxTokens) {
-      this.logger.debug(
-        `[mapToParameters] Capping tokens at model max: ` +
-          `${effectiveMaxTokens} → ${modelMaxTokens} (${modelConfig?.modelId})`,
-      );
+      // ★ 2026-08-02：配置值**低于该模型已知真实上限**时必须大声报警。
+      //
+      //   用户实证 prod：一条 grok-4.5 的 UserModelConfig 存着 maxTokens=4096
+      //   （旧版创建逻辑的硬编码默认值，不是用户选的），于是
+      //     · 上面 extended/long 提升要求 >=32000/28000 → 一条都不生效
+      //     · 这里直接砍到 4096
+      //   每次调用只有 4096 输出预算，reconciler 的巨型 JSON 必截断。模型自己
+      //   在 thinking 里写「上次输出被截断」，而我们的日志里只看到下游一堆
+      //   `figureCandidates: Required` —— 看起来像模型不听话，实为预算不足。
+      //
+      //   这条此前是 logger.debug（生产不打印），而下面第 4 步「超过已知 API
+      //   上限」反倒是 warn 且明说要改库。真正咬人的那条静默，不咬人的那条喧哗
+      //   —— 这个不对称让根因整整一天不可见。
+      //
+      //   判据用 knownLimit 而非绝对值：配置值 >= 已知上限时是合法约束（用户
+      //   有意压预算 / 模型确实只有这么大），保持 debug 不吵。
+      const realLimit = getKnownModelLimit(modelConfig?.modelId ?? "");
+      if (realLimit && modelMaxTokens < realLimit) {
+        const staleKey = `stale:${modelConfig?.modelId ?? ""}`;
+        if (!this.warnedHardCaps.has(staleKey)) {
+          this.logger.warn(
+            `[mapToParameters] 模型 ${modelConfig?.modelId} 配置的 maxTokens=${modelMaxTokens}，` +
+              `远低于该模型已知真实上限 ${realLimit} —— 本次请求被从 ${effectiveMaxTokens} ` +
+              `砍到 ${modelMaxTokens}，长输出任务（报告/整合/写作）会被截断，` +
+              `表现为下游 schema 报一堆字段 Required。` +
+              `修法：到「我的模型」把 ${modelConfig?.modelId} 的 Max Tokens 改为 ${realLimit}。`,
+          );
+          this.warnedHardCaps.add(staleKey);
+        }
+      } else {
+        this.logger.debug(
+          `[mapToParameters] Capping tokens at model max: ` +
+            `${effectiveMaxTokens} → ${modelMaxTokens} (${modelConfig?.modelId})`,
+        );
+      }
       effectiveMaxTokens = modelMaxTokens;
     }
 

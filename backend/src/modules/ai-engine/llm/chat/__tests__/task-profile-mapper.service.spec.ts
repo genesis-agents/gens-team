@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { TaskProfileMapperService } from "../task-profile-mapper.service";
 import type { TaskProfile } from "../../types";
@@ -245,6 +246,57 @@ describe("TaskProfileMapperService", () => {
       );
 
       expect(result.maxTokens).toBe(4096);
+    });
+
+    // ── 2026-08-02 回归：陈旧 maxTokens 把长输出砍到截断，且**无声** ──────
+    //
+    // 用户实证 prod：一条 grok-4.5 的 UserModelConfig 存着 maxTokens=4096（旧版
+    // 创建逻辑的硬编码默认值，不是用户选的）。extended 提升要求 >=32000 → 不生效；
+    // 随后被砍到 4096。reconciler 的巨型 JSON 每次都截断，模型自己在 thinking 里
+    // 写「上次输出被截断」，而我们日志里只看到下游一堆 `Required`。
+    //
+    // 这条 cap 此前是 logger.debug（生产不打印），而"超过已知 API 上限"那条反倒
+    // 是 warn —— 真正咬人的静默、不咬人的喧哗，根因整天不可见。
+    it("配置值远低于已知真实上限 → 发 warn 指出该改哪里（此前是 debug，生产不可见）", () => {
+      const warnSpy = jest
+        .spyOn(Logger.prototype, "warn")
+        .mockImplementation(() => undefined);
+      const modelConfig = createMockModelConfig({
+        isReasoning: false,
+        modelId: "grok-4.5", // MODEL_KNOWN_LIMITS 里有真实上限
+        maxTokens: 4096, // 旧默认值，远低于真实上限
+      });
+
+      const result = service.mapToParameters(
+        { outputLength: "extended" },
+        modelConfig,
+      );
+
+      // 行为不变：仍然尊重配置值（不擅自替用户放宽预算）
+      expect(result.maxTokens).toBe(4096);
+      // 但必须留下可见线索
+      expect(warnSpy).toHaveBeenCalled();
+      const msg = warnSpy.mock.calls.map((c) => String(c[0])).join(" ");
+      expect(msg).toContain("grok-4.5");
+      expect(msg).toContain("4096");
+      warnSpy.mockRestore();
+    });
+
+    it("配置值 >= 已知真实上限 → 不发 warn（合法约束，不吵）", () => {
+      const warnSpy = jest
+        .spyOn(Logger.prototype, "warn")
+        .mockImplementation(() => undefined);
+      const modelConfig = createMockModelConfig({
+        isReasoning: false,
+        modelId: "claude-3.5-sonnet", // 已知上限 8192
+        maxTokens: 8192, // 就是真实上限，配置正确
+      });
+
+      service.mapToParameters({ outputLength: "extended" }, modelConfig);
+
+      const msg = warnSpy.mock.calls.map((c) => String(c[0])).join(" ");
+      expect(msg).not.toContain("远低于该模型已知真实上限");
+      warnSpy.mockRestore();
     });
 
     it("should hard cap via getKnownModelLimit when modelConfig.maxTokens exceeds known API limit", () => {
