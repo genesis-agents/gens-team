@@ -7713,7 +7713,9 @@
       "noProviderSupports": "No built-in provider supports \"{{type}}\". Choose \"Other / Custom\" and enter the endpoint manually.",
       "needKeyFor": "None of the providers you have keys for supports \"{{type}}\". Supported: {{providers}}. Add a key for one of them under My Keys first.",
       "needKeyBanner": "None of your current providers supports this type. Add a key for one of these first:",
-      "applyKeyFor": "Get a {{provider}} key →"
+      "applyKeyFor": "Get a {{provider}} key →",
+      "maxTokensPlaceholder": "Leave empty — derived from the model's known limit",
+      "maxTokensHint": "Setting this too low truncates long outputs (reports, reconciliation, writing) and surfaces downstream as a pile of missing-field errors. Leave empty if unsure."
     }
   },
   "radar": {

@@ -335,6 +335,55 @@ describe("ReActLoop — Extended coverage", () => {
     expect(validationCallCount).toBe(3);
   });
 
+  // ── 2026-08-02 回归：unsupported-kind 纠错在生产配置下是死代码 ────────────
+  //
+  // 审计发现：该分支原本被包在 `!criteria.terminateOn?.includes("finalize")` 里，
+  // 而 HarnessedAgent 硬编码 `terminateOn: ["finalize"]`，且 agent-factory 是全仓
+  // 仅有的两个 HarnessedAgent 构造点 —— 所有 spec agent 恒定短路，新加的第二道网
+  // 从未被执行过。原有的两条测试只测纯函数，正好看不见这条死路径。
+  //
+  // 本用例用**生产同款** criteria 驱动，故意让它在修复前必红。
+  it("terminateOn 含 finalize（生产同款配置）时，skill_invoke 仍触发纠错而非假终止", async () => {
+    const skillInvoke = JSON.stringify({
+      thinking: "用 cross-dim-synthesis 整合",
+      action: {
+        kind: "skill_invoke",
+        skillId: "cross-dim-synthesis",
+        input: { task: "synthesize" },
+      },
+    });
+    const chat = mkChat([
+      { content: skillInvoke },
+      {
+        content: JSON.stringify({
+          thinking: "改用协议内动作",
+          action: { kind: "finalize", output: { result: "ok" } },
+        }),
+      },
+    ]);
+    const reg = mkToolRegistry({});
+    const hooks = new HookRegistry();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invoker = new ToolInvoker(reg as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const loop = new ReActLoop(chat as any, invoker, hooks);
+
+    const events = await drain(
+      loop.run(
+        makeEnvelope(),
+        // ★ 关键：HarnessedAgent 的真实值，不是测试专用的宽松 criteria
+        { ...criteria, terminateOn: ["finalize"] },
+        { agentId: "deadbranch1" },
+      ),
+    );
+
+    // 第一轮不许被当成真 finalize 终止 —— 必须注入纠错并继续到第二轮。
+    // 修复前：terminateOn 含 finalize → 整块短路 → 只调用 1 次 chat 就终止。
+    expect(chat.chat.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const terminated = events.find((e) => e.type === "terminated");
+    expect(terminated?.payload).toEqual({ reason: "completed" });
+  });
+
   // ── 2026-08-02 回归：force-accept 收下截断的字符串当产物 ──────────────────
   //
   // 用户实证 prod：grok-4.5 输出被 maxTokens 截断 → JSON 抽取失败 → 兜底把 raw

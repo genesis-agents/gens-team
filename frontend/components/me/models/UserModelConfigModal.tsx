@@ -181,8 +181,14 @@ export function UserModelConfigModal({
 
   // 2026-05-27 BYOK：该模型运行时使用哪把用户 Key（UserApiKey.id），空 = provider 默认
   const [apiKeyId, setApiKeyId] = useState(initial?.apiKeyId ?? '');
+  // ★ 2026-08-02 修（审计发现）：此前是 `String(initial?.maxTokens ?? 4096)`。
+  //   新建时 initial 为 undefined → 输入框预填 "4096" → 提交时**总是**带上 4096，
+  //   于是后端 `input.maxTokens ?? getKnownModelLimit(modelId) ?? 4096` 里那个 `??`
+  //   **永远看不到 undefined**，按已知上限推导的逻辑成了死代码。
+  //   （用户那条 grok-4.5 存着 4096、长输出被砍到截断，源头就在这里。）
+  //   新建时留空 = 不表态，交给后端按模型已知上限推导；编辑时显示真实存量值。
   const [maxTokens, setMaxTokens] = useState(
-    String(initial?.maxTokens ?? 4096)
+    initial?.maxTokens != null ? String(initial.maxTokens) : ''
   );
   const [temperature, setTemperature] = useState(
     String(initial?.temperature ?? 0.7)
@@ -288,7 +294,9 @@ export function UserModelConfigModal({
     modelType,
     apiEndpoint: normalizeEndpointBase(endpoint) || null,
     apiKeyId: apiKeyId.trim() || null,
-    maxTokens: Number(maxTokens) || 4096,
+    // 留空 → 不传，让后端按模型已知上限推导（见上方 useState 注释）。
+    // 不能写 `Number(maxTokens) || 4096` —— 那会把"用户没填"变成"用户要求 4096"。
+    maxTokens: maxTokens.trim() ? Number(maxTokens) : undefined,
     temperature: Number(temperature) || 0.7,
     apiFormat,
     isReasoning,
@@ -514,8 +522,12 @@ export function UserModelConfigModal({
               min={1}
               value={maxTokens}
               onChange={(e) => setMaxTokens(e.target.value)}
+              placeholder={t('me.models.maxTokensPlaceholder')}
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             />
+            <p className="mt-1 text-xs text-gray-500">
+              {t('me.models.maxTokensHint')}
+            </p>
           </Field>
           <div className="flex items-end pb-1">
             <Toggle

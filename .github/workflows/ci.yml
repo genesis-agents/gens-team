@@ -316,6 +316,25 @@ jobs:
       - name: AI-app overview docs coverage guard
         run: npm run audit:ai-app-docs
 
+      # ★ 2026-08-02 补接（审计发现的最高性价比一步）：
+      #   下面这些棘轮此前**只挂在 .husky/pre-push 上**，CI 一个都不跑 ——
+      #   `--no-verify` 或无 husky 环境推送即可整体绕过，等于没有护栏。
+      #   接进本 job 后自动汇入 ci-status 合并门（本 job 已在 needs 列表里）。
+      #   接入前逐个确认过当前是绿的，不会把 CI 搞红。
+      - name: i18n hardcoded-Chinese ratchet (frontend)
+        run: npm run audit:i18n-hardcoded
+
+      - name: Mission detail ratchet
+        run: npm run audit:mission-detail
+
+      - name: Capability anti-pattern ratchet (backend)
+        working-directory: backend
+        run: npm run audit:capability
+
+      - name: Scripts governance guard (backend)
+        working-directory: backend
+        run: npm run audit:scripts
+
   # ── Boot Smoke Test ───────────────────────────────────────
   # CI 从不真正启动应用（单测大量 mock），循环导入引发的 DI 解析崩溃
   # 会一路漏到生产（2026-06-03 ContentFetchService 生产崩溃，hotfix #220）。

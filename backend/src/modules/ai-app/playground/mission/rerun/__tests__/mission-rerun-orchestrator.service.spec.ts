@@ -108,13 +108,14 @@ function makeRerunGuard() {
   return {} as any;
 }
 
-function makeDispatcher() {
-  return { runMission: jest.fn().mockResolvedValue(undefined) } as any;
-}
-
-/** 本进程活 run 探针（2026-08-02）。默认无活 run = 可以续跑。 */
-function makeAbortRegistry(hasLiveRun = false) {
-  return { hasLiveRun: jest.fn().mockReturnValue(hasLiveRun) } as any;
+/** 本进程活 run 探针（2026-08-02）。默认无活 run = 可以续跑。
+ *  ★ 探针真源是 dispatcher.hasActiveLocalRun（与 pipeline 重入护栏同一个 sessions Map），
+ *  不再是 abortRegistry —— 后者 abort 一拉即 false，与护栏判据生命周期不一致。 */
+function makeDispatcher(hasActiveLocalRun = false) {
+  return {
+    runMission: jest.fn().mockResolvedValue(undefined),
+    hasActiveLocalRun: jest.fn().mockReturnValue(hasActiveLocalRun),
+  } as any;
 }
 
 function makeValidSnapshot() {
@@ -150,7 +151,7 @@ function makeOrchestratorAndDeps(
   } = {},
 ) {
   const checkpoint = opts.checkpoint ?? makeCheckpoint({ canResume: false });
-  const dispatcher = makeDispatcher();
+  const dispatcher = makeDispatcher(opts.hasLiveRun ?? false);
   if (opts.dispatcherRunMission) {
     dispatcher.runMission = opts.dispatcherRunMission;
   }
@@ -158,7 +159,6 @@ function makeOrchestratorAndDeps(
   const buffer = makeBuffer();
   const ownership = makeOwnership();
   const guard = makeRerunGuard();
-  const abortRegistry = makeAbortRegistry(opts.hasLiveRun ?? false);
 
   const svc = new MissionRerunOrchestratorService(
     dispatcher,
@@ -167,7 +167,6 @@ function makeOrchestratorAndDeps(
     ownership,
     checkpoint,
     guard,
-    abortRegistry,
   );
 
   // Wire rerunFromTodoFrameworkCore
@@ -183,7 +182,6 @@ function makeOrchestratorAndDeps(
     ownership,
     checkpoint,
     dispatcher,
-    abortRegistry,
   };
 }
 
@@ -444,7 +442,7 @@ describe("MissionRerunOrchestratorService.rerunFullMission", () => {
 
     it("无活 run → 照常放行（探针只在真有 run 时否决）", async () => {
       const dispatcher = makeDispatcher();
-      const { svc, abortRegistry } = makeOrchestratorAndDeps({
+      const { svc, dispatcher: disp } = makeOrchestratorAndDeps({
         mission: makeMissionRow("failed"),
         hasLiveRun: false,
         dispatcherRunMission: dispatcher.runMission,
@@ -454,7 +452,9 @@ describe("MissionRerunOrchestratorService.rerunFullMission", () => {
         userId,
         "incremental",
       );
-      expect(abortRegistry.hasLiveRun).toHaveBeenCalledWith(sourceMissionId);
+      // 探针问的是 svc 真正持有的那个 dispatcher（disp），不是本地那个只借了
+      // runMission 的替身 —— 断言写错对象就等于没断言。
+      expect(disp.hasActiveLocalRun).toHaveBeenCalledWith(sourceMissionId);
       expect(res.missionId).toBe(sourceMissionId);
       expect(dispatcher.runMission).toHaveBeenCalled();
     });

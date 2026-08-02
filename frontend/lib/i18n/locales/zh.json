@@ -7713,7 +7713,9 @@
       "noProviderSupports": "没有内置服务商支持「{{type}}」，请选「其它 / 自定义」手工填写 Endpoint。",
       "needKeyFor": "你已配置 Key 的服务商都不支持「{{type}}」。支持的有：{{providers}}，需先到「我的密钥」配置其中一个的 Key。",
       "needKeyBanner": "你现有的服务商都不支持此类型，需先配置下列任一服务商的 Key：",
-      "applyKeyFor": "{{provider}} 申请 Key →"
+      "applyKeyFor": "{{provider}} 申请 Key →",
+      "maxTokensPlaceholder": "留空 = 按模型已知上限自动推导",
+      "maxTokensHint": "填小了会截断长输出（报告 / 整合 / 写作），表现为下游报一堆字段缺失。不确定就留空。"
     }
   },
   "radar": {

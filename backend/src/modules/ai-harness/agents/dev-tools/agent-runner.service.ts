@@ -17,6 +17,7 @@ import { Injectable, Logger, Optional } from "@nestjs/common";
 import type { z } from "zod";
 import { AgentFactory } from "../core/agent-factory";
 import { AgentIdentity } from "../core/agent-identity";
+import { safeParseTolerantOfNull } from "../core/llm-output-null-tolerance";
 import type {
   IAgent,
   IAgentEvent,
@@ -437,7 +438,15 @@ export class AgentRunner {
         }
         // failed extraction → 保留 string，schema 自己 reject (state=failed)
       }
-      const parsed = meta.outputSchema.safeParse(candidate);
+      // ★ 2026-08-02 修「null 容忍装错了闸门」（审计发现，我自己当天造的回归）：
+      //   953f990de 把 safeParseTolerantOfNull 只装在 agent-factory 的两个 **loop 内闸**，
+      //   而那两个闸背后有 3 轮 critique 自愈；这里是**最终断言**，没有任何自愈。
+      //   结果是净负面：LLM 吐 `.optional()` 字段为 null 时
+      //     修复前 → loop 闸驳回 → 注入 critique → 模型重发 → 成功
+      //     修复后 → loop 闸放行（已容忍）→ 终止 → 死在这里 RUNNER_OUTPUT_SCHEMA_MISMATCH
+      //   —— 原本能自愈的输出变成硬失败，且 in-loop 重试预算一次没用。
+      //   两处必须用同一套 parse 语义，否则"放行的闸"和"判死的闸"标准不一致。
+      const parsed = safeParseTolerantOfNull(meta.outputSchema, candidate);
       if (!parsed.success) {
         // Don't throw — preserve partial output for diagnosis; mark failed
         finalState = "failed";

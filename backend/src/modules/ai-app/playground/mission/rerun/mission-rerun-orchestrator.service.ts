@@ -29,7 +29,6 @@ import {
 import { MissionEventBuffer } from "../lifecycle/mission-event-buffer.service";
 import {
   BusinessTeamRerunOrchestratorFramework,
-  MissionAbortRegistry,
   MissionCheckpointService,
   MissionOwnershipRegistry,
   type MissionRerunOrchestratorHooks,
@@ -57,7 +56,8 @@ export class MissionRerunOrchestratorService extends BusinessTeamRerunOrchestrat
   // ★ 2026-06-11 同-id 续跑/重跑：fresh 模式清 checkpoint 用（incremental 保留续跑）。
   private readonly checkpointRef: MissionCheckpointService;
   // ★ 2026-08-02 同-id 续跑前置检查：本进程已在跑就直接 409，不再"受理了但实际跳过"。
-  private readonly abortRegistryRef: MissionAbortRegistry;
+  //   必须与 pipeline 的重入护栏用**同一个**真源（见 hasActiveLocalRun 注释）。
+  private readonly dispatcherRef: PlaygroundPipelineDispatcher;
 
   constructor(
     // ★ P-DUR2 (2026-05-30): dispatcher 现在反向 inject 本 orchestrator（orphan boot
@@ -69,7 +69,6 @@ export class MissionRerunOrchestratorService extends BusinessTeamRerunOrchestrat
     ownership: MissionOwnershipRegistry,
     checkpoint: MissionCheckpointService,
     rerunGuard: RerunGuardService,
-    abortRegistry: MissionAbortRegistry,
   ) {
     const hooks: MissionRerunOrchestratorHooks<
       MissionDetail,
@@ -141,7 +140,7 @@ export class MissionRerunOrchestratorService extends BusinessTeamRerunOrchestrat
     };
     super(hooks, "playground");
     this.checkpointRef = checkpoint;
-    this.abortRegistryRef = abortRegistry;
+    this.dispatcherRef = orchestrator;
   }
 
   /**
@@ -221,7 +220,14 @@ export class MissionRerunOrchestratorService extends BusinessTeamRerunOrchestrat
     //   这里同步前置检查，把"没受理"如实告诉调用方（409）。注意与 rerunGuard 的
     //   分工：guard 只在 status=running 时判定，而这条路的病灶恰恰是
     //   **DB 已终态但 run 还活着**的分叉态 —— guard 会短路放行，只有本检查拦得住。
-    if (this.abortRegistryRef.hasLiveRun(sourceMissionId)) {
+    //
+    // ★ 2026-08-02 修（审计发现，我自己当天造的回归）：此处原本问的是
+    //   `abortRegistry.hasLiveRun`（abort 信号一拉立刻 false），而真正拒绝重入的是
+    //   pipeline 的 `sessions.has`（要到 finally 才 false）。两个判据生命周期不同，
+    //   取消/超时/预算/僵尸清理拉起 abort 后的收尾窗口里：本检查放行 → pipeline
+    //   静默跳过 → 201 → 前端弹绿色「已开始续跑」。**事故原样复发，还多了假成功确认。**
+    //   改为直接问 dispatcher 的唯一真源，与护栏同一个判据。
+    if (this.dispatcherRef.hasActiveLocalRun(sourceMissionId)) {
       throw new ConflictException(
         `mission ${sourceMissionId} 仍有正在运行的任务（状态显示已结束但后台未停），` +
           `暂时无法续跑。请等待当前运行结束后重试。`,
