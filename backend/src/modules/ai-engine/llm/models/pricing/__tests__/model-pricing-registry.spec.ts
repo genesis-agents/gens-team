@@ -390,5 +390,68 @@ describe("ModelPricingRegistry", () => {
       // 平台行价格未被 BYOK 行覆盖
       expect(reg.get("shared-model")!.inputPricePerM).toBe(5);
     });
+
+    // ── 2026-08-02 回归：没填价的 BYOK 行整行不注册 ────────────────────────
+    //
+    // 用户实证 prod：`modelId="grok-4.5" not in pricing registry ... Budget
+    // enforcement will treat this call as $0`。此前 userModelConfig 查询带
+    // `OR: [price not null]` 过滤，没填价的行**整行不注册** → estimateCost
+    // 返回 null → 预算护栏对 BYOK 用户完全失效。而 BYOK 恰恰最容易没填价：
+    // 用户自己加模型，界面上根本没让他填单价。
+    //
+    // admin AIModel 那条路 2026-06-16 就已经是「无价 + 有 costTier → 档位默认价
+    // 估算，护栏先生效」，这里是把同一套策略补到 BYOK 路，不是新开口子。
+    it("BYOK 未填单价 → 按 standard 档位默认价注册（预算护栏生效，不再 $0）", async () => {
+      const mockPrisma = {
+        aIModel: { findMany: jest.fn().mockResolvedValue([]) },
+        userModelConfig: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              modelId: "grok-4.5",
+              priceInputPerMillion: null,
+              priceOutputPerMillion: null,
+            },
+          ]),
+        },
+      };
+      const reg = new ModelPricingRegistry(mockPrisma as never);
+      await reg.onApplicationBootstrap();
+
+      const entry = reg.get("grok-4.5");
+      expect(entry).not.toBeNull();
+      expect(entry!.tier).toBe("standard");
+      // 标记为估算值 —— 成本面板据此区分「实价」与「估算」，不谎称是真实单价
+      expect(entry!.estimatedFromTier).toBe(true);
+
+      // 关键断言：不再返回 null（返回 null 时预算把整次调用算成 $0）
+      const cost = reg.estimateCost("grok-4.5", 1_000_000, 1_000_000);
+      expect(cost).not.toBeNull();
+      expect(cost!).toBeGreaterThan(0);
+      // standard 档位默认价：input 3 / output 12 per 1M
+      expect(cost).toBeCloseTo(3 + 12);
+    });
+
+    it("BYOK 填了单价 → 用实价，不打估算标记（不回归）", async () => {
+      const mockPrisma = {
+        aIModel: { findMany: jest.fn().mockResolvedValue([]) },
+        userModelConfig: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              modelId: "priced-byok",
+              priceInputPerMillion: "0.5",
+              priceOutputPerMillion: "1.5",
+            },
+          ]),
+        },
+      };
+      const reg = new ModelPricingRegistry(mockPrisma as never);
+      await reg.onApplicationBootstrap();
+
+      const entry = reg.get("priced-byok");
+      expect(entry!.estimatedFromTier).toBeFalsy();
+      expect(reg.estimateCost("priced-byok", 1_000_000, 1_000_000)).toBeCloseTo(
+        0.5 + 1.5,
+      );
+    });
   });
 });

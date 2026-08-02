@@ -20,6 +20,7 @@ import type {
 import { AiModelConfigService } from "../../../ai-engine/llm/models/config/ai-model-config.service";
 import type { EnvironmentSnapshot } from "../../../ai-harness/guardrails/runtime/runtime-environment.types";
 import { MissionContext } from "../../../../common/context/mission-context";
+import { safeParseTolerantOfNull } from "./llm-output-null-tolerance";
 import { AIModelType } from "@prisma/client";
 import type {
   IAgent,
@@ -310,7 +311,11 @@ export class AgentFactory {
             }
             // extracted.success === false → 留作 string，schema 自己 reject
           }
-          const result = spec.outputSchema!.safeParse(candidate);
+          // ★ 2026-08-02：null 容忍。LLM 表达"这里没值"时吐 null 和省略键各占一半，
+          //   而 `.optional()` 只收 undefined —— 内容答对了却被整份驳回。
+          //   见 llm-output-null-tolerance.ts：只剥 schema 自己判定非法的 null，
+          //   `.nullable()` 字段与必填字段的行为完全不变。
+          const result = safeParseTolerantOfNull(spec.outputSchema!, candidate);
           if (result.success) return { ok: true as const };
           const issues = result.error.issues
             .map(
@@ -342,7 +347,12 @@ export class AgentFactory {
                 }
                 // extracted.success === false → 留作 string，schema 闸会拒
               }
-              const parsed = spec.outputSchema.safeParse(candidate);
+              // 与上面 outputSchemaValidator 用同一个 parse 语义 —— 否则会出现
+              // "schema 闸放行、business 闸却拿不到 typed 值" 的错位。
+              const parsed = safeParseTolerantOfNull(
+                spec.outputSchema,
+                candidate,
+              );
               if (!parsed.success) {
                 // schema 闸已经拒绝了，business 闸不再重复报错
                 return null;
