@@ -154,6 +154,26 @@ describe("AIErrorClassifier (extended)", () => {
   });
 
   describe("classify - generic Error (classifyGenericError)", () => {
+    // ★ 2026-08-02 回归守护：空响应必须可重试。
+    //
+    // 生产事故（单模型用户）：grok-4.5 返回 content=""、reasoning_content="safe"，
+    // caller 抛无类型 Error → 落 UNKNOWN → isRetryable()=false → Non-retryable →
+    // 模型被踢出重试列表。该用户只配了 1 个 CHAT 模型，严格 BYOK 又不回落 admin
+    // （安全设计，正确），于是可用模型归零、整个 mission 死。
+    // 「只配一个模型」不该等于「零容错」——空响应是典型瞬时故障，必须给自愈机会。
+    it("空响应必须归为 TEMPORARY_UNAVAILABLE 且可重试（单模型容错）", () => {
+      for (const msg of [
+        "AI 返回空响应 (原因: stop)",
+        "API returned empty content!",
+        "empty response from provider",
+        "AI 推理模型的 token 全部用于内部思考，没有空间输出结果。",
+      ]) {
+        const result = classifier.classify(new Error(msg));
+        expect(result.type).toBe(AIErrorType.TEMPORARY_UNAVAILABLE);
+        expect(result.isRetryable()).toBe(true);
+      }
+    });
+
     it("should classify timeout message as TIMEOUT", () => {
       const error = new Error("Request timeout occurred");
       const result = classifier.classify(error);

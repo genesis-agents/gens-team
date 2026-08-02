@@ -472,8 +472,25 @@ export class OpenaiCaller extends BaseHttpCaller {
       );
 
       // 检测 reasoning 模型用完了推理 token
+      //
+      // ★ 2026-08-02 修误判：原判据是 `reasoningTokens >= completionTokens * 0.9`，
+      //   但 completionTokens 取自 `usage.completion_tokens || 0`，**部分 provider
+      //   不返回该字段**（日志实测 xai/grok-4.5：completion_tokens 缺失）。缺失时
+      //   比例式退化成 `reasoningTokens >= 0`，于是**只要有 1 个 reasoning token
+      //   就被判成"推理耗尽"**。
+      //
+      //   实测误判现场：grok-4.5 返回 content=""、reasoning_content="safe"、
+      //   reasoning_tokens=1 —— 这更像安全判定后的空响应，而非预算烧光。系统却
+      //   据此给出「当前 max_tokens=500，建议增加到 25000+」这种方向完全错误的
+      //   指引，并把错误标成 Non-retryable 终结整次调用。
+      //
+      //   修法：completionTokens 可用时仍走比例判断；缺失（0）时无法做比例，改为
+      //   要求"推理确实吃掉了大半预算"才算耗尽，避免把空响应误判成耗尽。
       const isReasoningModelExhausted =
-        reasoningTokens > 0 && reasoningTokens >= completionTokens * 0.9;
+        reasoningTokens > 0 &&
+        (completionTokens > 0
+          ? reasoningTokens >= completionTokens * 0.9
+          : reasoningTokens >= Math.max(maxTokens * 0.5, 100));
 
       // ★ 2026-06-10：部分推理模型（日志实测 deepseek-v4-flash）finish_reason=stop
       //   时把最终 JSON 写进 reasoning_content、content 留空。这不是预算耗尽——

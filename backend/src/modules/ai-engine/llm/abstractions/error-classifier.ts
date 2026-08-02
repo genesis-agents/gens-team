@@ -473,6 +473,36 @@ export class AIErrorClassifier {
       );
     }
 
+    // ★ 2026-08-02：空响应 / 推理无可见输出 —— 归为**可重试**的瞬时故障。
+    //
+    // 生产事故（单模型用户）：grok-4.5 返回 content=""、reasoning_content="safe"，
+    // provider 侧 caller 抛出无类型的 `new Error("AI 返回空响应..." / "推理模型的
+    // token 全部用于内部思考...")`，落到下方 UNKNOWN → isRetryable()=false →
+    // 判定 Non-retryable → 模型被踢出重试列表。
+    //
+    // 该用户**只配了 1 个 CHAT 模型**，且严格 BYOK 不回落 admin 池（安全设计，
+    // 正确），于是可用模型归零、整个 mission 死。同一时刻另一路的 in-caller
+    // token bump 重试却打了 `重试成功` —— 同一种失败，一边判死一边成功，说明
+    // 它本就不该是 non-retryable。
+    //
+    // 空响应是典型瞬时故障（模型抖动 / 安全判定后空返回），重试往往即可恢复。
+    // 归为 TEMPORARY_UNAVAILABLE 让**单模型用户也有一次自愈机会**，而不是一次
+    // 抖动就整链失败——「只配一个模型」不该等于「零容错」。
+    if (
+      message.includes("返回空响应") ||
+      message.includes("empty content") ||
+      message.includes("empty response") ||
+      message.includes("没有空间输出结果")
+    ) {
+      return new AIError(
+        AIErrorType.TEMPORARY_UNAVAILABLE,
+        error.message,
+        undefined,
+        error,
+        provider,
+      );
+    }
+
     // 默认未知
     return new AIError(
       AIErrorType.UNKNOWN,
