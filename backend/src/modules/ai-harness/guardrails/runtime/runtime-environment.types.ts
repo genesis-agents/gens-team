@@ -8,6 +8,17 @@
  * 各 L3 App 在自己的 CapabilityReconciler 里把本层输出映射到 App 语义。
  */
 
+/**
+ * 能力视图的模型分类 —— 与 DB 的 `AIModelType`（用途分层：CHAT / CHAT_FAST /
+ * CODE / MULTIMODAL / EVALUATOR / EMBEDDING / RERANK / IMAGE_*）是**两套词表**，
+ * 必须显式映射，不能互相 as 断言。
+ *
+ * ★ 2026-08-02：此前 discoverModels 直接 `row.modelType as RuntimeModelType` 分主桶，
+ *   只有 CHAT / EMBEDDING 两个偶然同名的能进桶，CHAT_FAST / CODE / MULTIMODAL /
+ *   EVALUATOR 这些同样是文本聊天的枚举值被 `if (bucket)` 静默吞掉。
+ *   （REASONING / VISION 不受影响——它们由 isReasoning / supportsVision 走
+ *   additive 填充，不依赖 DB 枚举同名。）
+ */
 export type RuntimeModelType = "CHAT" | "REASONING" | "EMBEDDING" | "VISION";
 
 /**
@@ -37,6 +48,15 @@ export interface RuntimeModelCapability {
   readonly costTier: RuntimeCostTier;
   readonly healthy: RuntimeHealth;
   readonly recentErrorRate?: number;
+  /**
+   * 是否支持图像输入。**不用 VISION 桶承载**——本 schema 里具备视觉的都同时是
+   * 文本聊天模型，塞进 VISION 会把它们从 election 候选池（CHAT ∪ REASONING，
+   * 见 agent-factory.buildElectionCandidates）里摘掉。视觉是**附加能力**而非
+   * 互斥分类，故用字段表达。
+   */
+  readonly supportsVision?: boolean;
+  /** DB 原始 AIModelType，保留给诊断（能力桶是有损映射，排障时要看得见原值）。 */
+  readonly sourceModelType?: string;
 }
 
 export interface RuntimeToolCapability {

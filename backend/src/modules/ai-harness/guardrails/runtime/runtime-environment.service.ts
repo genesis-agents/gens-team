@@ -167,6 +167,38 @@ export class RuntimeEnvironmentService {
 
   // ================== Discovery ==================
 
+  /**
+   * DB `AIModelType`（用途分层）→ `RuntimeModelType`（能力视图）**主桶**映射。
+   *
+   * ★ 2026-08-02：此前是 `result[row.modelType as RuntimeModelType]` + `if (bucket)`。
+   *   两套词表只有 CHAT / EMBEDDING 偶然同名，于是 CHAT_FAST / CODE / MULTIMODAL /
+   *   EVALUATOR 这些**同样是文本聊天模型**的枚举值全部落空、被静默吞掉 —— 既不进桶
+   *   也不报错。后果：validateModels 看不见它们（"所有模型均不可用"这道闸对只配了
+   *   快速聊天/代码模型的用户直接失效，因为 allModels.length===0 就不判定），
+   *   agent 的 environment block 也少一截。
+   *
+   *   只负责主桶。REASONING / VISION 由下方 additive 块按 isReasoning /
+   *   supportsVision 另行填充（reasoning、vision 是**附加能力**不是互斥分类，
+   *   同一个模型既要能被 chat 调用方看到、也要出现在 reasoning 候选里）。
+   *
+   * @returns null = 不属于 chat/embedding 能力视图（图像生成 / 重排序），
+   *          由 caller 计数 + 日志，不再无声消失。
+   */
+  private mapToRuntimeModelType(dbModelType: string): RuntimeModelType | null {
+    if (dbModelType === "EMBEDDING") return "EMBEDDING";
+    if (
+      dbModelType === "CHAT" ||
+      dbModelType === "CHAT_FAST" ||
+      dbModelType === "CODE" ||
+      dbModelType === "MULTIMODAL" ||
+      dbModelType === "EVALUATOR"
+    ) {
+      return "CHAT";
+    }
+    // IMAGE_GENERATION / IMAGE_EDITING / RERANK
+    return null;
+  }
+
   private async discoverModels(
     userId: string,
   ): Promise<EnvironmentSnapshot["models"]> {
@@ -282,6 +314,7 @@ export class RuntimeEnvironmentService {
         EMBEDDING: RuntimeModelCapability[];
         VISION: RuntimeModelCapability[];
       } = { CHAT: [], REASONING: [], EMBEDDING: [], VISION: [] };
+      const outOfScope: string[] = [];
       for (const row of rows) {
         const s = errorMap.get(row.modelId);
         const errorRate = s && s.calls > 0 ? s.errors / s.calls : undefined;
@@ -299,17 +332,26 @@ export class RuntimeEnvironmentService {
         const costTier: RuntimeCostTier = isValidCostTier(row.costTier)
           ? (row.costTier as RuntimeCostTier)
           : "unknown";
+        const runtimeType = this.mapToRuntimeModelType(row.modelType);
         const cap: RuntimeModelCapability = {
           modelId: row.modelId,
           provider: row.provider,
-          modelType: row.modelType as RuntimeModelType,
+          // null（图像/重排序）时 cap 仍构造出来，供下方 vision additive 用；
+          // 主桶不收，避免把图像模型混进 chat 池。
+          modelType: runtimeType ?? "CHAT",
           contextWindow: row.maxTokens,
           costTier,
           healthy,
           recentErrorRate: errorRate,
+          supportsVision: row.supportsVision === true,
+          sourceModelType: row.modelType,
         };
-        const bucket = result[row.modelType as RuntimeModelType];
-        if (bucket) bucket.push(cap);
+        if (runtimeType) {
+          result[runtimeType].push(cap);
+        } else {
+          // 不属于本能力视图。计数后统一日志——此前这里是 `if (bucket)` 静默丢弃。
+          outOfScope.push(`${row.modelId}(${row.modelType})`);
+        }
 
         // Reasoning is a *capability*, not an exclusive enum value:
         // 1. DB `AIModelType` enum has no REASONING member — operators mark
@@ -345,6 +387,12 @@ export class RuntimeEnvironmentService {
         ) {
           result.VISION.push({ ...cap, modelType: "VISION" });
         }
+      }
+      if (outOfScope.length > 0) {
+        this.logger.log(
+          `discoverModels user=${userId}: ${outOfScope.length} 个模型不属于 chat/embedding ` +
+            `能力视图，未入池（正常，图像/重排序类）：${outOfScope.slice(0, 10).join(", ")}`,
+        );
       }
       return result;
     } catch (err) {

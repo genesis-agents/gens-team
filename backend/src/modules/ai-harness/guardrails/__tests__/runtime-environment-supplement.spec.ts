@@ -42,6 +42,101 @@ describe("RuntimeEnvironmentService — supplement", () => {
       expect(snap.models.REASONING).toEqual([]);
     });
 
+    // ── 2026-08-02 回归：非 CHAT/EMBEDDING 的文本模型被静默吞掉 ──────────
+    //
+    // 此前主分桶是 `result[row.modelType as RuntimeModelType]` + `if (bucket)`。
+    // DB 的 AIModelType（用途分层）与 RuntimeModelType（能力视图）是两套词表，
+    // 只有 CHAT / EMBEDDING 偶然同名 —— CHAT_FAST / CODE / MULTIMODAL /
+    // EVALUATOR 这些同样是文本聊天的枚举值全部落空且无任何日志。
+    //
+    // 后果不只是统计难看：validateModels 的「所有模型均不可用」闸判定条件是
+    // `allModels.length > 0 && healthy.length === 0`，全被吞掉时 length===0，
+    // 闸直接失效 —— 只配了快速聊天/代码模型的用户失去这层保护。
+    it.each([["CHAT_FAST"], ["CODE"], ["MULTIMODAL"], ["EVALUATOR"]])(
+      "modelType=%s 的文本模型进 CHAT 池（此前被静默丢弃）",
+      async (dbType) => {
+        const prisma = {
+          aIModel: {
+            findMany: jest.fn().mockResolvedValue([
+              {
+                modelId: `m-${dbType}`,
+                provider: "openai",
+                modelType: dbType,
+                maxTokens: 4096,
+                isReasoning: false,
+                supportsVision: false,
+                costTier: "basic",
+              },
+            ]),
+          },
+          $queryRawUnsafe: jest.fn().mockResolvedValue([]),
+        };
+        const svc = makeService({ prisma });
+        const snap = await svc.snapshot({ userId: "u1" });
+        const found = snap.models.CHAT.find((m) => m.modelId === `m-${dbType}`);
+        expect(found).toBeDefined();
+        // DB 原值保留给排障——能力桶是有损映射，出问题时要看得见真实类型
+        expect(found?.sourceModelType).toBe(dbType);
+      },
+    );
+
+    it("图像/重排序类不进 chat 池（不是回归，是本就不属于该能力视图）", async () => {
+      const prisma = {
+        aIModel: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              modelId: "dall-e-3",
+              provider: "openai",
+              modelType: "IMAGE_GENERATION",
+              maxTokens: 4096,
+              isReasoning: false,
+              supportsVision: false,
+              costTier: "standard",
+            },
+            {
+              modelId: "rerank-v3",
+              provider: "cohere",
+              modelType: "RERANK",
+              maxTokens: 4096,
+              isReasoning: false,
+              supportsVision: false,
+              costTier: "basic",
+            },
+          ]),
+        },
+        $queryRawUnsafe: jest.fn().mockResolvedValue([]),
+      };
+      const svc = makeService({ prisma });
+      const snap = await svc.snapshot({ userId: "u1" });
+      expect(snap.models.CHAT).toEqual([]);
+      expect(snap.models.EMBEDDING).toEqual([]);
+    });
+
+    it("modelType=EMBEDDING 仍进 EMBEDDING 池（不回归）", async () => {
+      const prisma = {
+        aIModel: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              modelId: "text-embedding-3-small",
+              provider: "openai",
+              modelType: "EMBEDDING",
+              maxTokens: 8191,
+              isReasoning: false,
+              supportsVision: false,
+              costTier: "basic",
+            },
+          ]),
+        },
+        $queryRawUnsafe: jest.fn().mockResolvedValue([]),
+      };
+      const svc = makeService({ prisma });
+      const snap = await svc.snapshot({ userId: "u1" });
+      expect(snap.models.EMBEDDING.map((m) => m.modelId)).toEqual([
+        "text-embedding-3-small",
+      ]);
+      expect(snap.models.CHAT).toEqual([]);
+    });
+
     it("model with errorRate < 0.5 → healthy", async () => {
       const prisma = {
         aIModel: {
