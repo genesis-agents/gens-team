@@ -292,7 +292,11 @@
       "start": "Run Research Team"
     },
     "cancelMissionTitle": "Cancel this mission?",
-    "cancelMissionDesc": "Running tasks stop immediately; completed results and outputs are kept. You can resume from the checkpoint with Rerun."
+    "cancelMissionDesc": "Running tasks stop immediately; completed results and outputs are kept. You can resume from the checkpoint with Rerun.",
+    "rerunAcceptedDesc": "The mission is continuing from its existing progress; the latest status will appear shortly.",
+    "resumeAccepted": "Resuming from checkpoint",
+    "incrementalAccepted": "Incremental update started",
+    "freshRerunAccepted": "Restarted from scratch"
   },
   "home": {
     "welcome": "Welcome to AI Teams Engine",

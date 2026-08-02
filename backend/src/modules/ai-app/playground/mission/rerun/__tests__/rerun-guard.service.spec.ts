@@ -108,25 +108,41 @@ function makeLifecycleManagerMock() {
   };
 }
 
+/**
+ * 本进程活 run 探针 mock（2026-08-02）。默认 false = 无活 run，
+ * 与改动前行为等价，既有用例断言不变。
+ */
+function makeAbortRegistryMock(hasLiveRun = false) {
+  return { hasLiveRun: jest.fn().mockReturnValue(hasLiveRun) };
+}
+
 function makeGuardWithLifecycle(
   prisma: unknown,
   store: unknown,
+  hasLiveRun = false,
 ): {
   guard: RerunGuardService;
   lifecycleManager: ReturnType<typeof makeLifecycleManagerMock>;
+  abortRegistry: ReturnType<typeof makeAbortRegistryMock>;
 } {
   const lifecycleManager = makeLifecycleManagerMock();
+  const abortRegistry = makeAbortRegistryMock(hasLiveRun);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const guard = new RerunGuardService(
     prisma as any,
     store as any,
     lifecycleManager as any,
+    abortRegistry as any,
   );
-  return { guard, lifecycleManager };
+  return { guard, lifecycleManager, abortRegistry };
 }
 
-function makeGuard(prisma: unknown, store: unknown): RerunGuardService {
-  return makeGuardWithLifecycle(prisma, store).guard;
+function makeGuard(
+  prisma: unknown,
+  store: unknown,
+  hasLiveRun = false,
+): RerunGuardService {
+  return makeGuardWithLifecycle(prisma, store, hasLiveRun).guard;
 }
 
 describe("RerunGuardService", () => {
@@ -177,6 +193,7 @@ describe("RerunGuardService", () => {
     function setup(opts: {
       hbAgeMs: number | null;
       eventAgeMs: number | null;
+      hasLiveRun?: boolean;
     }) {
       const heartbeatAt =
         opts.hbAgeMs == null ? null : new Date(NOW - opts.hbAgeMs);
@@ -187,7 +204,11 @@ describe("RerunGuardService", () => {
       ];
       const prisma = mkPrisma({ missions, latestBusinessTs });
       const store = mkStore({ missions });
-      return { guard: makeGuard(prisma, store), prisma, store };
+      return {
+        guard: makeGuard(prisma, store, opts.hasLiveRun ?? false),
+        prisma,
+        store,
+      };
     }
 
     it("hb=null + event=null → inFlight=false（reopen 后未刷 + 0 BUSINESS 事件）", async () => {
@@ -226,6 +247,48 @@ describe("RerunGuardService", () => {
       const r = await guard.checkInFlight("m1", "u1");
       expect(r.inFlight).toBe(false);
       expect(r.zombieDetected).toBe(true);
+    });
+
+    // ── 2026-08-02 回归：慢模型被误判成僵尸 ───────────────────────────────
+    //
+    // 真实故障：grok-4.5 单次 LLM 47–57s，一个 ReActLoop 重试 3 次就 >5min 不产
+    // business 事件；而 heartbeat 是 runtime shell 的 30s 纯定时器、不跟随业务进度，
+    // 只要进程活着就永远 fresh —— 于是 cell 2 把正在干活的 mission 判死写 failed，
+    // 而那个 run 还在继续烧算力，且终态条件写必然 lost race，结果落不了地。
+    //
+    // 否决票：本进程 abort registry 有活 run = 有 worker 在干活的直接证据。
+    it("hb=5s + event=10min + 本进程有活 run → 不判 zombie，判 inFlight（慢 stage 非僵尸）", async () => {
+      const { guard } = setup({
+        hbAgeMs: 5_000,
+        eventAgeMs: 10 * 60_000,
+        hasLiveRun: true,
+      });
+      const r = await guard.checkInFlight("m1", "u1");
+      expect(r.zombieDetected).toBe(false);
+      expect(r.inFlight).toBe(true);
+      expect(r.reason).toMatch(/本进程 run 在场/);
+    });
+
+    it("hb=5s + event=null + 本进程有活 run → 同样否决（刚 reopen 尚未产事件）", async () => {
+      const { guard } = setup({
+        hbAgeMs: 5_000,
+        eventAgeMs: null,
+        hasLiveRun: true,
+      });
+      const r = await guard.checkInFlight("m1", "u1");
+      expect(r.zombieDetected).toBe(false);
+      expect(r.inFlight).toBe(true);
+    });
+
+    it("hb=120s（stale）+ 本进程有活 run → 仍不 inFlight（否决票只推翻 zombie，不破 RV-7）", async () => {
+      const { guard } = setup({
+        hbAgeMs: 120_000,
+        eventAgeMs: 10 * 60_000,
+        hasLiveRun: true,
+      });
+      const r = await guard.checkInFlight("m1", "u1");
+      expect(r.inFlight).toBe(false);
+      expect(r.zombieDetected).toBe(false);
     });
 
     it("hb=120s ago + event=10s ago → inFlight=false（hb 漏 / 长间隔）", async () => {
@@ -340,6 +403,16 @@ describe("RerunGuardService", () => {
       );
       expect(finalizeArgs.intent.extra.userId).toBe("u1");
       // store.clearHeartbeat 同样走唯一写源
+      // ★ 2026-08-02 一致性兜底：判死必须同时拉 abort 止血。
+      //   只写库不止血会分叉成"DB=failed 但 run 还在跑"——UI 显示失败、续跑被
+      //   重入护栏永久拒绝、那个 run 跑完也因条件写 WHERE status='running'
+      //   lost race 而落不了地，算力白烧。
+      const killArgs = finalizeArgs as unknown as {
+        abort?: boolean;
+        intent: { reason?: string };
+      };
+      expect(killArgs.abort).toBe(true);
+      expect(killArgs.intent.reason).toBe("mission_no_activity");
       expect(store.clearHeartbeat).toHaveBeenCalledTimes(1);
       expect(store.clearHeartbeat).toHaveBeenCalledWith("m1", "u1");
       // emit zombie-cleanup 事件（observability）

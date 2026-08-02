@@ -18,6 +18,7 @@ import {
 import { EVENT_CATEGORY } from "../lifecycle/event-categories";
 import {
   BusinessTeamRerunGuardFramework,
+  MissionAbortRegistry,
   MissionLifecycleManager,
   type BusinessRerunGuardDetailMinimal,
   type BusinessTeamRerunGuardHooks,
@@ -46,6 +47,7 @@ export class RerunGuardService extends BusinessTeamRerunGuardFramework<
     prisma: PrismaService,
     store: MissionStore,
     lifecycleManager: MissionLifecycleManager,
+    abortRegistry: MissionAbortRegistry,
   ) {
     const hooks: BusinessTeamRerunGuardHooks<
       PlaygroundGuardDetail,
@@ -100,7 +102,9 @@ export class RerunGuardService extends BusinessTeamRerunGuardFramework<
         zombieCleanup: "playground.mission:zombie-cleanup",
       },
     };
-    super(lifecycleManager, hooks);
+    // 第三参 = 本进程活 run 探针：让 zombie 判定拿得到"确实有 worker 在干活"的
+    // 直接证据，慢模型（长 stage 不产 business 事件）不再被误判死。
+    super(lifecycleManager, hooks, abortRegistry);
   }
 }
 

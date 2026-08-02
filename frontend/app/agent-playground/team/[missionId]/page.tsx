@@ -364,6 +364,30 @@ export default function MissionDetailPage() {
   }, [view.mission.depth]);
   // 后端 tier 表（runTeam 时按选中 depth 取预设 maxCredits/wallTimeMs 等）
   const { data: tierData } = useBudgetTiers();
+
+  /**
+   * 重跑 / 续跑受理后的收尾。
+   *
+   * ★ 2026-08-02 修「点继续上次毫无反应」：后端 b460bacad 起改成**同-id 原地续跑**
+   * （missionId 不变，只 bump 版本号），但这里一直保留着"会开新 mission"的旧假设，
+   * 无脑 router.push(`/team/${newId}`) —— newId === 当前 missionId 时就是往同一个
+   * URL 导航，Next.js App Router 视为 no-op：不跳转、不刷新、无任何提示。用户看到的
+   * 就是一颗彻底的死按钮（实测连点 8 次，后端 8 个 201）。
+   *
+   * 同-id → 就地 refresh canonical view 并给 toast 确认；异-id（如切档位走 runTeam
+   * 真开了新 mission）才导航。
+   */
+  const afterRerun = useCallback(
+    (newId: string, okTitle: string) => {
+      if (newId && newId !== missionId) {
+        router.push(`/agent-playground/team/${newId}`);
+        return;
+      }
+      toast.success(okTitle, t('playground.rerunAcceptedDesc'));
+      void refreshMissionView();
+    },
+    [missionId, router, refreshMissionView, t]
+  );
   // ★ P1-UI-DISMISS-BANNER (2026-04-30): mission failed banner 支持手动关闭，
   //   按 missionId 分桶，避免不同 mission 共用同一个状态。
   const [dismissedFailedBanner, setDismissedFailedBanner] = useState<
@@ -1021,7 +1045,7 @@ export default function MissionDetailPage() {
                 missionId,
                 'fresh'
               );
-              router.push(`/agent-playground/team/${newId}`);
+              afterRerun(newId, t('playground.freshRerunAccepted'));
               return;
             }
             // 取新 depth 对应 tier 预设；同时把 userProfile 里的其它字段
@@ -1089,17 +1113,21 @@ export default function MissionDetailPage() {
       }}
       onDepthChange={setPendingDepth}
       onUpdate={() => {
-        // "更新"按钮 = incremental：clone checkpoint，跳过已完成 stage
-        // 对齐 Topic Insight handleContinueResearch
-        //   ('incremental' 模式：保留已完成任务，只跑未完成的维度)
-        // 复用原 mission 全部 input 字段（不只 topic/depth/language 3 个）
+        // "更新 / 继续上次"按钮 = incremental：跳过已完成 stage，只跑未完成的维度。
         void (async () => {
           try {
             const { missionId: newId } = await rerunMission(
               missionId,
               'incremental'
             );
-            router.push(`/agent-playground/team/${newId}`);
+            afterRerun(
+              newId,
+              t(
+                isResumable
+                  ? 'playground.resumeAccepted'
+                  : 'playground.incrementalAccepted'
+              )
+            );
           } catch (e) {
             toast.error('更新失败', e instanceof Error ? e.message : String(e));
           }

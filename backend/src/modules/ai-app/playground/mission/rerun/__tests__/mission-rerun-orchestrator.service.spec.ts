@@ -22,7 +22,7 @@
  *   - rerunnableStatuses: includes completed/failed/quality-failed/cancelled
  */
 
-import { BadRequestException, Logger } from "@nestjs/common";
+import { BadRequestException, ConflictException, Logger } from "@nestjs/common";
 
 // Mock complex dep chains that break import resolution
 jest.mock("../../pipeline/playground.pipeline", () => ({
@@ -112,6 +112,11 @@ function makeDispatcher() {
   return { runMission: jest.fn().mockResolvedValue(undefined) } as any;
 }
 
+/** 本进程活 run 探针（2026-08-02）。默认无活 run = 可以续跑。 */
+function makeAbortRegistry(hasLiveRun = false) {
+  return { hasLiveRun: jest.fn().mockReturnValue(hasLiveRun) } as any;
+}
+
 function makeValidSnapshot() {
   return {
     schemaVersion: 2,
@@ -140,6 +145,8 @@ function makeOrchestratorAndDeps(
     mission?: Record<string, unknown> | null;
     checkpoint?: ReturnType<typeof makeCheckpoint>;
     dispatcherRunMission?: jest.Mock;
+    /** 本进程是否已有活 run（2026-08-02 同-id 续跑前置检查） */
+    hasLiveRun?: boolean;
   } = {},
 ) {
   const checkpoint = opts.checkpoint ?? makeCheckpoint({ canResume: false });
@@ -151,6 +158,7 @@ function makeOrchestratorAndDeps(
   const buffer = makeBuffer();
   const ownership = makeOwnership();
   const guard = makeRerunGuard();
+  const abortRegistry = makeAbortRegistry(opts.hasLiveRun ?? false);
 
   const svc = new MissionRerunOrchestratorService(
     dispatcher,
@@ -159,6 +167,7 @@ function makeOrchestratorAndDeps(
     ownership,
     checkpoint,
     guard,
+    abortRegistry,
   );
 
   // Wire rerunFromTodoFrameworkCore
@@ -167,7 +176,15 @@ function makeOrchestratorAndDeps(
     streamNamespace: "playground",
   });
 
-  return { svc, store, buffer, ownership, checkpoint, dispatcher };
+  return {
+    svc,
+    store,
+    buffer,
+    ownership,
+    checkpoint,
+    dispatcher,
+    abortRegistry,
+  };
 }
 
 // ── rerunFromTodo ─────────────────────────────────────────────────────────────
@@ -379,6 +396,69 @@ describe("MissionRerunOrchestratorService.rerunFullMission", () => {
       configSnapshot: makeValidSnapshot(),
     };
   }
+
+  // ── 2026-08-02 回归：「点继续上次毫无反应」 ────────────────────────────────
+  //
+  // 复现的真实故障：mission 被 zombie cleanup 写成 failed，但那个 run 其实还活着。
+  // 用户点续跑 → 走到这里 → void runMission() → pipeline 并发护栏 **return 而非
+  // throw** → 既进不了 .catch()，HTTP 也早已 201。用户连点 8 次，8 个 201，
+  // 后台 8 条"跳过本次重入"，界面零变化。
+  //
+  // 断言的是"不许假装受理"：有活 run 时必须抛（409），且绝不能碰 runMission。
+  describe("同-id 续跑前置检查（本进程已有活 run）", () => {
+    it("有活 run → 抛 ConflictException，而不是静默受理", async () => {
+      const { svc } = makeOrchestratorAndDeps({
+        mission: makeMissionRow("failed"),
+        hasLiveRun: true,
+      });
+      await expect(
+        svc.rerunFullMission(sourceMissionId, userId, "incremental"),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it("有活 run → runMission 一次都不许调（旧行为是调了然后被静默跳过）", async () => {
+      const dispatcher = makeDispatcher();
+      const { svc } = makeOrchestratorAndDeps({
+        mission: makeMissionRow("failed"),
+        hasLiveRun: true,
+        dispatcherRunMission: dispatcher.runMission,
+      });
+      await expect(
+        svc.rerunFullMission(sourceMissionId, userId, "incremental"),
+      ).rejects.toThrow();
+      expect(dispatcher.runMission).not.toHaveBeenCalled();
+    });
+
+    it("有活 run + mode=fresh → 同样拦下，且不清 checkpoint（清了就毁掉在跑那个 run 的续跑点）", async () => {
+      const checkpoint = makeCheckpoint();
+      const { svc } = makeOrchestratorAndDeps({
+        mission: makeMissionRow("failed"),
+        checkpoint,
+        hasLiveRun: true,
+      });
+      await expect(
+        svc.rerunFullMission(sourceMissionId, userId, "fresh"),
+      ).rejects.toThrow(ConflictException);
+      expect(checkpoint.clear).not.toHaveBeenCalled();
+    });
+
+    it("无活 run → 照常放行（探针只在真有 run 时否决）", async () => {
+      const dispatcher = makeDispatcher();
+      const { svc, abortRegistry } = makeOrchestratorAndDeps({
+        mission: makeMissionRow("failed"),
+        hasLiveRun: false,
+        dispatcherRunMission: dispatcher.runMission,
+      });
+      const res = await svc.rerunFullMission(
+        sourceMissionId,
+        userId,
+        "incremental",
+      );
+      expect(abortRegistry.hasLiveRun).toHaveBeenCalledWith(sourceMissionId);
+      expect(res.missionId).toBe(sourceMissionId);
+      expect(dispatcher.runMission).toHaveBeenCalled();
+    });
+  });
 
   it("mode=fresh → checkpointRef.clear called with sourceMissionId", async () => {
     const checkpoint = makeCheckpoint();

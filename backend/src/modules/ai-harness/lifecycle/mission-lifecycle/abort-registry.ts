@@ -73,6 +73,25 @@ export class MissionAbortRegistry implements OnApplicationShutdown {
     return this.map.get(missionId)?.signal?.aborted ?? false;
   }
 
+  /**
+   * ★ 2026-08-02：本进程内该 mission 是否有**活着且未被 abort** 的 run。
+   *
+   * 本 registry 的生命周期与真实 run 严格同步（runtime shell openSession 时 register、
+   * cleanup 时 unregister），因此它就是"本 pod 是否正在跑这个 mission"的现成真源，
+   * 无需另建状态。pod 重启后 map 自然为空 → 不会把跨 pod 的僵尸误判成活的。
+   *
+   * 用途（rerun 路径）：
+   *   1. zombie 判定的否决票 —— run 明确在场时不许判死（见 rerun-guard framework）
+   *   2. 续跑前的前置检查 —— 已在跑就直接 409，而不是"受理了但实际跳过"
+   *
+   * 与 isAborted 的区别：isAborted 问"信号是否已拉"，本方法问"是否还有可干活的 run"。
+   * 已 abort 的 run 正在收尾，不该再算作在跑（否则续跑会被它挡到 cleanup 为止）。
+   */
+  hasLiveRun(missionId: string): boolean {
+    const c = this.map.get(missionId);
+    return c != null && !c.signal.aborted;
+  }
+
   size(): number {
     return this.map.size;
   }

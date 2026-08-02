@@ -30,6 +30,10 @@ import type {
   MissionLifecycleManager,
   MissionTerminalArbiter,
 } from "../../../lifecycle/mission-lifecycle/mission-lifecycle-manager";
+import {
+  MissionAbortReason,
+  type MissionAbortRegistry,
+} from "../../../lifecycle/mission-lifecycle/abort-registry";
 
 /**
  * Guard 读出的 detail 最小投影（framework 仅需 status / heartbeatAt）。
@@ -114,6 +118,11 @@ export abstract class BusinessTeamRerunGuardFramework<
       TDetail,
       TTerminalExtra
     >,
+    /**
+     * ★ 2026-08-02：本进程活 run 探针。可选 —— 未注入时退化为改动前行为，
+     * 已有业务子类（未传第三参）不受影响。
+     */
+    protected readonly abortRegistry?: MissionAbortRegistry,
   ) {
     this.log = new Logger(`${hooks.namespace}-rerun-guard`);
   }
@@ -167,6 +176,38 @@ export abstract class BusinessTeamRerunGuardFramework<
         BUSINESS_EVENT_FRESH_THRESHOLD_MS_DEFAULT,
       runningStatuses,
     });
+
+    // ★ 2026-08-02 修「慢模型被误判成僵尸」（用户实证：grok-4.5 单次 47–57s，
+    //   一个 ReActLoop 重试 3 次就 > 5min 不产 business 事件 → 被判死写 failed）。
+    //
+    //   9-cell 的 cell 2（heartbeat fresh + business stale）本意是"pod 还活但业务
+    //   停了"。但 heartbeat 是 runtime shell 里的 30s 纯定时器（mission-runtime-
+    //   shell.framework.ts），**不跟随业务进度** —— 只要进程活着就永远 fresh。于是
+    //   cell 2 实际退化成"任何 stage 超阈值不发事件即判死"，慢模型必中。
+    //
+    //   否决票：本进程 abort registry 里有活 run，就是有 worker 正在这个 mission 上
+    //   干活的**直接证据**，压过"没发事件"的间接推断 —— 判 inFlight（真在跑，只是慢），
+    //   不判 zombie。registry 与真实 run 生命周期严格同步，pod 重启自然清空，
+    //   因此不会反过来把跨 pod 的真僵尸锁住。
+    const localRunAlive =
+      decision.zombieDetected &&
+      this.abortRegistry?.hasLiveRun(missionId) === true;
+    if (localRunAlive) {
+      const reason =
+        `本进程 run 在场（abort registry 命中）—— 业务事件已静默 ` +
+        `${Math.round((latestBusinessEventAgeMs ?? 0) / 1000)}s，判定为慢 stage 而非僵尸`;
+      this.log.log(
+        `[${this.hooks.namespace}-rerun-guard ${missionId}] zombie 判定被本进程活 run 否决：${reason}`,
+      );
+      return {
+        inFlight: true,
+        zombieDetected: false,
+        status: detail.status,
+        heartbeatAgeMs,
+        latestBusinessEventAgeMs,
+        reason,
+      };
+    }
 
     return {
       inFlight: decision.inFlight,
@@ -230,13 +271,23 @@ export abstract class BusinessTeamRerunGuardFramework<
       return;
     }
 
+    // ★ 2026-08-02 一致性兜底：判死必须同时拉 abort。
+    //
+    //   此前只写库不动进程 —— 若那个 run 其实还活着（跨 pod / 探针未注入 / 探针与
+    //   finalize 之间的窗口），就会分叉成"DB=failed 但 run 还在跑"：
+    //     · UI 显示已失败，用户点续跑 → pipeline 重入护栏拒绝 → 永远起不来
+    //     · 那个 run 就算跑完也白跑 —— 终态提交是条件写 WHERE status='running'，
+    //       行已是 failed，必然 lost race → no-op，算力全烧掉且结果落不了地
+    //   abort 幂等：run 已死或在异 pod 则 no-op，活着则立即中断，二者都收敛到一致。
     await this.lifecycleManager.finalize<TTerminalExtra>({
       missionId,
       intent: {
         status: "failed",
+        reason: MissionAbortReason.mission_no_activity,
         extra: this.hooks.buildZombieTerminalExtra({ missionId, userId }),
       },
       arbiter: this.hooks.terminalArbiter,
+      abort: true,
     });
     await this.hooks.clearHeartbeat(missionId, userId).catch((err: unknown) => {
       this.log.warn(

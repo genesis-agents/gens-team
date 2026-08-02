@@ -292,7 +292,11 @@
       "start": "启动 Research Team"
     },
     "cancelMissionTitle": "确认取消该 mission？",
-    "cancelMissionDesc": "正在运行的任务会立即中止，已完成的结果与产出会保留。取消后可用「重跑」从断点继续。"
+    "cancelMissionDesc": "正在运行的任务会立即中止，已完成的结果与产出会保留。取消后可用「重跑」从断点继续。",
+    "rerunAcceptedDesc": "任务已在原有进度上继续，稍候可见最新状态。",
+    "resumeAccepted": "已开始续跑",
+    "incrementalAccepted": "已开始增量更新",
+    "freshRerunAccepted": "已开始从头重跑"
   },
   "home": {
     "welcome": "欢迎使用 AI Teams Engine",

@@ -14,6 +14,7 @@
 
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Inject,
   forwardRef,
@@ -28,6 +29,7 @@ import {
 import { MissionEventBuffer } from "../lifecycle/mission-event-buffer.service";
 import {
   BusinessTeamRerunOrchestratorFramework,
+  MissionAbortRegistry,
   MissionCheckpointService,
   MissionOwnershipRegistry,
   type MissionRerunOrchestratorHooks,
@@ -54,6 +56,8 @@ export class MissionRerunOrchestratorService extends BusinessTeamRerunOrchestrat
 > {
   // ★ 2026-06-11 同-id 续跑/重跑：fresh 模式清 checkpoint 用（incremental 保留续跑）。
   private readonly checkpointRef: MissionCheckpointService;
+  // ★ 2026-08-02 同-id 续跑前置检查：本进程已在跑就直接 409，不再"受理了但实际跳过"。
+  private readonly abortRegistryRef: MissionAbortRegistry;
 
   constructor(
     // ★ P-DUR2 (2026-05-30): dispatcher 现在反向 inject 本 orchestrator（orphan boot
@@ -65,6 +69,7 @@ export class MissionRerunOrchestratorService extends BusinessTeamRerunOrchestrat
     ownership: MissionOwnershipRegistry,
     checkpoint: MissionCheckpointService,
     rerunGuard: RerunGuardService,
+    abortRegistry: MissionAbortRegistry,
   ) {
     const hooks: MissionRerunOrchestratorHooks<
       MissionDetail,
@@ -136,6 +141,7 @@ export class MissionRerunOrchestratorService extends BusinessTeamRerunOrchestrat
     };
     super(hooks, "playground");
     this.checkpointRef = checkpoint;
+    this.abortRegistryRef = abortRegistry;
   }
 
   /**
@@ -203,6 +209,24 @@ export class MissionRerunOrchestratorService extends BusinessTeamRerunOrchestrat
       sourceMissionId,
       userId,
     );
+
+    // ★ 2026-08-02 修「点续跑毫无反应」（用户实证：连点 8 次，8 个 201，8 条
+    //   "跳过本次重入"）。
+    //
+    //   下面是 void runMission(...) 的 fire-and-forget —— 而 pipeline 的并发护栏
+    //   （playground.pipeline.ts）遇到已在跑的 mission 是 **return 而不是 throw**，
+    //   所以既进不了这里的 .catch()，HTTP 也早已返回 201。三层叠加的结果：
+    //   受理成功 + 什么都没发生 + 前端同-id 无导航 = 用户眼里的死按钮。
+    //
+    //   这里同步前置检查，把"没受理"如实告诉调用方（409）。注意与 rerunGuard 的
+    //   分工：guard 只在 status=running 时判定，而这条路的病灶恰恰是
+    //   **DB 已终态但 run 还活着**的分叉态 —— guard 会短路放行，只有本检查拦得住。
+    if (this.abortRegistryRef.hasLiveRun(sourceMissionId)) {
+      throw new ConflictException(
+        `mission ${sourceMissionId} 仍有正在运行的任务（状态显示已结束但后台未停），` +
+          `暂时无法续跑。请等待当前运行结束后重试。`,
+      );
+    }
     // 同-id：有 checkpoint 时不传 inheritFromMissionId（checkpoint resume 与轨迹
     // 继承叠加会自继承语义混乱）—— checkpoint 路径优先。
     const input = this.hooks.cloneInput(original, {});
