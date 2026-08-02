@@ -70,7 +70,17 @@ const Input = z.object({
       targetWordsPerChapter: z.record(z.string(), z.number()).default({}),
       factAllocation: z.record(z.string(), z.array(z.string())).default({}),
     })
-    .optional(),
+    // ★ 2026-08-01 .optional() → .nullish()：zod 的 .optional() **只接受
+    // undefined，不接受 null**。首跑时 ctx.outlinePlan 未设置是 undefined，校验
+    // 通过；但「重跑」从持久化的 mission context 恢复时，JSON 往返 / DB 列会把它
+    // 变成 **null**，输入校验直接拒：
+    //   [playground.writer] input failed schema validation:
+    //   outlinePlan: Expected object, received null
+    // 而重跑级联从 s8-writer 起（不含产出 outlinePlan 的 s7），必然撞上——
+    // 结果是「失败的 mission 点重跑仍然失败」，且报错指向一个用户无法处置的字段。
+    // 下游 buildOutlineGuidance 处本就是 `input.outlinePlan ? ... : ...` 的 falsy
+    // 判断，null 与 undefined 走同一分支，接受 null 无任何副作用。
+    .nullish(),
 });
 
 const DEPTH_SECTION_PLAN: Record<
