@@ -127,6 +127,36 @@ export function rawContentHasUnexecutedToolIntent(
 }
 
 /**
+ * ★ 2026-08-02：检测 rawContent 是否用了**协议保留但未实现**的 action kind。
+ *
+ * 与 rawContentHasUnexecutedToolIntent 的区别（两者都导致假 finalize，但病因相反）：
+ *   - 那个：LLM 写对了 kind，JSON **没解析成功** → 兜底把 raw 当 finalize
+ *   - 这个：JSON **解析成功了**，但 kind 是 skill_invoke / subagent_spawn /
+ *     llm_generate 这类只有类型定义、没有执行器的保留字 → normalizeAction 抛
+ *     InvalidActionError → 同样兜底成 finalize
+ *
+ * 为什么必须单独识别：兜底把 rawContent 当成"最终答案"，而它其实是一个动作请求。
+ * 下游 schema 校验必然驳回，且给模型的反馈是「缺 xx 字段」——完全指错方向，模型
+ * 很可能原样再发一次。识别出来后走 nudge，把真实原因（这个 kind 不存在）告诉它。
+ *
+ * 用户实证（prod 2026-08-02）：grok-4.5 发
+ *   {"kind":"skill_invoke","skillId":"cross-dim-synthesis",...}
+ * → InvalidActionError → finalize-raw → `insights: Required` 驳回，白烧一轮。
+ * 根因是 agent-runner 的 <available_skills> 教了这个 kind（已修），本函数是第二道网。
+ */
+export function rawContentHasUnsupportedActionKind(
+  rawContent: string,
+  hadParseError: boolean,
+): boolean {
+  if (!hadParseError) return false;
+  if (!rawContent || rawContent.trim().length === 0) return false;
+
+  return /"kind"\s*:\s*"(skill_invoke|subagent_spawn|llm_generate)"/.test(
+    rawContent,
+  );
+}
+
+/**
  * 从 envelope messages 中提取 assistant 消息里的 tool_use block IDs
  * 以及所有 tool_result block 里已返回的 tool_use_id（原生格式支持）。
  *

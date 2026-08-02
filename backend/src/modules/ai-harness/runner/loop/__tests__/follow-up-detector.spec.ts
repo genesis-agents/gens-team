@@ -12,6 +12,7 @@
 import {
   hasUnexecutedToolUse,
   rawContentHasUnexecutedToolIntent,
+  rawContentHasUnsupportedActionKind,
   envelopeHasUnexecutedToolUse,
   extractToolUseState,
   type AssistantContentBlock,
@@ -167,6 +168,56 @@ describe("rawContentHasUnexecutedToolIntent", () => {
     const raw =
       "I have gathered all the information needed. Here is my summary: ...";
     expect(rawContentHasUnexecutedToolIntent(raw, true)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// rawContentHasUnsupportedActionKind — 协议保留但无执行器的 kind
+//
+// 回归（用户实证 prod 2026-08-02）：grok-4.5 发
+//   {"kind":"skill_invoke","skillId":"cross-dim-synthesis",...}
+// JSON 完全合法，只是 kind 没有执行器 → InvalidActionError → 兜底成 finalize-raw
+// → 下游 schema 驳回 `insights: Required`，反馈指错方向，白烧一轮迭代。
+// 识别出来才能给模型真实原因（这个 kind 不存在），走 nudge 重试而非假 finalize。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("rawContentHasUnsupportedActionKind", () => {
+  const prodRaw =
+    '{"thinking":"Reviewer flagged truncation...","action":{"kind":"skill_invoke",' +
+    '"skillId":"cross-dim-synthesis","input":{"task":"Synthesize 3-7 cross-dim insights"}}}';
+
+  it("识别生产实测的 skill_invoke 原文", () => {
+    expect(rawContentHasUnsupportedActionKind(prodRaw, true)).toBe(true);
+  });
+
+  it.each([["skill_invoke"], ["subagent_spawn"], ["llm_generate"]])(
+    "识别保留 kind %s",
+    (kind) => {
+      const raw = `{"action":{"kind":"${kind}","x":1}}`;
+      expect(rawContentHasUnsupportedActionKind(raw, true)).toBe(true);
+    },
+  );
+
+  it("容忍 JSON 空白变体（LLM 格式化输出）", () => {
+    const raw = '{"action": { "kind" : "skill_invoke" , "skillId": "x" }}';
+    expect(rawContentHasUnsupportedActionKind(raw, true)).toBe(true);
+  });
+
+  it("无 parseError → false（LLM 是真的主动 finalize，不许劫持）", () => {
+    expect(rawContentHasUnsupportedActionKind(prodRaw, false)).toBe(false);
+  });
+
+  it("合法 kind → false（不误伤正常的 tool_call 解析失败）", () => {
+    const raw = '{"action":{"kind":"tool_call","toolId":"web-search"}}';
+    expect(rawContentHasUnsupportedActionKind(raw, true)).toBe(false);
+  });
+
+  it("纯文本 / 空内容 → false", () => {
+    expect(rawContentHasUnsupportedActionKind("here is my answer", true)).toBe(
+      false,
+    );
+    expect(rawContentHasUnsupportedActionKind("", true)).toBe(false);
+    expect(rawContentHasUnsupportedActionKind("   ", true)).toBe(false);
   });
 });
 

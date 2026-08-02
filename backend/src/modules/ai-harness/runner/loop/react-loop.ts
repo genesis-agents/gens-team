@@ -72,6 +72,7 @@ import {
 import type { IAgent, ISubagentSpawner } from "../../agents/abstractions";
 import {
   rawContentHasUnexecutedToolIntent,
+  rawContentHasUnsupportedActionKind,
   envelopeHasUnexecutedToolUse,
 } from "./utils/follow-up-detector";
 import { REACT_LOOP_DECISION_JSON_SCHEMA } from "./loop-output-schemas";
@@ -1350,25 +1351,40 @@ export class ReActLoop implements IAgentLoop {
           const hasNativeToolUse = envelopeHasUnexecutedToolUse(
             currentEnvelope.messages,
           );
+          // 3) ★ 2026-08-02：协议保留但无执行器的 kind（skill_invoke 等）。
+          //    JSON 解析成功、只是 kind 不存在 —— rawContent 是动作请求而非答案，
+          //    当 finalize 提交下去必被 schema 驳回，且反馈指向"缺字段"这个错方向。
+          const hasUnsupportedKind = rawContentHasUnsupportedActionKind(
+            lastIterRawContent,
+            lastIterHadParseError,
+          );
 
-          if (hasRawToolIntent || hasNativeToolUse) {
+          if (hasRawToolIntent || hasNativeToolUse || hasUnsupportedKind) {
             // 假终止 → 注入纠错提示，继续 loop
             this.logger.warn(
               `[${agentId}] iter=${iteration} ★ P0-2 hasUnexecutedToolUse detected — ` +
                 `parseError=${lastIterHadParseError} rawToolIntent=${hasRawToolIntent} ` +
-                `nativeToolUse=${hasNativeToolUse}. Injecting retry nudge instead of finalizing.`,
+                `nativeToolUse=${hasNativeToolUse} unsupportedKind=${hasUnsupportedKind}. ` +
+                `Injecting retry nudge instead of finalizing.`,
             );
             if (currentEnvelope instanceof ContextEnvelope) {
+              // 两种病因给两套说辞 —— 告诉模型的必须是真实原因，否则它照原样再发一次。
+              //   unsupportedKind：JSON 是好的，kind 不存在
+              //   其余：kind 是好的，JSON 没解析出来
+              const nudge = hasUnsupportedKind
+                ? `[UNSUPPORTED_ACTION_KIND] Your previous response used an action kind ` +
+                  `that does not exist in this protocol, so nothing was executed. ` +
+                  `There is no skill / subagent / llm_generate action — the only kinds are ` +
+                  `"tool_call", "parallel_tool_call" and "finalize". ` +
+                  `Anything you were about to delegate, do it yourself now: either call a tool ` +
+                  `from <available_tools>, or finalize with the complete answer matching the ` +
+                  `required output schema.`
+                : `[P0-2 TOOL_USE_DETECTED] Your previous response contained a tool call ` +
+                  `that was not executed because the JSON could not be parsed. ` +
+                  `Please re-emit the tool call as valid JSON using the Decision Protocol format: ` +
+                  `{"thinking":"...","action":{"kind":"tool_call","toolId":"...","input":{...}}}`;
               currentEnvelope = currentEnvelope.append([
-                {
-                  role: "user",
-                  content:
-                    `[P0-2 TOOL_USE_DETECTED] Your previous response contained a tool call ` +
-                    `that was not executed because the JSON could not be parsed. ` +
-                    `Please re-emit the tool call as valid JSON using the Decision Protocol format: ` +
-                    `{"thinking":"...","action":{"kind":"tool_call","toolId":"...","input":{...}}}`,
-                  timestamp: Date.now(),
-                },
+                { role: "user", content: nudge, timestamp: Date.now() },
               ]).envelope;
             }
             lastIterRawContent = "";

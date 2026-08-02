@@ -285,6 +285,18 @@ describe("AgentRunner + @DefineAgent (PR-H)", () => {
     expect(sp).toContain("- web-scraper: desc-web-scraper");
     expect(sp).toContain("<available_skills>");
     expect(sp).toContain("- critical-review: skill-desc-critical-review");
+
+    // ★ 2026-08-02 回归：catalog 绝不能教一个不存在的 action kind。
+    //
+    //   曾经这里给 `example: {"kind":"skill_invoke","skillId":"...",...}`，而
+    //   skill_invoke 全项目没有执行器，同一份 prompt 二十行后的
+    //   DECISION_SYSTEM_SUFFIX 还明写 `Do NOT emit "skill_invoke"`。
+    //   模型照抄 → InvalidActionError → finalize-raw → schema 驳回，白烧一轮
+    //   （慢模型下 20–57s）。生产实证 grok-4.5 命中。
+    //   注意断言的是"不得出现 skill_invoke 的**调用示例**"。DECISION_SYSTEM_SUFFIX
+    //   里提到 skill_invoke 是为了明令禁止，那是对的，不能一并禁掉。
+    expect(sp).not.toContain('"kind":"skill_invoke"');
+    expect(sp).not.toMatch(/example:.*skill_invoke/);
     createSpy.mockRestore();
   });
 

@@ -1348,18 +1348,31 @@ export class AgentRunner {
       blocks.push(lines.join("\n"));
     }
     if (declaredSkills && declaredSkills.length > 0 && this.skillRegistry) {
+      // ★ 2026-08-02 修「LLM 吐 skill_invoke 把整轮迭代烧掉」（用户实证 prod：
+      //   grok-4.5 发 {"kind":"skill_invoke","skillId":"cross-dim-synthesis",...}
+      //   → InvalidActionError → 退化 finalize-raw → schema 校验又挂）。
+      //
+      //   此前这里给的是 `example: {"kind":"skill_invoke",...}`（334e86179 加的，
+      //   出发点是"让 LLM 别以为只能写 finalize"）。但那是个**假广告**：
+      //     1. skill_invoke 全项目**没有任何执行器** —— action.interface.ts 里有
+      //        类型定义、react-loop 的 RESERVED_ACTION_KINDS 里有名字，仅此而已
+      //     2. 同一份 system prompt 二十行后的 DECISION_SYSTEM_SUFFIX 明写
+      //        `Do NOT emit "skill_invoke"` —— 教完又禁，自相矛盾
+      //   模型照抄 example 不是幻觉，是我们教的。每中一次就白烧一轮 LLM（慢模型
+      //   下 20–57s）+ 一次 fallback。
+      //
+      //   skills 在本 runner 里只有这一处消费，没有 body 注入、没有调用通道 ——
+      //   它的真实语义就是"你具备这些领域打法"，属**上下文**而非可调用动作。
+      //   于是这里只列 id + 描述，并明确否定"存在 skill 动作"这个联想。
       const lines: string[] = ["<available_skills>"];
+      lines.push(
+        "  // 这些是你已具备的领域打法（上下文），不是可调用的动作。",
+        "  // 没有 skill 类 action —— 直接按这些打法思考，用 tool_call / finalize 落地。",
+      );
       for (const id of declaredSkills) {
         const def = this.skillRegistry.get(id);
         const desc = def?.frontmatter?.description?.trim();
         lines.push(`- ${id}${desc ? `: ${desc}` : ""}`);
-        // ★ 同 tool catalog 的修复：给完整 invocation example，让 LLM 看到
-        // skill_invoke action 协议长啥样，不再误以为只能写 finalize。
-        // skill 没有强类型 inputSchema（markdown 模板，input 是自由 K-V），
-        // example 用 task-specific 占位，让 LLM 按业务情境填。
-        lines.push(
-          `  example: {"kind":"skill_invoke","skillId":"${id}","input":{"task":"<task-specific data>"}}`,
-        );
       }
       lines.push("</available_skills>");
       blocks.push(lines.join("\n"));
