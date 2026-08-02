@@ -172,7 +172,9 @@ export function SecretsManager({
   const handleDelete = async (name: string) => {
     if (
       await confirm({
-        title: `确定要Delete密钥 "${name}" 吗？此Actions不可恢复。`,
+        title: `确定删除密钥「${name}」？`,
+        description:
+          '删除后该密钥立即失效，使用它的模型与工具会调用失败。此操作不可恢复。',
         type: 'danger',
       })
     ) {

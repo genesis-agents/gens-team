@@ -208,6 +208,7 @@ function dagNodeIdToTodoId(nodeId: string): string | null {
 }
 
 export default function MissionDetailPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const missionId = params?.missionId as string;
@@ -1107,7 +1108,8 @@ export default function MissionDetailPage() {
       onCancel={() => {
         void (async () => {
           const ok = await confirm({
-            title: '确认取消该 mission？',
+            title: t('playground.cancelMissionTitle'),
+            description: t('playground.cancelMissionDesc'),
             type: 'danger',
           });
           if (!ok) return;

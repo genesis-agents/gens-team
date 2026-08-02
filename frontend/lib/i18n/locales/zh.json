@@ -290,7 +290,9 @@
       "maxCredits": "积分上限",
       "starting": "启动中…",
       "start": "启动 Research Team"
-    }
+    },
+    "cancelMissionTitle": "确认取消该 mission？",
+    "cancelMissionDesc": "正在运行的任务会立即中止，已完成的结果与产出会保留。取消后可用「重跑」从断点继续。"
   },
   "home": {
     "welcome": "欢迎使用 AI Teams Engine",

@@ -290,7 +290,9 @@
       "maxCredits": "Max Credits",
       "starting": "Starting…",
       "start": "Run Research Team"
-    }
+    },
+    "cancelMissionTitle": "Cancel this mission?",
+    "cancelMissionDesc": "Running tasks stop immediately; completed results and outputs are kept. You can resume from the checkpoint with Rerun."
   },
   "home": {
     "welcome": "Welcome to AI Teams Engine",
