@@ -153,32 +153,57 @@ export class ModelPricingRegistry implements OnApplicationBootstrap {
       }
       // ★ 2026-07-25：BYOK 用户模型吸价 —— UserModelConfig 有价格列但此前
       //   无人喂给 registry，BYOK 通道跑的模型（如 deepseek-v4-flash）成本
-      //   一直按 $0 统计。仅注册填了价格的行；平台 AIModel 行优先不覆盖；
-      //   tier 固定 standard（BYOK 模型不进平台 tier 选择，tier 仅估算元数据）。
+      //   一直按 $0 统计。平台 AIModel 行优先不覆盖；tier 固定 standard
+      //   （BYOK 模型不进平台 tier 选择，tier 仅估算元数据）。
+      //
+      // ★ 2026-08-02（用户实证 prod：grok-4.5 not in pricing registry）：
+      //   去掉此前的 `OR: [price not null]` 过滤。**没填价的 BYOK 行原本整行不注册**，
+      //   estimateCost 返回 null → 预算护栏把每次调用当 $0，等于对 BYOK 用户
+      //   完全失效 —— 而 BYOK 恰恰是最容易没填价的一类（用户自己加模型，
+      //   界面上根本没让他填单价）。
+      //
+      //   上面 admin AIModel 那段（2026-06-16）早就是「价格未配 + 有 costTier →
+      //   用档位默认价估算，护栏先生效」，只是这条 BYOK 路没跟上。这里把同一套
+      //   策略补齐，不是新开口子。estimatedFromTier=true 标记为估算值，
+      //   与 admin 路径语义一致，成本面板据此区分「实价」与「估算」。
       let byokRegistered = 0;
+      let byokTierEstimated = 0;
       const userRows = await this.prisma.userModelConfig.findMany({
-        where: {
-          isEnabled: true,
-          OR: [
-            { priceInputPerMillion: { not: null } },
-            { priceOutputPerMillion: { not: null } },
-          ],
-        },
+        where: { isEnabled: true },
         select: {
           modelId: true,
           priceInputPerMillion: true,
           priceOutputPerMillion: true,
         },
       });
+      const byokTierDefault = TIER_DEFAULT_PRICING.standard;
       for (const row of userRows) {
         if (this.byId.has(row.modelId)) continue;
+        const explicitInput =
+          row.priceInputPerMillion != null
+            ? Number(row.priceInputPerMillion)
+            : null;
+        const explicitOutput =
+          row.priceOutputPerMillion != null
+            ? Number(row.priceOutputPerMillion)
+            : null;
+        const usingTierDefault =
+          explicitInput == null && explicitOutput == null;
         this.register({
           modelId: row.modelId,
           tier: "standard",
-          inputPricePerM: Number(row.priceInputPerMillion ?? 0),
-          outputPricePerM: Number(row.priceOutputPerMillion ?? 0),
+          inputPricePerM: explicitInput ?? byokTierDefault.inputPerM,
+          outputPricePerM: explicitOutput ?? byokTierDefault.outputPerM,
+          estimatedFromTier: usingTierDefault,
         });
         byokRegistered += 1;
+        if (usingTierDefault) byokTierEstimated += 1;
+      }
+      if (byokTierEstimated > 0) {
+        this.logger.log(
+          `[hydrateFromDb] ${byokTierEstimated} 个 BYOK 模型未配单价，按 standard 档位` +
+            `默认价估算（预算护栏生效，成本面板标记为估算值）`,
+        );
       }
 
       this.logger.log(
