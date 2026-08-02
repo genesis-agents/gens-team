@@ -181,6 +181,29 @@ describe("SingleShotWriterAgent", () => {
       ).toBe(true);
     });
 
+    // ★ 2026-08-01 回归守护：重跑必须能通过输入校验。
+    //
+    // 生产现象：失败的 mission 点「重跑」，级联从 s8-writer 起（不含产出
+    // outlinePlan 的 s7），报
+    //   [playground.writer] input failed schema validation:
+    //   outlinePlan: Expected object, received null
+    // 根因：字段用的是 .optional()，而 zod 的 .optional() **只接受 undefined，
+    // 不接受 null**。首跑时 ctx.outlinePlan 未设置是 undefined（通过），重跑从
+    // 持久化 mission context 恢复时 JSON 往返 / DB 列把它变成 null（被拒）。
+    // 结果是「失败的 mission 永远重跑不起来」，且报错指向用户无法处置的字段。
+    // 改为 .nullish() 后 null 与 undefined 同等接受，下游本就是 falsy 判断。
+    it("outlinePlan=null 必须通过（重跑从持久化恢复时的真实取值）", () => {
+      expect(
+        inputSchema.safeParse({ ...baseInput, outlinePlan: null }).success,
+      ).toBe(true);
+    });
+
+    it("outlinePlan=undefined 仍然通过（首跑未设置）", () => {
+      expect(
+        inputSchema.safeParse({ ...baseInput, outlinePlan: undefined }).success,
+      ).toBe(true);
+    });
+
     it("accepts outlinePlan with empty optional fields defaulted", () => {
       expect(
         inputSchema.safeParse({
