@@ -18,6 +18,38 @@ import {
 // ==================== isRetryableError ====================
 
 describe("isRetryableError", () => {
+  // ── 2026-08-02 回归：input schema 校验被当成 transient ─────────────────
+  //
+  // 用户实证 prod：续跑的 mission 每轮刷
+  //   attempt=1/3 → 2/3 → degraded after 3 attempts:
+  //   input failed schema validation: myPlan.goals.successCriteria: Required
+  // 重试送的是同一份 input，必然同样失败 —— 白跑 3 次 + 退避睡眠，日志还写
+  // "transient error"，把确定性构造缺陷伪装成偶发抖动。
+  describe("input 侧 schema 校验（确定性，不可重试）", () => {
+    it("input failed schema validation → false", () => {
+      expect(
+        isRetryableError(
+          "[playground.leader] input failed schema validation: " +
+            "myPlan.goals.successCriteria: Required; qualityBar: Required",
+        ),
+      ).toBe(false);
+    });
+
+    it("InputValidationError → false", () => {
+      expect(
+        isRetryableError("InputValidationError: bad shape for role=leader"),
+      ).toBe(false);
+    });
+
+    // 边界：LLM **输出** 不合 schema 是另一回事 —— 换一次采样就可能过，
+    // 必须继续可重试，不能被上面两条误伤。
+    it("LLM 输出侧 schema 驳回 → 仍可重试（不得误伤）", () => {
+      expect(
+        isRetryableError("finalize rejected: Schema: insights: Required"),
+      ).toBe(true);
+    });
+  });
+
   describe("retryable messages", () => {
     it("returns true for timeout messages", () => {
       expect(isRetryableError("Connection timeout exceeded")).toBe(true);

@@ -4,8 +4,35 @@
  * 覆盖：inputSchema / outputSchema / validateBusinessRules / buildSystemPrompt
  */
 
-import { LeaderAgent } from "../leader.agent";
+import {
+  LeaderAgent,
+  LeaderGoalsSchema,
+  INHERITED_PLAN_FALLBACK_GOALS,
+} from "../leader.agent";
 import { readDefineAgentMeta } from "../../../../../../ai-harness/agents/dev-tools/agent-spec.base";
+
+// ── 2026-08-02 回归：继承 plan 的 goals 兜底必须 schema 合法 ─────────────
+//
+// 生产事故：playground.pipeline 的 hydrateInheritedPlan 里塞了
+//   goals: {} as unknown as Goals
+// Goals 的三个必填字段一个都没有，`as unknown as` 撒谎断言让编译通过，运行时
+// 每次同-id 续跑 M1 assess-research 都炸：
+//   input failed schema validation: myPlan.goals.successCriteria: Required;
+//   qualityBar: Required; deliverables: Required
+// 且失败被标 non-fatal，mission 照跑 —— 症状是续跑的 mission 静悄悄少了一整轮
+// 质量评审，没人发现。
+//
+// 兜底常量因此挪到 Goals schema 旁边，并由本用例锁死二者一致。
+describe("INHERITED_PLAN_FALLBACK_GOALS", () => {
+  it("必须通过 Goals schema（schema 加必填字段时本用例即红）", () => {
+    const parsed = LeaderGoalsSchema.safeParse(INHERITED_PLAN_FALLBACK_GOALS);
+    expect(parsed.success).toBe(true);
+  });
+
+  it("空对象通不过 —— 锁住事故原值，防止有人改回去", () => {
+    expect(LeaderGoalsSchema.safeParse({}).success).toBe(false);
+  });
+});
 
 // ── helpers ─────────────────────────────────────────────────────────
 

@@ -53,6 +53,16 @@ export const DEFAULT_RETRY_CONFIG: ErrorDetectionRetryConfig = {
     /forbidden/i,
     /model.*not.*available/i,
     /content.*policy/i,
+    // ★ 2026-08-02：**输入** schema 校验失败是确定性的 —— 重试送的是同一份 input，
+    //   必然同样失败。此前它落到"默认重试"（见函数末尾），白跑满 3 次 + 退避睡眠，
+    //   日志还写着 "transient error"，把一个确定性构造缺陷伪装成偶发抖动。
+    //   用户实证 prod：续跑的 mission 每轮都刷
+    //     attempt=1/3 ... 2/3 ... degraded after 3 attempts:
+    //     input failed schema validation: myPlan.goals.successCriteria: Required
+    //   注意只匹配 **input** 侧；LLM **输出** 不合 schema 是另一回事（换一次采样
+    //   就可能过），那个该继续重试，不能一起禁掉。
+    /input failed schema validation/i,
+    /InputValidationError/,
     /400/,
     /401/,
     /403/,

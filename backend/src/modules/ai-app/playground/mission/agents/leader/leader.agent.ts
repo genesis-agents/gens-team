@@ -37,6 +37,26 @@ const Goals = z.object({
   deliverables: z.array(z.string().min(4)).min(1).max(8),
 });
 
+/**
+ * 继承 plan（同-id 续跑 / crash-resume）时的 goals 兜底。
+ *
+ * goals 不在 mission row 持久化，续跑拿不回原值。**放在这里而不是调用方**，是因为
+ * 它必须随上面的 Goals schema 一起演进 —— 分开放就会漂：2026-08-02 生产事故正是
+ * pipeline 里塞了 `{} as unknown as Goals`，Goals 加的三个必填字段它一个都没有，
+ * 撒谎断言让编译通过，运行时每次续跑 M1 都炸 `successCriteria: Required`。
+ *
+ * 语义是**降级**不是等价物：真实 successCriteria / qualityBar 已丢失，Leader 只能
+ * 按通用标准评审。同目录 spec 有断言锁定它必须通过 Goals.parse。
+ */
+export const INHERITED_PLAN_FALLBACK_GOALS: z.infer<typeof Goals> = {
+  successCriteria: ["完成研究报告，覆盖所有关键维度"],
+  qualityBar: { minSources: 0, minCoverage: 0, hardConstraints: [] },
+  deliverables: ["研究报告"],
+};
+
+/** 导出给 spec 做「兜底值必须通过 schema」的断言。 */
+export const LeaderGoalsSchema = Goals;
+
 const InitialRisk = z.object({
   type: z.string().min(2),
   severity: z.enum(["low", "medium", "high"]),

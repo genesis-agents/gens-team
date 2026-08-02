@@ -71,6 +71,7 @@ import {
   type SupervisedMission,
   type LeaderPlanOutput,
 } from "../roles";
+import { INHERITED_PLAN_FALLBACK_GOALS } from "../agents/leader/leader.agent";
 import { LeaderInvocationFactory } from "./leader-invocation.factory";
 // ★ Stage 1 / S1-1 (2026-05-09): 业务编排已抽到独立 service —— dispatcher inject + delegate
 import { PlaygroundBusinessOrchestrator } from "./playground-business-orchestrator.service";
@@ -1320,19 +1321,32 @@ export class PlaygroundPipelineDispatcher
         dimensions: dimensions as NonNullable<
           import("../context/mission-context").MissionContext["plan"]
         >["dimensions"],
-        // goals/initialRisks 不从 source DB 反序列化（不在 mission row 持久化里），
-        // 下游 stage 走兜底逻辑（S4 leader assess 仅消费 dimensions）。
-        // ★ 2026-06-19：goals 是 object（不是数组）——空对象，否则 leader:goals-set
-        //   事件校验 "goals: Expected object, received array" 被 EventBus 拒收。
-        goals: {} as unknown as NonNullable<
-          import("../context/mission-context").MissionContext["plan"]
-        >["goals"],
+        // goals 不在 mission row 持久化，继承时拿不回原值 → 给一个**schema 合法**的
+        // 保守兜底（对齐 deep-insight-stage-bindings.ts:494-498 的同款处理）。
+        //
+        // ★ 2026-08-02 修（用户实证 prod）：此前这里是 `{} as unknown as ...`，注释写
+        //   「S4 leader assess 仅消费 dimensions」——**这句是错的**。
+        //   leader.service.ts:293 把整个 goals 传进 M1 输入，而 Goals schema 三个字段
+        //   全必填，于是每次续跑 M1 都必炸：
+        //     input failed schema validation: myPlan.goals.successCriteria: Required;
+        //     qualityBar: Required; deliverables: Required
+        //   `as unknown as` 这个撒谎断言正是让空对象通过编译的原因。失败被标 non-fatal，
+        //   mission 继续跑，所以症状是"续跑的 mission 静悄悄少了一整轮质量评审"。
+        //
+        //   兜底值是**降级**不是等价物：真实 successCriteria/qualityBar 丢失，Leader
+        //   只能按通用标准评审。要真正无损，得把 goals 落进 mission row 或从
+        //   leader:goals-set 事件回捞（属独立改动）。
+        //
+        //   常量定义在 leader.agent.ts 的 Goals schema 旁边 —— 就是为了不再重演
+        //   "调用方自己捏一个值、schema 加字段时没人跟着改" 这条路。
+        goals: INHERITED_PLAN_FALLBACK_GOALS,
         initialRisks: [] as unknown as NonNullable<
           import("../context/mission-context").MissionContext["plan"]
         >["initialRisks"],
       };
       this.log.log(
-        `[hydrateInheritedPlan] mission ${missionId} inherited plan from ${sourceMissionId} (${dimensions.length} dims)`,
+        `[hydrateInheritedPlan] mission ${missionId} inherited plan from ${sourceMissionId} ` +
+          `(${dimensions.length} dims；goals 未持久化 → 用通用兜底，本轮 Leader 评审标准为降级值)`,
       );
     } catch (err) {
       this.log.warn(
