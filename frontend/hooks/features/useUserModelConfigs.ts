@@ -50,9 +50,18 @@ export interface UserModelConfig {
   updatedAt: string;
 }
 
+// ★ 2026-08-02 修：此前是
+//     Omit<UserModelConfig, 'id'|'userId'|'createdAt'|'updatedAt'>
+//       & Partial<Pick<UserModelConfig, 'maxTokens'|'temperature'>>
+//   —— Omit 里**没排除** maxTokens/temperature，所以它们仍是必填 `number`，
+//   与 Partial 交叉后 `number & (number|undefined)` 还是 `number`。
+//   这个写法看起来把字段改成可选了、实际什么也没改（又一个"编译通过、
+//   看起来对、其实没生效"）。结果是调用方被类型逼着**总是**传一个值，
+//   后端"未传就按模型已知上限推导"的分支永远走不到。
+//   正确做法：先从 Omit 里排掉，再用 Partial 加回来。
 export type CreateUserModelConfigInput = Omit<
   UserModelConfig,
-  'id' | 'userId' | 'createdAt' | 'updatedAt'
+  'id' | 'userId' | 'createdAt' | 'updatedAt' | 'maxTokens' | 'temperature'
 > &
   Partial<Pick<UserModelConfig, 'maxTokens' | 'temperature'>>;
 

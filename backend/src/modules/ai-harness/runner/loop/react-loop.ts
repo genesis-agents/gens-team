@@ -1338,9 +1338,29 @@ export class ReActLoop implements IAgentLoop {
         //    unexecuted tool_use blocks instead."
         //
         // 只在 finalize 路径触发（tool_call / parallel_tool_call 已在下方 continue）。
+        // ★ 2026-08-02 修「新增的防线在生产路径上是死代码」（审计发现，我当天造的）：
+        //   此前整块被 `!criteria.terminateOn?.includes("finalize")` 包住，而
+        //   HarnessedAgent 硬编码 `terminateOn: ["finalize"]`（harnessed-agent.ts），
+        //   且 agent-factory 是全仓仅有的两个 HarnessedAgent 构造点 —— 于是**所有 spec
+        //   agent 都恒定短路**，我加的 skill_invoke 第二道网从未被执行过。
+        //   我加的两条测试只测纯函数，正好看不见这条死路径。
+        //
+        //   分开处理两类：
+        //     · 未支持的 action kind：JSON 解析成功但 kind 不存在 —— 这**根本不是
+        //       finalize**，是被兜底伪装成 finalize 的动作请求。无论 terminateOn
+        //       怎么配都必须纠错，故提到闸门外。
+        //     · 未执行的 tool 意图：属于"该不该把 finalize 当真终止"的判断，
+        //       保留原有 terminateOn 语义不动。
+        const unsupportedKindFakeFinalize =
+          decision.action.kind === "finalize" &&
+          rawContentHasUnsupportedActionKind(
+            lastIterRawContent,
+            lastIterHadParseError,
+          );
         if (
           decision.action.kind === "finalize" &&
-          !criteria.terminateOn?.includes("finalize")
+          (!criteria.terminateOn?.includes("finalize") ||
+            unsupportedKindFakeFinalize)
         ) {
           // 1) ReAct JSON 协议：parseError + rawContent 含工具调用意图
           const hasRawToolIntent = rawContentHasUnexecutedToolIntent(
@@ -1351,13 +1371,8 @@ export class ReActLoop implements IAgentLoop {
           const hasNativeToolUse = envelopeHasUnexecutedToolUse(
             currentEnvelope.messages,
           );
-          // 3) ★ 2026-08-02：协议保留但无执行器的 kind（skill_invoke 等）。
-          //    JSON 解析成功、只是 kind 不存在 —— rawContent 是动作请求而非答案，
-          //    当 finalize 提交下去必被 schema 驳回，且反馈指向"缺字段"这个错方向。
-          const hasUnsupportedKind = rawContentHasUnsupportedActionKind(
-            lastIterRawContent,
-            lastIterHadParseError,
-          );
+          // 3) 协议保留但无执行器的 kind（skill_invoke 等）—— 已在闸门外算好
+          const hasUnsupportedKind = unsupportedKindFakeFinalize;
 
           if (hasRawToolIntent || hasNativeToolUse || hasUnsupportedKind) {
             // 假终止 → 注入纠错提示，继续 loop

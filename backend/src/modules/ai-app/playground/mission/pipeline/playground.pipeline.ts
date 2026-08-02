@@ -23,6 +23,7 @@
  *   - R2-A.4 ~ R2-A.13: s2-s12 hook 逐 stage 实装
  */
 import {
+  ConflictException,
   Injectable,
   OnModuleInit,
   Optional,
@@ -127,6 +128,22 @@ export class PlaygroundPipelineDispatcher
   implements OnModuleInit
 {
   private readonly sessions = new Map<string, SessionEntry>();
+
+  /**
+   * ★ 2026-08-02：本进程是否正在跑该 mission —— **唯一真源**。
+   *
+   * 审计发现的病灶：续跑的 409 前置检查问的是 `MissionAbortRegistry.hasLiveRun`
+   * （abort 信号一拉立刻 false），而真正拒绝重入的是这里的 `sessions.has`
+   * （要到 finally 的 sessions.delete 才 false）。两个判据生命周期不同 ——
+   * 取消 / 超时 / 预算 / 僵尸清理任一路径拉起 abort 后的收尾窗口内：
+   *   hasLiveRun=false（放行）+ sessions.has=true（跳过）→ 201 + 绿色成功 toast
+   * 正是事故本身，还多了一句假的成功确认。
+   *
+   * 双源就是病根，故对外暴露这一个探针，让前置检查与护栏问同一个问题。
+   */
+  hasActiveLocalRun(missionId: string): boolean {
+    return this.sessions.has(missionId);
+  }
 
   constructor(
     private readonly registry: MissionPipelineRegistry,
@@ -424,19 +441,19 @@ export class PlaygroundPipelineDispatcher
     //   mission" + fireSelfEvolutionPostlude 失败刷屏。触发场景：liveness 停滞自动恢复
     //   rerunFullMission(同-id) 与原 run 时间重叠（gpt-5.4 等慢推理模型 48min 跑程尤甚）。
     //   单进程内 sessions.has 准确反映在跑的 run（pod 重启 Map 自然清空，不会误锁僵尸）。
+    // ★ 2026-08-02：改 return 为 **throw**（审计发现）。
+    //   此前 return 一个带 error 字段的 summary —— 但唯一的调用方
+    //   （mission-rerun-orchestrator 的 `void this.hooks.runMission(...).catch(...)`）
+    //   既不读返回值也收不到异常，HTTP 早已 201。"拒绝执行"就这样被伪装成"受理成功"，
+    //   用户连点 8 次拿到 8 个 201、界面零变化。守卫拒绝执行时必须让调用方知道。
     if (this.sessions.has(missionId)) {
       this.log.warn(
-        `[runMission ${missionId}] 已有进行中的 run（session 在场）→ 跳过本次重入，` +
+        `[runMission ${missionId}] 已有进行中的 run（session 在场）→ 拒绝本次重入，` +
           `避免 session map 竞态 clobber（防 no-active-session 刷屏）`,
       );
-      return {
-        missionId,
-        status: "aborted",
-        stageOutputs: {},
-        error: new Error(
-          `[playground-pipeline] concurrent run for mission ${missionId} skipped (already in flight)`,
-        ),
-      };
+      throw new ConflictException(
+        `[playground-pipeline] concurrent run for mission ${missionId} rejected (already in flight)`,
+      );
     }
     // ★ L3 W1 批 2c: mission 启动时刷新策略阈值 overlay（DB dual-read 快照）。
     //   失败不阻断 mission。

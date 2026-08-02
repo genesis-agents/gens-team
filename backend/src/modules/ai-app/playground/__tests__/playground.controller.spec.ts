@@ -144,9 +144,12 @@ function buildController() {
       latestBusinessEventAgeMs: null,
     }),
   };
-  // ★ 2026-08-02：同-id 续跑前置检查用的本进程活 run 探针。controller 层用例
-  //   跑的都是"没有在跑的 run"场景，故恒 false（= 放行，行为与加探针前一致）。
-  const abortRegistryMock = { hasLiveRun: jest.fn().mockReturnValue(false) };
+  // ★ 2026-08-02：同-id 续跑前置检查用的本进程活 run 探针，真源是
+  //   dispatcher.hasActiveLocalRun（与 pipeline 重入护栏同一个 sessions Map）。
+  //   controller 层用例跑的都是"没有在跑的 run"场景，故恒 false（= 放行）。
+  (
+    orchestrator as unknown as { hasActiveLocalRun: unknown }
+  ).hasActiveLocalRun = jest.fn().mockReturnValue(false);
   const rerunOrchestrator = new MissionRerunOrchestratorService(
     orchestrator as never,
     store as never,
@@ -154,7 +157,6 @@ function buildController() {
     ownership as never,
     checkpoint as never,
     rerunGuardMock as never,
-    abortRegistryMock as never,
   );
 
   // ★ R2-C 单轨化 (2026-05-04)：pipelineDispatcher 是唯一 mission orchestrator；
