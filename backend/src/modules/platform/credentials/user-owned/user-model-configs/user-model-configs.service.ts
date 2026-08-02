@@ -6,7 +6,10 @@ import {
 } from "@nestjs/common";
 import { AIModelType, Prisma, UserModelConfig } from "@prisma/client";
 import { PrismaService } from "../../../../../common/prisma/prisma.service";
-import { inferIsReasoning } from "../../../../ai-engine/llm/types/model.utils";
+import {
+  inferIsReasoning,
+  getKnownModelLimit,
+} from "../../../../ai-engine/llm/types/model.utils";
 
 const PROVIDER_NAME_PATTERN = /^[a-z0-9-]+$/;
 // 2026-05-11 P2: 删除 PROVIDER_DEFAULTS 硬编码。apiFormat 没填且 DB 也没配
@@ -108,7 +111,18 @@ export class UserModelConfigsService {
       modelType: input.modelType,
       apiEndpoint: input.apiEndpoint?.trim() || null,
       apiKeyId: input.apiKeyId?.trim() || null,
-      maxTokens: input.maxTokens ?? 4096,
+      // ★ 2026-08-02：未显式指定时按模型已知上限推导，而非一律 4096。
+      //
+      // 生产事故：用户手工添加 grok-4.5（500K context）时没填 Max Tokens，落库
+      // 拿到 schema 默认的 4096。运行时 AiChatFailoverCaller 用 config.maxTokens
+      // 当硬闸：`Clamping maxTokens from 32000 to model limit 4096`——上游把
+      // outputLength=extended 提到 32000、MODEL_KNOWN_LIMITS 也放宽到 131072，
+      // 全被这一行写死的 4096 兜回，深度长报告必然截断。界面既不提示、失败信息
+      // 也不指向它，用户无从自查。
+      //
+      // MODEL_KNOWN_LIMITS 本就是「模型真实输出上限」的既有真源（同文件的
+      // inferIsReasoning 已是同款用法），这里复用它；未知模型仍回落 4096 保守值。
+      maxTokens: input.maxTokens ?? getKnownModelLimit(input.modelId) ?? 4096,
       temperature: input.temperature ?? 0.7,
       embeddingDimensions: input.embeddingDimensions ?? null,
       maxInputTokens: input.maxInputTokens ?? null,
