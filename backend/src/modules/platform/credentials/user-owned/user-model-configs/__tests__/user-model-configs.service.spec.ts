@@ -119,6 +119,51 @@ describe("UserModelConfigsService", () => {
       expect(result).toEqual(SAMPLE_CONFIG);
     });
 
+    // ★ 2026-08-02 回归守护：未填 maxTokens 时按模型已知上限推导，而非一律 4096。
+    //
+    // 生产事故：用户手工添加 grok-4.5（500K context）没填 Max Tokens → 落库 4096
+    // → 运行时 `Clamping maxTokens from 32000 to model limit 4096` → 深度长报告
+    // 必然截断。上游把 outputLength=extended 提到 32000、MODEL_KNOWN_LIMITS 也放宽
+    // 到 131072，全被这个写死的默认值兜回，且界面不提示、报错不指向它。
+    it("未指定 maxTokens 时按 MODEL_KNOWN_LIMITS 推导（grok-4.5 → 131072）", async () => {
+      prisma._tx.userModelConfig.create.mockResolvedValueOnce(SAMPLE_CONFIG);
+      await service.create("user-1", {
+        ...BASE_INPUT,
+        provider: "xai",
+        modelId: "grok-4.5",
+      });
+      const arg = prisma._tx.userModelConfig.create.mock.calls[0][0] as {
+        data: { maxTokens: number };
+      };
+      expect(arg.data.maxTokens).toBe(131072);
+    });
+
+    it("显式传入 maxTokens 时以用户值为准", async () => {
+      prisma._tx.userModelConfig.create.mockResolvedValueOnce(SAMPLE_CONFIG);
+      await service.create("user-1", {
+        ...BASE_INPUT,
+        modelId: "grok-4.5",
+        provider: "xai",
+        maxTokens: 8000,
+      });
+      const arg = prisma._tx.userModelConfig.create.mock.calls[0][0] as {
+        data: { maxTokens: number };
+      };
+      expect(arg.data.maxTokens).toBe(8000);
+    });
+
+    it("未知模型仍回落 4096（保守默认未被削弱）", async () => {
+      prisma._tx.userModelConfig.create.mockResolvedValueOnce(SAMPLE_CONFIG);
+      await service.create("user-1", {
+        ...BASE_INPUT,
+        modelId: "some-unknown-model-xyz",
+      });
+      const arg = prisma._tx.userModelConfig.create.mock.calls[0][0] as {
+        data: { maxTokens: number };
+      };
+      expect(arg.data.maxTokens).toBe(4096);
+    });
+
     it("throws BadRequestException when modelId is empty", async () => {
       await expect(
         service.create("user-1", { ...BASE_INPUT, modelId: "  " }),
