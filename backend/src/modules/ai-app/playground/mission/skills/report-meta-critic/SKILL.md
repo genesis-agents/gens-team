@@ -63,16 +63,9 @@ You are reading **as a skeptical domain expert**, not as a rule-checker.
 
 ## Output JSON shape
 
-```json
-{
-  "scope": "mission-critic",
-  "overallVerdict": "pass" | "concerns" | "fail",
-  "rationale": "<one paragraph explaining the verdict>",
-  "blindspots": ["..."],
-  "biasFlags": ["..."],
-  "suggestions": ["..."]
-}
-```
+> ★ 2026-08-03：输出字段形状以 harness 自动注入的 `outputSchema` 为准（agent-runner 的 `describeOutputSchemaForLlm`，唯一权威）。
+> 本文档**不再复述形状** —— 两份描述一旦漂移，模型会照文档写、然后被 schema 驳回、耗尽重试后兑成垃圾产物（2026-08-03 生产实证）。
+> 本节只讲**内容与质量要求**。
 
 ## Hard rules
 

@@ -64,29 +64,9 @@ Generic "results acceptable" is rejected.
 
 ## Output shape — MUST use ReAct finalize wrapper
 
-```json
-{
-  "thinking": "<reasoning>",
-  "action": {
-    "kind": "finalize",
-    "output": {
-      "phase": "assess-research",
-      "decision": "accept-all" | "patch" | "redirect" | "abort",
-      "rationale": "<paragraph explaining overall + per-dim>",
-      "perDimension": [
-        {
-          "dimensionId": "<must match myPlan.dimensions[i].id>",
-          "action": "accept" | "accept-degraded" | "retry-with-critique" | "replace-spec" | "abort",
-          "critique": "<required when action=retry-with-critique>",
-          "newAgentSpecId": "<required when action=replace-spec>",
-          "strategy": "fresh-collect" | "reuse-recompute"  // required for retry/replace
-        }
-      ],
-      "newDimensions": [/* required when decision=redirect */]
-    }
-  }
-}
-```
+> ★ 2026-08-03：输出字段形状以 harness 自动注入的 `outputSchema` 为准（agent-runner 的 `describeOutputSchemaForLlm`，唯一权威）。
+> 本文档**不再复述形状** —— 两份描述一旦漂移，模型会照文档写、然后被 schema 驳回、耗尽重试后兑成垃圾产物（2026-08-03 生产实证）。
+> 本节只讲**内容与质量要求**。
 
 ## Hard rules
 

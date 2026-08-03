@@ -53,29 +53,18 @@ inputs are good chapters; your job is **flow, dedup, and a closing line**.
 Keep each original chapter heading as a `###` subheading inside the integrated body.
 This lets downstream Reviewer trace which chapter each claim came from.
 
-## Output JSON shape
+## Output
 
-> ★ 2026-08-03 修「技能文档与真实 outputSchema 两套形状」（Railway 生产日志实证）。
-> 此前本节教的字段名与 dimension-integrator.agent 的 outputSchema 几乎全不一致，
-> 且带一个 schema 里不存在的模式字段。模型照文档写 → schema 连拒 3 次
+> ★ 2026-08-03（Railway 生产日志实证）：输出字段形状以 harness 自动注入的
+> `outputSchema` 为准（agent-runner 的 `describeOutputSchemaForLlm`，唯一权威）。
+> 本文档**刻意不再复述形状**：此前这里写的字段名与 dimension-integrator.agent 的
+> schema 几乎全不一致，模型照文档写 → schema 连拒 3 次
 > (`dimension: Required; chapters: Required`) → 触发"接受当前候选"兜底 → 该维度
-> 拿到一份垃圾整合；那个模式字段还被模型具象成了协议里不存在的 action kind
-> （日志实测 `unsupported action kind: "integrate"`），白烧整轮迭代。
-> 文档说什么模型就写什么 —— 所以这里必须与 schema 逐字段一致。
-> 旧字段名刻意不在此复述：把错误形状写进文档，照做型模型照样会照抄。
+> 拿到一份垃圾整合；文档里那个模式字段还被模型具象成协议里不存在的 action kind
+> （日志实测 `unsupported action kind: "integrate"`）。
+> 同一件事写两份，漂移只是时间问题 —— 所以这里只讲**内容与质量要求**。
 
-Emit **exactly** this object as your `finalize` output — no action wrapper, no
-`mode` field, no extra keys:
-
-```json
-{
-  "dimension": "<dim name>",
-  "abstract": "<short abstract of this dimension>",
-  "keyFindings": ["<finding 1>", "<finding 2>", "<finding 3>"],
-  "totalWordCount": <int>,
-  "fullMarkdown": "<coherent markdown with ### subheadings + transitions>"
-}
-```
+直接 `finalize` 注入的 schema 所要求的对象，不要外套任何 action 包装。
 
 ## Hard rules
 

@@ -1,193 +1,229 @@
 /**
- * 技能文档 ↔ agent outputSchema 契约看护
+ * 技能文档 ↔ agent outputSchema 契约看护（全量自动配对）
  *
- * ★ 2026-08-03（Railway 生产日志实证）：
- *   skills/dim-chapter-integration/SKILL.md 教模型输出
- *     {"mode":"integrate","dimensionName","integratedBody","totalWordCount","sources"}
- *   而 dimension-integrator.agent 的 outputSchema 是
- *     {dimension, abstract, keyFindings, totalWordCount, fullMarkdown}
- *   —— 除 totalWordCount 外**字段名全不一样**。
+ * ★ 2026-08-03（Railway 生产日志实证）：挂在 agent 上的 SKILL.md 教的输出 JSON
+ *   形状，与该 agent 真实的 outputSchema 是两套东西。模型对文档是**照做**的：
  *
- *   生产后果（日志原文）：
  *     finalize rejected (1/3): Schema: dimension: Required; chapters: Required
- *     finalize rejected (2/3): ...
  *     finalize rejected 3 times in a row, accepting current candidate to avoid infinite loop
- *   → 该维度拿到一份垃圾整合，白烧三轮 token。
- *
- *   文档里那句 `"mode": "integrate"` 还被模型具象成了不存在的 action kind：
  *     InvalidActionError: LLM returned unsupported action kind: "integrate"
- *     InvalidActionError: LLM returned unsupported action kind: "dim-chapter-integration"
+ *     thinking: "...Output exactly the required integrate JSON."
  *
- *   这与本轮章节字数那条修复是同一个病：**文档承诺的与代码执行的不是一回事**，
- *   而模型对文档是照做的。所以要看护的不是某个字段，是"文档说什么代码就得认什么"。
+ *   → 必被驳回 → 耗尽重试 → "接受当前候选"兜底塞进垃圾产物。
+ *
+ *   与本轮章节字数那条是同一个病：**承诺的和执行的不是一回事**。
+ *
+ * 本套件**自动**扫描所有 `*.agent.ts` 的 `skills: [...]` 声明与 `const Output`
+ * schema，逐对比对 —— 刻意不用手写配对表，手写表本身就会漂移（这正是被看护的
+ * 那类缺陷）。新增技能 / 改 schema 若造成不一致，这里直接红。
  */
 
 import * as fs from "fs";
 import * as path from "path";
 
+const AI_APP_DIR = path.join(__dirname, "..", "..", "..", "..", "..");
 const SKILLS_DIR = path.join(__dirname, "..", "..", "..", "skills");
-
-function listSkillDocs(): { name: string; file: string; text: string }[] {
-  return fs
-    .readdirSync(SKILLS_DIR, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && d.name !== "__tests__")
-    .map((d) => ({
-      name: d.name,
-      file: path.join(SKILLS_DIR, d.name, "SKILL.md"),
-    }))
-    .filter((s) => fs.existsSync(s.file))
-    .map((s) => ({ ...s, text: fs.readFileSync(s.file, "utf8") }));
-}
-
-const SKILL_DOCS = listSkillDocs();
 
 /** ReAct 协议里真实存在的 action kind —— 与 react-loop.normalizeAction 同源。 */
 const PROTOCOL_ACTION_KINDS = ["tool_call", "parallel_tool_call", "finalize"];
 
-describe("技能文档输出契约", () => {
-  it("至少扫到了技能文档（防止目录改名后本套件静默空跑）", () => {
-    expect(SKILL_DOCS.length).toBeGreaterThan(5);
+// ─── 工具 ────────────────────────────────────────────────────────────────────
+
+function walk(dir: string, pattern: RegExp, acc: string[] = []): string[] {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return acc;
+  }
+  for (const e of entries) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      if (e.name === "node_modules" || e.name === "__tests__") continue;
+      walk(full, pattern, acc);
+    } else if (pattern.test(e.name)) {
+      acc.push(full);
+    }
+  }
+  return acc;
+}
+
+/**
+ * 取一段以 `{` 开头的文本里**深度 1** 的键名。
+ * 用花括号计数而非纯正则，避免把嵌套对象的键当成顶层键。
+ */
+function topLevelKeys(objText: string): string[] {
+  const keys: string[] = [];
+  const KEY_RE = /(?:^|[,{\s])\s*"?([A-Za-z_][A-Za-z0-9_]*)"?\s*:/;
+  let depth = 0;
+  let buf = "";
+  const flush = (): void => {
+    const m = KEY_RE.exec(buf);
+    if (m) keys.push(m[1]);
+    buf = "";
+  };
+  for (let i = 0; i < objText.length; i++) {
+    const c = objText[i];
+    if (c === "{" || c === "[") {
+      if (depth === 1) flush();
+      depth++;
+      continue;
+    }
+    if (c === "}" || c === "]") {
+      if (depth === 1) flush();
+      depth--;
+      buf = "";
+      continue;
+    }
+    if (depth === 1) {
+      if (c === ",") flush();
+      else buf += c;
+    }
+  }
+  if (buf) flush();
+  return [...new Set(keys)];
+}
+
+/** 从 `const Output = z.object({...})` 里取顶层字段名。 */
+function extractOutputKeys(agentSource: string): string[] | null {
+  const anchor = agentSource.indexOf("const Output = z.object({");
+  if (anchor < 0) return null;
+  const start = agentSource.indexOf("{", anchor + 23);
+  let depth = 0;
+  let end = -1;
+  for (let i = start; i < agentSource.length; i++) {
+    const c = agentSource[i];
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  if (end < 0) return null;
+  const clean = agentSource
+    .slice(start, end + 1)
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/[^\n]*/g, "");
+  return topLevelKeys(clean);
+}
+
+/** 从 SKILL.md 里取"输出形状"那个 json 块（没有则 null）。 */
+function extractDocOutputBlock(md: string): string | null {
+  const lines = md.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^#{1,4}\s/.test(lines[i])) continue;
+    if (!/output|输出/i.test(lines[i])) continue;
+    const m = lines
+      .slice(i + 1)
+      .join("\n")
+      .match(/```json\s*([\s\S]*?)```/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// ─── 自动建立 skill → agent 配对 ─────────────────────────────────────────────
+
+const AGENT_FILES = walk(AI_APP_DIR, /\.agent\.ts$/);
+
+const SKILL_ALLOWED = new Map<
+  string,
+  { keys: Set<string>; agents: string[] }
+>();
+for (const file of AGENT_FILES) {
+  const src = fs.readFileSync(file, "utf8");
+  const skillsMatch = src.match(/skills:\s*\[([\s\S]*?)\]/);
+  if (!skillsMatch) continue;
+  const skills = [...skillsMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  if (skills.length === 0) continue;
+  const outputKeys = extractOutputKeys(src);
+  if (!outputKeys || outputKeys.length === 0) continue;
+  for (const skill of skills) {
+    if (!fs.existsSync(path.join(SKILLS_DIR, skill, "SKILL.md"))) continue;
+    const cur = SKILL_ALLOWED.get(skill) ?? {
+      keys: new Set<string>(),
+      agents: [],
+    };
+    outputKeys.forEach((k) => cur.keys.add(k));
+    cur.agents.push(path.relative(AI_APP_DIR, file).replace(/\\/g, "/"));
+    SKILL_ALLOWED.set(skill, cur);
+  }
+}
+
+const ALL_SKILL_DOCS = fs
+  .readdirSync(SKILLS_DIR, { withFileTypes: true })
+  .filter((d) => d.isDirectory())
+  .map((d) => ({
+    name: d.name,
+    file: path.join(SKILLS_DIR, d.name, "SKILL.md"),
+  }))
+  .filter((s) => fs.existsSync(s.file))
+  .map((s) => ({ ...s, text: fs.readFileSync(s.file, "utf8") }));
+
+// ─── 断言 ────────────────────────────────────────────────────────────────────
+
+describe("技能文档输出契约（全量自动配对）", () => {
+  it("扫到了 agent 与技能（防止路径改名后本套件静默空跑）", () => {
+    expect(AGENT_FILES.length).toBeGreaterThan(10);
+    expect(ALL_SKILL_DOCS.length).toBeGreaterThan(5);
+    expect(SKILL_ALLOWED.size).toBeGreaterThan(3);
   });
 
-  describe("★ 不得教模型使用协议外的 action kind", () => {
-    it.each(SKILL_DOCS.map((s) => [s.name, s] as const))(
+  describe("★ 技能文档不得教协议外的 action kind", () => {
+    it.each(ALL_SKILL_DOCS.map((s) => [s.name, s] as const))(
       "%s",
       (_name, skill) => {
-        // 只看 ```json 代码块里的 "kind": "xxx" —— 那是模型会照抄的地方。
-        const jsonBlocks = skill.text.match(/```json[\s\S]*?```/g) ?? [];
-        for (const block of jsonBlocks) {
-          const kinds = [...block.matchAll(/"kind"\s*:\s*"([^"]+)"/g)].map(
-            (m) => m[1],
-          );
-          for (const k of kinds) {
-            expect(PROTOCOL_ACTION_KINDS).toContain(k);
+        const blocks = skill.text.match(/```json[\s\S]*?```/g) ?? [];
+        for (const block of blocks) {
+          for (const m of block.matchAll(/"kind"\s*:\s*"([^"]+)"/g)) {
+            expect(PROTOCOL_ACTION_KINDS).toContain(m[1]);
           }
         }
       },
     );
   });
 
-  // ★ 通用规则（比"禁止某字段"正确）：文档示例里的顶层字段必须是 agent
-  //   outputSchema 认识的，且 schema 的必填字段必须在文档里出现。
-  //
-  //   为什么不能一刀切禁 "mode"：verifier.agent 的 Output **真的**有
-  //   `mode: z.literal("citation-audit")` —— citation-audit 文档写 mode 是对的。
-  //   一刀切会把正确的判成错的。判据只能是"与真实 schema 比对"。
-  describe("★ 文档示例字段 == 消费方 agent 的 outputSchema 字段", () => {
-    const PAIRS: Array<{
-      skill: string;
-      required: string[];
-      allowed: string[];
-      /** 用于在多个 json 块中定位输出示例的锚字段 */
-      anchor: string;
-    }> = [
-      {
-        skill: "dim-chapter-integration",
-        required: [
-          "dimension",
-          "abstract",
-          "keyFindings",
-          "totalWordCount",
-          "fullMarkdown",
-        ],
-        allowed: [
-          "dimension",
-          "abstract",
-          "keyFindings",
-          "totalWordCount",
-          "fullMarkdown",
-        ],
-        anchor: "fullMarkdown",
-      },
-      {
-        skill: "chapter-quality-gate",
-        required: ["index", "decision", "score", "summary"],
-        allowed: [
-          "index",
-          "decision",
-          "score",
-          "issues",
-          "summary",
-          "critique",
-          // issues[] 内层字段
-          "severity",
-          "dimension",
-          "pointer",
-          "issue",
-          "suggestion",
-        ],
-        anchor: "decision",
-      },
-    ];
+  // ★ 2026-08-03 判据反转（更根治）：harness 已经把真实 outputSchema 自动注入
+  //   systemPrompt（agent-runner.service.ts 的 describeOutputSchemaForLlm）。
+  //   技能文档再写一份输出形状，就是**同一件事的第二份描述** —— 两份一旦漂移，
+  //   生产日志证明模型听文档那份，然后被 schema 驳回、耗尽重试、兑成垃圾产物。
+  //   所以不是"两份要对齐"，而是**只能有一份**。
+  describe("★ 被 agent 消费的技能，文档不得复述输出形状", () => {
+    const consumed = ALL_SKILL_DOCS.filter((d) => SKILL_ALLOWED.has(d.name));
 
-    it.each(PAIRS.map((p) => [p.skill, p] as const))("%s", (_name, pair) => {
-      const doc = SKILL_DOCS.find((s) => s.name === pair.skill);
-      expect(doc).toBeDefined();
-      const block = (doc!.text.match(/```json[\s\S]*?```/g) ?? []).find((b) =>
-        b.includes(pair.anchor),
-      );
-      expect(block).toBeDefined();
-      const docKeys = [
-        ...block!.matchAll(/"([A-Za-z][A-Za-z0-9_]*)"\s*:/g),
-      ].map((m) => m[1]);
-      // 文档不得教 schema 不认识的字段
-      for (const k of docKeys) {
-        expect(pair.allowed).toContain(k);
-      }
-      // schema 必填字段必须在文档里出现，否则模型不知道要给 → 必被驳回
-      for (const k of pair.required) {
-        expect(docKeys).toContain(k);
-      }
+    it("确实扫到了被消费的技能（防止本套件空跑）", () => {
+      expect(consumed.length).toBeGreaterThan(3);
+    });
+
+    it.each(consumed.map((s) => [s.name, s] as const))("%s", (_name, skill) => {
+      const block = extractDocOutputBlock(skill.text);
+      // block 非 null == 文档在 Output/输出 标题下又画了一份 json 形状
+      expect({
+        skill: skill.name,
+        hasCompetingShapeBlock: block !== null,
+      }).toEqual({ skill: skill.name, hasCompetingShapeBlock: false });
     });
   });
 
-  describe("★ dim-chapter-integration：文档字段必须等于 agent outputSchema 字段", () => {
-    const doc = SKILL_DOCS.find((s) => s.name === "dim-chapter-integration");
-
-    it("技能文档存在", () => {
+  describe("★ 事故回归：dim-chapter-integration 的旧输出字段名不得回来", () => {
+    it("任何 json 块里都不得出现旧输出字段名", () => {
+      const doc = ALL_SKILL_DOCS.find(
+        (d) => d.name === "dim-chapter-integration",
+      );
       expect(doc).toBeDefined();
-    });
-
-    it("文档示例的字段 == dimension-integrator.agent 的 Output 字段", () => {
-      // agent Output（dimension-integrator.agent.ts）的真实字段
-      const schemaKeys = [
-        "dimension",
-        "abstract",
-        "keyFindings",
-        "totalWordCount",
-        "fullMarkdown",
-      ];
-      const block = (doc!.text.match(/```json[\s\S]*?```/g) ?? []).find((b) =>
-        b.includes("fullMarkdown"),
-      );
-      expect(block).toBeDefined();
-      const docKeys = [
-        ...block!.matchAll(/"([A-Za-z][A-Za-z0-9_]*)"\s*:/g),
-      ].map((m) => m[1]);
-      // 文档里出现的每个顶层键都必须是 schema 认识的
-      for (const k of docKeys) {
-        expect(schemaKeys).toContain(k);
-      }
-      // schema 的每个必填字段都必须在文档里出现（否则模型不知道要给）
-      for (const k of schemaKeys) {
-        expect(docKeys).toContain(k);
-      }
-    });
-
-    it("★ 事故回归：旧的输出字段名不得回到输出示例里", () => {
-      // 注意只查**输出示例块**：dimensionName 作为"输入字段"出现在
-      // "Inputs you receive" 段落是合法的，全文 substring 会误报（第一版就踩了）。
-      const block = (doc!.text.match(/```json[\s\S]*?```/g) ?? []).find((b) =>
-        b.includes("fullMarkdown"),
-      );
-      expect(block).toBeDefined();
+      const blocks = (doc!.text.match(/```json[\s\S]*?```/g) ?? []).join("\n");
+      // 只查 json 块：dimensionName 作为「输入字段」出现在 Inputs 散文段落是合法的，
+      // 全文 substring 会误报（第一版就踩了）。
       for (const stale of [
         "integratedBody",
         "dimensionName",
         "sources",
         "mode",
       ]) {
-        expect(block!).not.toContain(`"${stale}"`);
+        expect(blocks).not.toContain(`"${stale}"`);
       }
     });
   });

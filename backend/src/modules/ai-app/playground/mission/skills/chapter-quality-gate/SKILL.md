@@ -41,7 +41,13 @@ You inspect **one chapter** against 6 industry-aligned criteria and decide
 
 ### 3. Evidence sufficiency
 
-- ≥ 2 `[N]` citations in the chapter
+> ★ 2026-08-03：本节原写死「≥ 2 处引用」。而 chapter-reviewer 的系统提示词里，
+> 引用下限是按本章**实际分到的唯一来源数**派生的（`deriveCitationFloor`，可能是
+> 0 或 1）—— 2026-05-21 那次修复正是为了治"采得少却要求 ≥2 → 结构性不可满足 →
+> 重写循环"。技能文档写死 2 等于把那次修复在同一次 LLM 调用里抵消掉。
+> 引用下限**只以系统提示词给出的那个数为准**，这里不再写死任何数字。
+
+- 引用数量下限以系统提示词给出的为准（按本章实际来源数派生），**不要自行假定**
 - Each citation contains specific number / date / entity
 - Citations are embedded **inside argument sentences** (not piled at paragraph end)
 
@@ -64,15 +70,25 @@ These signal stale boilerplate. Replace with content-specific openings.
 
 ### 6. Length compliance
 
-- `chapter.wordCount` must lie in `targetWordCount × [0.7, 1.3]`
-- Outside this band → length fails
+> ★ 2026-08-03：本节原写「必须落在 `targetWordCount × [0.7, 1.3]`，超出即 length fails」，
+> 与 chapter-reviewer 的系统提示词「**字数永不触发 revise**」正面冲突，而且那个
+> `0.7` 正是本轮事故里模型精确贴住的那个锚（生产实测多章恰好写到 0.7×）。
+> 字数是否达标由 pipeline 的**交付线闸门**判定（唯一权威，见
+> `playground-runtime.config.ts` 的 `chapterMinDeliveryRatio`），不由本技能判。
+
+- 字数**不作为 revise 的理由**：即使章节偏短，只要观点/证据/引用/去模板化达标就 `pass`
+- 字数只影响评分里权重最低的那一项；具体判定线由系统注入的提示词给出，
+  **不要在这里自行假定任何比例**
 
 ## Decision
 
-| Outcome            | Score range | Conditions               |
-| ------------------ | ----------- | ------------------------ |
-| `decision: pass`   | 80–100      | All 6 criteria satisfied |
-| `decision: revise` | < 70        | Any one criterion fails  |
+> ★ 2026-08-03：本节原写「pass = 80–100 / revise < 70」，而 chapter-reviewer 的
+> 系统提示词写的是「**≥ 60 分 → pass**」。两个门槛同时进同一次 LLM 调用，模型只能
+> 二选一，实测它跟文档 —— 于是 60–79 分的合格章节被判 revise，白烧一轮重写。
+> 通过线**只以系统提示词为准**，这里不再写死分数带。
+
+- 通过/打回的分数线由系统提示词给出（唯一权威），本文档不复述
+- 任一判据失败 → `revise`，且必须指名是哪一条、在哪一段
 
 `critique` (when revising) MUST be **paragraph-anchored**, naming which
 criterion failed where:
@@ -85,40 +101,23 @@ criterion failed where:
 
 Generic "the chapter could be improved" is rejected.
 
-## Output JSON shape
+## Output
 
-> ★ 2026-08-03 修「文档形状 ≠ 真实 outputSchema」：此前本节教的形状带一个 schema
-> 里根本没有的 `mode` 字段（会被模型具象成不存在的 action kind），只给了已废弃的
-> `critique`，却**漏掉 schema 必填的 `index` 与 `summary`** —— 模型照文档写就必然
-> 被 schema 驳回、白烧重试轮次。下面这份与 chapter-reviewer.agent 的 Output 逐字段一致。
+> ★ 2026-08-03（Railway 生产日志实证）：输出字段形状以 harness 自动注入的
+> `outputSchema` 为准（agent-runner 的 `describeOutputSchemaForLlm`，唯一权威）。
+> 本文档**刻意不再复述形状**：此前这里教的形状带一个 schema 里根本没有的模式字段
+> （会被模型具象成不存在的 action kind），只给了已废弃的 `critique`，却漏掉
+> schema **必填**的 `index` 与 `summary` —— 照文档写必被驳回、白烧重试轮次。
+> 同一件事写两份，漂移只是时间问题 —— 所以这里只讲**内容与质量要求**。
 
-```json
-{
-  "index": <chapter index int>,
-  "decision": "pass" | "revise",
-  "score": <int 0-100>,
-  "issues": [
-    {
-      "severity": "must-fix" | "should-fix" | "nice-to-have",
-      "dimension": "evidence" | "logic" | "structure" | "citation" | "length" | "style",
-      "pointer": "<e.g. §2 第 3 段>",
-      "issue": "<one-sentence problem>",
-      "suggestion": "<one-sentence fix, verb-first>"
-    }
-  ],
-  "summary": "<1-2 sentence overall verdict, ≤ 300 chars>"
-}
-```
-
-- `issues` 最多 6 条；`pass` 时可以是空数组
-- `summary` 必填且 ≤ 300 字符
-- 没有 `mode` 字段，也没有 `integrate` 之类的 action —— 直接 `finalize` 上面这个对象
+内容要求：`issues` 逐条锚定段落与失败判据；总评摘要要一两句话说清结论。
+直接 `finalize` 注入的 schema 所要求的对象，不要外套任何 action 包装。
 
 ## Hard rules
 
 - Always check all 6 criteria — do not stop at first failure
 - `revise` decisions MUST tag which criterion(s) failed
-- `pass` decisions MUST score ≥ 80; `revise` MUST score < 70 (the gap is intentional)
+- 分数与 `decision` 必须自洽；具体通过线以系统提示词为准（本文档不写死数字）
 - Length-only failures are still `revise` — short or long chapters distort the report
 - Do not soften criticism; do not invent failures
 

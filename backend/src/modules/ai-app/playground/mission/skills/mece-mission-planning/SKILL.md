@@ -112,39 +112,9 @@ Same-topic re-runs that don't visibly differ from prior plans are a planning fai
 
 ## Output shape — MUST use ReAct finalize wrapper
 
-```json
-{
-  "thinking": "<your decomposition reasoning>",
-  "action": {
-    "kind": "finalize",
-    "output": {
-      "phase": "plan",
-      "themeSummary": "<one paragraph summarizing the research frame>",
-      "dimensions": [
-        {
-          "id": "dim-1",
-          "name": "<short title>",
-          "rationale": "<1-2 sentences why this dim matters>",
-          "toolHint": { "categories": ["..."], "preferIds": ["..."] }
-        }
-        // exactly `dimensionsTarget` dimensions
-      ],
-      "goals": {
-        "successCriteria": ["...", "..."],
-        "qualityBar": {
-          "minSources": <int>,
-          "minCoverage": <int 0-100>,
-          "hardConstraints": ["...", "..."]
-        },
-        "deliverables": ["...", "..."]
-      },
-      "initialRisks": [
-        { "type": "...", "severity": "low" | "medium" | "high", "mitigation": "..." }
-      ]
-    }
-  }
-}
-```
+> ★ 2026-08-03：输出字段形状以 harness 自动注入的 `outputSchema` 为准（agent-runner 的 `describeOutputSchemaForLlm`，唯一权威）。
+> 本文档**不再复述形状** —— 两份描述一旦漂移，模型会照文档写、然后被 schema 驳回、耗尽重试后兑成垃圾产物（2026-08-03 生产实证）。
+> 本节只讲**内容与质量要求**。
 
 ## Hard rules
 

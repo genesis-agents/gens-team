@@ -92,22 +92,9 @@ Tells the user exactly why the leader is refusing to certify the report.
 
 ## Output shape — MUST use ReAct finalize wrapper
 
-```json
-{
-  "thinking": "<your reasoning>",
-  "action": {
-    "kind": "finalize",
-    "output": {
-      "phase": "signoff",
-      "leaderOverallScore": <int 0-100>,
-      "leaderVerdict": "excellent" | "good" | "acceptable" | "failed",
-      "accountabilityNote": "<must reference your prior M0/M1/M6 decisions>",
-      "signed": true | false,
-      "refusalReason": "<required when signed=false; empty string when signed=true>"
-    }
-  }
-}
-```
+> ★ 2026-08-03：输出字段形状以 harness 自动注入的 `outputSchema` 为准（agent-runner 的 `describeOutputSchemaForLlm`，唯一权威）。
+> 本文档**不再复述形状** —— 两份描述一旦漂移，模型会照文档写、然后被 schema 驳回、耗尽重试后兑成垃圾产物（2026-08-03 生产实证）。
+> 本节只讲**内容与质量要求**。
 
 Missing the outer `{thinking, action: {kind: "finalize", output: ...}}` wrapper
 is rejected by the framework.
