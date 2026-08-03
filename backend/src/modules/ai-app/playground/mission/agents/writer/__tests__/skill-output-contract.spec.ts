@@ -163,6 +163,18 @@ const ALL_SKILL_DOCS = fs
   .filter((s) => fs.existsSync(s.file))
   .map((s) => ({ ...s, text: fs.readFileSync(s.file, "utf8") }));
 
+// ★ 2026-08-03 补盲区（生产复发实证）：本套件此前只扫 mission/skills/，
+//   而 agents/<role>/SKILL.md 同样会被注入提示词。researcher 那份里写死的
+//   条数（与业务硬门槛冲突）就是因此漏检，导致 findings.length=4 在修复上线后
+//   仍然复发。凡是会进提示词的 SKILL.md 都要纳入扫描。
+const AGENT_SKILL_DOCS = walk(AI_APP_DIR, /^SKILL\.md$/)
+  .filter((f) => !f.includes(`${path.sep}skills${path.sep}`))
+  .map((f) => ({
+    name: path.relative(AI_APP_DIR, f).split(path.sep).join("/"),
+    file: f,
+    text: fs.readFileSync(f, "utf8"),
+  }));
+
 // ─── 断言 ────────────────────────────────────────────────────────────────────
 
 describe("技能文档输出契约（全量自动配对）", () => {
@@ -229,6 +241,30 @@ describe("技能文档输出契约（全量自动配对）", () => {
   //   是定义了却没人消费的死机制。为惰性元数据加看护只会制造无意义的改动；
   //   真要治，应该像 2026-05-22 删掉 7 个零消费 config 旋钮那样把它删掉或接上，
   //   属独立决策，不在本轮范围。
+
+  // ★ 2026-08-03 事故回归：提示词里不得写死与业务硬门槛冲突的 finding 条数。
+  //   生产实测 findings.length=4 被 minFindingsThreshold(≥5) 反复驳回 —— 源头是
+  //   四处各自写着「4-5 条」：agent 提示词的输出示例注释、agents/researcher/SKILL.md、
+  //   重试话术、以及 marketplace 副本。只修其中一处会复发（已实证）。
+  describe("★ 不得写死会撞业务硬门槛的 finding 条数", () => {
+    const FILES = [
+      ...ALL_SKILL_DOCS.map((d) => [d.name, d.text] as const),
+      ...AGENT_SKILL_DOCS.map((d) => [d.name, d.text] as const),
+    ];
+
+    it("扫到了 agent 目录下的 SKILL.md（防止盲区回归）", () => {
+      expect(AGENT_SKILL_DOCS.length).toBeGreaterThan(0);
+    });
+
+    it.each(FILES)("%s", (_name, text) => {
+      // 说明性注释（★ 开头）里复述历史值是允许的，其余正文不得出现
+      const offending = text
+        .split("\n")
+        .filter((l) => !l.includes("★ 2026-08-03"))
+        .filter((l) => /4[–-]5\s*(findings|条)/.test(l));
+      expect(offending).toEqual([]);
+    });
+  });
 
   describe("★ 事故回归：dim-chapter-integration 的旧输出字段名不得回来", () => {
     it("任何 json 块里都不得出现旧输出字段名", () => {

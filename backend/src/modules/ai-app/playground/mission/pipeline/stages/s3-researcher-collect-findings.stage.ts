@@ -594,7 +594,9 @@ async function runOneDim(
         r = await runResearcher(
           1,
           budgetMultiplier * 1.5,
-          `（重试：上一轮以 ${code0} 失败，请先返回符合 schema 的 finalize；4-5 条 finding，每条带 source URL）`,
+          // ★ 2026-08-03：原重试话术写「4-5 条 finding」，而业务硬门槛是 ≥5 ——
+          //   驳回后的重试提示词自己在教一个必然再次被驳回的数字。
+          `（重试：上一轮以 ${code0} 失败，请先返回符合 schema 的 finalize；条数按系统提示词的目标，每条带真实 source URL）`,
         );
       }
     }

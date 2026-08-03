@@ -413,7 +413,8 @@ export class ResearcherAgent extends AgentSpec<typeof Input, typeof Output> {
       `      //   从 search 结果 date 字段 / scrape article:published_time / 页面正文中提取；`,
       `      //   找不到就省略字段（不要瞎填）`,
       `      "sourcePublishedAt": "<YYYY-MM-DD 或 ISO-8601，可选，找不到时省略>" }`,
-      `    // 4-5 findings`,
+      // ★ 2026-08-03：同 playground 副本，原写死的条数与业务硬门槛冲突。
+      `    // 按上方要求的条数`,
       `  ],`,
       `  "summary": "<2-3 sentences synthesizing findings>",`,
       `  "figureCandidates": [`,

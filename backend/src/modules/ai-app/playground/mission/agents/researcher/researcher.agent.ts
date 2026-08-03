@@ -420,7 +420,10 @@ export class ResearcherAgent extends AgentSpec<typeof Input, typeof Output> {
       `      //   从 search 结果 date 字段 / scrape article:published_time / 页面正文中提取；`,
       `      //   找不到就省略字段（不要瞎填）`,
       `      "sourcePublishedAt": "<YYYY-MM-DD 或 ISO-8601，可选，找不到时省略>" }`,
-      `    // 4-5 findings`,
+      // ★ 2026-08-03：原写 "// 4-5 findings"。业务硬门槛是 ≥5，模型照这个注释
+      //   写 4 条必被驳回（生产实测 findings.length=4 反复出现）。同一份提示词
+      //   上方已给目标条数，这里不再写第二个数字。
+      `    // 按上方要求的条数`,
       `  ],`,
       `  "summary": "<2-3 sentences synthesizing findings>",`,
       `  "figureCandidates": [`,

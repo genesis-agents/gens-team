@@ -54,10 +54,9 @@ If the tool catalog includes a `rag-search`:
 ### Phase 4 — Finalize
 
 > ★ 2026-08-03（生产实时日志实证）：本节原来画了一份输出 JSON 并注明
-> `// 4-5 findings ideal`，下面的 Hard constraints 又写「**Target 4–5 findings**，
-> Don't pad」。而 researcher.agent 的系统提示词要的是 **12-18 条**，业务硬门槛
-> 是 **≥5 条**（`minFindingsThreshold`，低于即驳回）。三个数字互相打架，模型听
-> 文档写 4 条，于是：
+> 一个偏小的条数，Hard constraints 又重复了一遍。而 agent 系统提示词要的条数
+> 更大、业务硬门槛（`minFindingsThreshold`）又是另一个值 —— 三个数字互相打架，
+> 模型听文档那份，于是：
 >
 >     finalize rejected (1/3): Business: findings.length=4 (要求 ≥5)
 >     finalize rejected 3 times in a row, accepting current candidate
