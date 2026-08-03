@@ -172,9 +172,15 @@ function deriveDimSubStatus(
   const passed = chs.filter(
     (c) => c.status === 'passed' || c.status === 'done'
   ).length;
-  const failed = chs.filter(
-    (c) => c.status === 'failed' || c.status === 'failed-finalized'
-  ).length;
+  // ★ 2026-08-03（用户实证截图）：原来把两种完全不同的状态合并成同一个红标
+  //   「撰写失败 N/M」——
+  //     · failed            = writer 真的没产出任何内容（确实是撰写失败）
+  //     · failed-finalized  = **写出来了、也落地了**，只是质量分没过通过线
+  //   实测案例：某章写了 682 字、复审 48/100、重写 1 次后兜底落地 —— 内容在报告里，
+  //   却被标成「撰写失败」。这与本轮后端一直在修的是同一个病：报告的和实际发生的
+  //   不是一回事。用户看到红字「撰写失败」，以为整章没写出来。
+  const failed = chs.filter((c) => c.status === 'failed').length;
+  const lowQuality = chs.filter((c) => c.status === 'failed-finalized').length;
   const writing = chs.filter((c) => c.status === 'writing').length;
   const reviewing = chs.filter((c) => c.status === 'reviewing').length;
   const revising = chs.filter((c) => c.status === 'revising').length;
@@ -186,6 +192,13 @@ function deriveDimSubStatus(
     return {
       label: `撰写失败 ${failed}/${total}`,
       tone: 'bg-red-100 text-red-700 ring-red-200',
+    };
+  }
+  // 写出来了但质量没过线 —— 内容已落地，用琥珀色「质量未达标」而不是红色「撰写失败」
+  if (lowQuality > 0) {
+    return {
+      label: `质量未达标 ${lowQuality}/${total}`,
+      tone: 'bg-amber-100 text-amber-700 ring-amber-200',
     };
   }
   if (revising > 0) {

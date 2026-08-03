@@ -470,6 +470,37 @@ describe('MissionTodoBoard - deriveDimSubStatus coverage', () => {
     expect(screen.getByText(/撰写失败 2\/2/)).toBeInTheDocument();
   });
 
+  // ★ 2026-08-03（用户实证截图）：failed-finalized 是「写出来了、也落地了，只是
+  //   质量分没过线」——实测某章 682 字 / 复审 48 分 / 重写 1 次后兜底落地，内容就在
+  //   报告里，却被标成红字「撰写失败」。两种状态必须分开报。
+  it('failed-finalized 报「质量未达标」而不是「撰写失败」（内容已落地）', () => {
+    const todo = makeTodo({
+      scope: 'dimension',
+      status: 'in_progress',
+      pipelineKey: 'market-dim',
+    });
+    const pipelines = new Map<string, DimensionPipelineState>([
+      [
+        'market-dim',
+        {
+          dimension: '市场',
+          chapters: [
+            { index: 0, heading: 'ch1', status: 'done', attempts: 1 },
+            {
+              index: 1,
+              heading: 'ch2',
+              status: 'failed-finalized',
+              attempts: 2,
+            },
+          ],
+        },
+      ],
+    ]);
+    render(<MissionTodoBoard todos={[todo]} dimensionPipelines={pipelines} />);
+    expect(screen.getByText(/质量未达标 1\/2/)).toBeInTheDocument();
+    expect(screen.queryByText(/撰写失败/)).not.toBeInTheDocument();
+  });
+
   it('shows "重写中 · N/M" when pipeline has revising chapters', () => {
     const todo = makeTodo({
       scope: 'dimension',
