@@ -199,12 +199,27 @@ describe("技能文档输出契约（全量自动配对）", () => {
     });
 
     it.each(consumed.map((s) => [s.name, s] as const))("%s", (_name, skill) => {
-      const block = extractDocOutputBlock(skill.text);
-      // block 非 null == 文档在 Output/输出 标题下又画了一份 json 形状
-      expect({
+      // ★ 2026-08-03 补盲区（生产实时抓到）：原判据只看 "Output/输出" 标题下的
+      //   json 块，于是 dimension-research 那份画在 "Phase 4 — Finalize" 标题下的
+      //   输出形状**整个漏掉** —— 它正是当天引发 findings.length=4 重试风暴的那个。
+      //   改为：**任何** json 块，只要它的键与该技能消费方 agent 的 outputSchema
+      //   键有重叠，就算竞争性形状描述。
+      const schemaKeys = SKILL_ALLOWED.get(skill.name)!.keys;
+      const offenders: string[] = [];
+      for (const block of skill.text.match(/```json[\s\S]*?```/g) ?? []) {
+        const keys = [...block.matchAll(/"([A-Za-z_][A-Za-z0-9_]*)"\s*:/g)].map(
+          (m) => m[1],
+        );
+        const overlap = keys.filter((k) => schemaKeys.has(k));
+        if (overlap.length > 0) offenders.push(overlap.join(","));
+      }
+      // 同时保留原来的"Output 标题下有块"判据
+      if (extractDocOutputBlock(skill.text) !== null)
+        offenders.push("<output-heading-block>");
+      expect({ skill: skill.name, competingShapeBlocks: offenders }).toEqual({
         skill: skill.name,
-        hasCompetingShapeBlock: block !== null,
-      }).toEqual({ skill: skill.name, hasCompetingShapeBlock: false });
+        competingShapeBlocks: [],
+      });
     });
   });
 

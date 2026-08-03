@@ -53,34 +53,33 @@ If the tool catalog includes a `rag-search`:
 
 ### Phase 4 — Finalize
 
-Emit:
+> ★ 2026-08-03（生产实时日志实证）：本节原来画了一份输出 JSON 并注明
+> `// 4-5 findings ideal`，下面的 Hard constraints 又写「**Target 4–5 findings**，
+> Don't pad」。而 researcher.agent 的系统提示词要的是 **12-18 条**，业务硬门槛
+> 是 **≥5 条**（`minFindingsThreshold`，低于即驳回）。三个数字互相打架，模型听
+> 文档写 4 条，于是：
+>
+>     finalize rejected (1/3): Business: findings.length=4 (要求 ≥5)
+>     finalize rejected 3 times in a row, accepting current candidate
+>
+> 这是修复上线后监控当场抓到的**正在发生**的重试风暴。
+>
+> 输出字段形状由 harness 自动注入的 `outputSchema` 给出，条数由系统提示词与业务
+> 规则给出 —— **本文档一律不复述**，只讲怎么做研究。
 
-```json
-{
-  "kind": "finalize",
-  "output": {
-    "dimension": "<the dim id>",
-    "findings": [
-      {
-        "claim": "<specific, falsifiable assertion>",
-        "evidence": "<short verbatim quote from source>",
-        "source": "<URL or citation>"
-      }
-      // 4-5 findings ideal
-    ],
-    "summary": "<one-paragraph synthesis of the dim>",
-    "figureCandidates": [
-      /* optional, see figure red lines below */
-    ]
-  }
-}
-```
+按注入的 schema 直接 `finalize`，不要外套 action 包装。
 
 ## Hard constraints
 
-- **Target 4–5 findings** — quality over quantity. Don't pad.
+- **条数以系统提示词给出的目标为准**（业务规则另有硬下限，低于即被驳回）；
+  本文档不写死数字。宁可多找一条真实来源，也不要为了"精简"卡在硬下限上
+- **但也不要为凑数注水**：每条 finding 必须是独立、可证伪、有真实来源的论断。
+  重复同一事实、或把一条拆成三条，会在下游复审被扣分 —— 数量下限是底线不是目标
 - **1 short evidence quote per finding** — not a multi-paragraph block
-- **Each finding has a real, fetchable source** — fabricated URLs are dereliction
+- **`source` 必须是可解析的引用**：`http(s)://` / `doi:` / `arxiv:` / `wiki-page:`
+  / `kb-doc:` 前缀，或至少含 `.` 的域名。**"web-search tool results"、"搜索结果"
+  这类描述性文字会被业务规则直接驳回**（生产实测正在发生）。
+  拿不到真实 URL 就不要写这条 finding，编造 URL 是失职
 - **Stay within the dim** — drift to neighboring dims is rejected by the reconciler
 - **Stop when you have enough** — extra search rounds waste budget without adding evidence
 
