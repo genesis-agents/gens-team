@@ -193,6 +193,9 @@ The "action" field must be EXACTLY one of these 3 kinds:
 
 Shorthand: you may also send "actions": [<tool_call>, <tool_call>, ...] at the
 top level — it will be auto-wrapped to parallel_tool_call.
+IMPORTANT: "actions" is ONLY for tool calls. Never put a finalize payload in it.
+To finalize, put the answer in action.output: {"action":{"kind":"finalize","output":{...}}}
+— NOT {"action":{"kind":"finalize"},"actions":[{"output":{...}}]}.
 
 Rules:
 - Respond with raw JSON only, no markdown fences, no prose outside the JSON.
@@ -2213,6 +2216,40 @@ export class ReActLoop implements IAgentLoop {
 
       // Shorthand: top-level "actions" array → auto-wrap parallel_tool_call
       if (Array.isArray(obj.actions) && obj.actions.length > 0) {
+        // ★ 2026-08-03 容错（Railway 生产日志实证，S8 writer 连拒 3 次后塞垃圾产物）：
+        //   我们的协议提示词教了 `actions` 简写，但只对 **tool_call** 有效
+        //   （react-loop 顶部 protocol 文本）。模型把它**过度泛化到 finalize**，
+        //   把最终产物塞进 actions[]：
+        //     {"action":{"kind":"finalize"},            ← 只有 kind，没有 output
+        //      "actions":[{"output":{"title":...}}]}    ← 产物在这里
+        //   模型 thinking 原文："Response must use the mandated
+        //   thinking/action/actions JSON wrapper" —— 它认为规范就长这样，
+        //   所以连纠三轮都是同一个形态，最后触底 accepting current candidate，
+        //   下游拿到 `title: Required` 的残缺对象。
+        //
+        //   既然简写是**我们教的**，过度泛化就该由我们兜住：actions[] 里若带
+        //   finalize 产物（有 output 且不是 tool call），直接取出来当 finalize，
+        //   不要当 tool_call 解析失败后整轮作废。
+        //   output 类型与 IFinalizeAction 对齐（string | Record），其它形态
+        //   （数组 / 数字等）不认，交回下面的 tool_call 路径按原逻辑处理。
+        const finalizePayload = obj.actions.find(
+          (a): a is { output: string | Record<string, unknown> } => {
+            if (!a || typeof a !== "object") return false;
+            const out = (a as { output?: unknown }).output;
+            const shaped =
+              typeof out === "string" ||
+              (typeof out === "object" && out !== null && !Array.isArray(out));
+            return shaped && this.normalizeToolCall(a) === null;
+          },
+        );
+        if (finalizePayload) {
+          return {
+            decision: {
+              thinking,
+              action: { kind: "finalize", output: finalizePayload.output },
+            },
+          };
+        }
         const calls = obj.actions
           .map((a) => this.normalizeToolCall(a))
           .filter((a): a is IToolCallAction => a !== null);

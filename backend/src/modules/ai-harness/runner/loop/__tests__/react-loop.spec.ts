@@ -553,6 +553,63 @@ describe("ReActLoop (Phase 2)", () => {
     expect(reg.get).toHaveBeenCalledTimes(2);
   });
 
+  // ★ 2026-08-03（Railway 生产日志实证，S8 writer 连拒 3 次后塞垃圾产物）：
+  //   我们的协议提示词教了 `actions` 简写（只对 tool_call 有效），模型把它
+  //   **过度泛化到 finalize**，把最终产物塞进 actions[]：
+  //     {"action":{"kind":"finalize"},"actions":[{"output":{...}}]}
+  //   模型 thinking 原文："Response must use the mandated thinking/action/actions
+  //   JSON wrapper" —— 它认为规范就长这样，所以连纠三轮都是同一个形态，
+  //   最后 accepting current candidate，下游拿到 `title: Required` 的残缺对象。
+  //   简写是我们教的，过度泛化就该由我们兜住。
+  it("★ actions[] 里装的是 finalize 产物时，取出来当 finalize（生产原样形态）", async () => {
+    const report = { title: "T", summary: "S", sections: [], conclusion: "C" };
+    const chat = mkChat([
+      JSON.stringify({
+        thinking:
+          "Response must use the mandated thinking/action/actions wrapper",
+        action: { kind: "finalize" },
+        actions: [{ output: report }],
+      }),
+    ]);
+    const reg = mkToolRegistry({});
+    const hooks = new HookRegistry();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invoker = new ToolInvoker(reg as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const loop = new ReActLoop(chat as any, invoker, hooks);
+
+    const events = await drain(
+      loop.run(makeEnvelope([]), criteria, { agentId: "s-actions-finalize" }),
+    );
+    // 修复前：actions[] 里没有合法 tool call → 抛 empty_actions_array →
+    //         finalize-raw 兜底 → 下游 schema 报 title/summary/sections Required
+    const terminated = events.find((e) => e.type === "terminated");
+    expect(terminated?.payload).toEqual({ reason: "completed" });
+    const output = events.find((e) => e.type === "output");
+    expect(JSON.stringify(output?.payload)).toContain('"title":"T"');
+  });
+
+  it("actions[] 是正常 tool call 时行为不变（不误伤简写本身）", async () => {
+    const chat = mkChat([
+      JSON.stringify({ thinking: "t", actions: [{ toolId: "a", input: {} }] }),
+      JSON.stringify({
+        thinking: "done",
+        action: { kind: "finalize", output: "ok" },
+      }),
+    ]);
+    const reg = mkToolRegistry({ a: { success: true, data: 1 } });
+    const hooks = new HookRegistry();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invoker = new ToolInvoker(reg as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const loop = new ReActLoop(chat as any, invoker, hooks);
+
+    const events = await drain(
+      loop.run(makeEnvelope(["a"]), criteria, { agentId: "s-actions-tool" }),
+    );
+    expect(events.some((e) => e.type === "action_executed")).toBe(true);
+  });
+
   // ── v2: BudgetAccountant integration ──
   it("aborts loop when BudgetAccountant.exhausted() returns true", async () => {
     const { BudgetAccountant } =
