@@ -87,14 +87,32 @@ Generic "the chapter could be improved" is rejected.
 
 ## Output JSON shape
 
+> ★ 2026-08-03 修「文档形状 ≠ 真实 outputSchema」：此前本节教的形状带一个 schema
+> 里根本没有的 `mode` 字段（会被模型具象成不存在的 action kind），只给了已废弃的
+> `critique`，却**漏掉 schema 必填的 `index` 与 `summary`** —— 模型照文档写就必然
+> 被 schema 驳回、白烧重试轮次。下面这份与 chapter-reviewer.agent 的 Output 逐字段一致。
+
 ```json
 {
-  "mode": "chapter-review",
+  "index": <chapter index int>,
   "decision": "pass" | "revise",
   "score": <int 0-100>,
-  "critique": "<paragraph-anchored, criterion-tagged improvement notes>"
+  "issues": [
+    {
+      "severity": "must-fix" | "should-fix" | "nice-to-have",
+      "dimension": "evidence" | "logic" | "structure" | "citation" | "length" | "style",
+      "pointer": "<e.g. §2 第 3 段>",
+      "issue": "<one-sentence problem>",
+      "suggestion": "<one-sentence fix, verb-first>"
+    }
+  ],
+  "summary": "<1-2 sentence overall verdict, ≤ 300 chars>"
 }
 ```
+
+- `issues` 最多 6 条；`pass` 时可以是空数组
+- `summary` 必填且 ≤ 300 字符
+- 没有 `mode` 字段，也没有 `integrate` 之类的 action —— 直接 `finalize` 上面这个对象
 
 ## Hard rules
 
