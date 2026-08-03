@@ -1,6 +1,6 @@
 ---
 name: dimension-quality-review
-description: Per-dimension 5-axis quality scoring (depth / breadth / clarity / accuracy / relevance) for integrated research outputs
+description: Per-dimension quality scoring — how to grade a dimension well (axis names, bands and output shape come from the agent prompt + injected schema, not from this doc)
 version: "1.0.0"
 tags:
   - review
@@ -8,53 +8,38 @@ tags:
   - scoring
   - per-dimension
 activateFor:
-  - dim-reviewer
-  - dimension-quality-reviewer
-  - per-dim-grader
+  - quality-judge
 ---
 
-# Dimension Quality Review Protocol (5-axis scoring)
+# Dimension Quality Review Protocol
 
-You score one **dimension's integrated body** independently across 5 axes.
-Each axis is scored 0–100; the overall score is the (default equal-weighted) average.
+You score one dimension's integrated body. **轴名、轴数、分数线与 overall 口径
+全部由系统提示词与注入的 schema 给出**，本文档不复述（见下方说明）。
 
-## Inputs you receive
+> ★ 2026-08-03 重写（全量审计 + 生产日志实证）：本节此前列的输入字段名
+> （`dimensionName` / `targetWordCount` / `integratedBody`）在 agent 的 Input
+> schema 里**一个都不存在**，并且教了一套 5 轴
+> （depth/breadth/clarity/accuracy/relevance）+ 等权平均 + 分数带 —— 而
+> `dimension-quality-judge.agent` 的 schema 是**另外 6 轴**
+> （breadth/depth/evidence/coherence/freshness/sources_sufficiency），外加必填的
+> `dimension`、`grade` 枚举与 `summary`。
+>
+> 两套东西进同一次 LLM 调用（skill 正文由 skill-activator 注入），模型照文档写 →
+> 字段与轴名全不匹配 → 该 agent 走 `loop: "simple"`，**一次校验不过即
+> `state=failed`**。生产日志里的
+> `[per-dim grade] dim "..." 首次评分 state=failed，容错重试一次` 就是这么来的。
+>
+> 轴名、轴数、分数线、overall 口径**一律以系统提示词与注入的 schema 为准**
+> —— agent 的提示词里已经逐轴给了定义（广度 / 深度 / 证据 / 连贯性 …）。
+> 本文档只讲**怎么评才算评得好**，不再复述任何契约。
 
-- `dimensionName` — what dim you're scoring
-- `targetWordCount` — what length the dim was supposed to land at
-- `integratedBody` — the actual prose
-- `sources[]` — citation list referenced by `[N]` markers in the body
+## 评分方法（不是评分口径）
 
-## 5 axes (definitions)
-
-| Axis        | What to look at                                                                  |
-| ----------- | -------------------------------------------------------------------------------- |
-| `depth`     | Single-dim analytical depth — does it answer the dim's `rationale` core question |
-| `breadth`   | Coverage span — touches the dim's 3–5 key sub-topics                             |
-| `clarity`   | Expression clarity — terminology accurate, structure readable                    |
-| `accuracy`  | Citation accuracy — `[N]` markers map to real sources, numbers are checkable     |
-| `relevance` | Topical focus — content stays inside this dim, no drift to other dims            |
-
-## Scoring bands (each axis)
-
-- **90–100** Excellent. Multiple paragraphs of insight; specific evidence with dates/numbers; nothing extraneous.
-- **70–89** Solid. Covers the axis but with one or two visible gaps.
-- **50–69** Marginal. Noticeable weakness — generic framing, missing evidence, or off-target detail.
-- **0–49** Poor. Either largely absent on this axis or actively misleading.
-
-## Output JSON shape
-
-> ★ 2026-08-03：输出字段形状以 harness 自动注入的 `outputSchema` 为准（agent-runner 的 `describeOutputSchemaForLlm`，唯一权威）。
-> 本文档**不再复述形状** —— 两份描述一旦漂移，模型会照文档写、然后被 schema 驳回、耗尽重试后兑成垃圾产物（2026-08-03 生产实证）。
-> 本节只讲**内容与质量要求**。
-
-## Hard rules
-
-- All 5 axes must be scored — never omit, never use a placeholder
-- `overall` must be the arithmetic mean of the 5 axes (rounded to int)
-- `summary` must reference at least one specific weakness or strength (no platitudes)
-- Do not score harder than warranted to "look rigorous" — calibrate to the bands above
-- Do not score easier than warranted to be polite — be direct
+- **对着正文给分，不对着印象给分**：每个轴的结论都要能指到具体段落 / 具体引用
+- **不为显得严谨而压分**，也**不为客气而抬分**——两种都是失真
+- `summary` 必须点出至少一处**具体**的强项或弱项，不要写"整体尚可"这类空话
+- 相对评分的轴（提示词里标注的那几个）要按本 mission 的实际供给比较，
+  不要拿绝对理想值当基准——采集受限时苛求绝对量是结构性不可满足
 
 ## What this skill is NOT
 

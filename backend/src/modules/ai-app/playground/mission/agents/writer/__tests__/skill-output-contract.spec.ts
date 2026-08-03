@@ -208,6 +208,13 @@ describe("技能文档输出契约（全量自动配对）", () => {
     });
   });
 
+  // ★ 2026-08-03 审计发现但**刻意不看护**：多个技能 frontmatter 的 activateFor
+  //   指向的 role id 全项目不存在。核实结论：skill-registry 的 listForRole()
+  //   **零调用** —— 技能实际只靠 agent 的 `skills: [...]` 显式激活，activateFor
+  //   是定义了却没人消费的死机制。为惰性元数据加看护只会制造无意义的改动；
+  //   真要治，应该像 2026-05-22 删掉 7 个零消费 config 旋钮那样把它删掉或接上，
+  //   属独立决策，不在本轮范围。
+
   describe("★ 事故回归：dim-chapter-integration 的旧输出字段名不得回来", () => {
     it("任何 json 块里都不得出现旧输出字段名", () => {
       const doc = ALL_SKILL_DOCS.find(
