@@ -719,10 +719,40 @@ describe("runChapterPipeline", () => {
       );
 
       expect(result).not.toBeNull();
-      // 修复前：verdict.score 90 ≥ PASS_THRESHOLD → passed / qualified=true，
-      //         30% 的欠交付对上游（维度评分、mission 报表）完全隐身
-      expect(result!.decision).toBe("fallback-length");
-      expect(result!.qualified).toBe(false);
+      // ★ 2026-08-03 修正（生产实证，用户截图）：欠交付**不得**改写 qualified。
+      //   qualified 在下游是「章节可用/撰写成功」：projector 把 false 记成
+      //   failed-finalized，前端标红「撰写失败 N/M」。这些章节写出来了、复审 90 分
+      //   通过、内容已落地，只是偏短 —— 报成"撰写失败"比隐瞒欠交付错得更离谱。
+      expect(result!.decision).toBe("passed");
+      expect(result!.qualified).toBe(true);
+      // 欠交付走独立信号，如实记账、不冒充失败
+      const doneCall = (deps.emit as jest.Mock).mock.calls.find(
+        (c) => c[0].type === "playground.chapter:done",
+      );
+      expect(doneCall![0].payload.underDelivered).toBe(true);
+      expect(doneCall![0].payload.minDeliveryWords).toBe(
+        Math.round(target * MIN_DELIVERY_RATIO),
+      );
+    });
+
+    it("达标章节的 underDelivered=false（信号不常亮）", async () => {
+      const target = 1000;
+      const deps = makeDeps([
+        makeWriterResult({ wordCount: target }),
+        makeReviewerResult({ decision: "pass", score: 90 }),
+      ]);
+
+      await runChapterPipeline(
+        makeChapter(1),
+        [],
+        makeCtx({ targetWordsPerChapter: target }),
+        deps,
+      );
+
+      const doneCall = (deps.emit as jest.Mock).mock.calls.find(
+        (c) => c[0].type === "playground.chapter:done",
+      );
+      expect(doneCall![0].payload.underDelivered).toBe(false);
     });
 
     it("达到交付线则照常按质量分记 passed（不误伤）", async () => {

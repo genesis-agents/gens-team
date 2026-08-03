@@ -928,6 +928,19 @@ export const ChapterDoneSchema = z.object({
   decision: z.string().optional(),
   wordCount: z.number().optional(),
   targetWordCount: z.number().optional(),
+  /**
+   * ★ 2026-08-03 欠交付信号（独立于 qualified）。
+   *
+   * qualified 在下游的语义是「章节可用 / 撰写成功」—— projector 据此把章节记为
+   * failed-finalized，前端标红「撰写失败 N/M」。字数偏短**不是撰写失败**：章节
+   * 写出来了、复审通过了、内容也落地了，只是没写够。用 qualified 承载"字数够不够"
+   * 会把它误报成失败（2026-08-03 生产实证，用户截图），是典型的"把真因说成别的"。
+   *
+   * 所以欠交付走这个独立字段：既如实记账、又不冒充失败。
+   */
+  underDelivered: z.boolean().optional(),
+  /** 触发欠交付判定的交付线（绝对字数），便于前端/诊断显示"差多少"。 */
+  minDeliveryWords: z.number().optional(),
 });
 export type ChapterDonePayload = z.infer<typeof ChapterDoneSchema>;
 

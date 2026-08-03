@@ -477,6 +477,29 @@ export async function runPerDimPipeline(
         sourceIndices: number[];
       }[];
     };
+    // ★ 2026-08-03 每章字数按**实际章节数**重算（用户实证：多章"全部兜底落地"）。
+    //
+    //   上面的 targetWordsPerChapter 用的是 targetChapterCount —— 那只是**发给
+    //   outline agent 的请求值**，真正产出几章由它自己定，二者从不对账。生产实测：
+    //   证据受限把请求降到 2 章 → 每章目标 6250 字，而 outline 实际产了 4 章 →
+    //   该维隐含目标 4×6250=25000 字，是本该的 dimTargetWords(12500) 的两倍。
+    //   于是每章都被拿一个翻倍的尺子量，写得再好也判欠交付。
+    //
+    //   2026-05-22 那次改 idealChapters → targetChapterCount 只修了一半：把"计划
+    //   章节数"对齐了，却没对齐"实际章节数"。这里补上另一半，dim 总量守恒。
+    const actualChapterCount = outline.chapters.length;
+    const effectiveTargetWordsPerChapter =
+      actualChapterCount > 0
+        ? Math.max(
+            400,
+            Math.min(8000, Math.round(dimTargetWords / actualChapterCount)),
+          )
+        : targetWordsPerChapter;
+    if (effectiveTargetWordsPerChapter !== targetWordsPerChapter) {
+      deps.log?.log(
+        `[per-dim] ${dimensionName}: 每章字数按实际章节数重算 ${targetWordsPerChapter} → ${effectiveTargetWordsPerChapter}（计划 ${targetChapterCount} 章 / 实际 ${actualChapterCount} 章，dim 目标 ${dimTargetWords} 字）`,
+      );
+    }
     await deps
       .emit({
         type: "playground.dimension:outline:planned",
@@ -539,7 +562,7 @@ export async function runPerDimPipeline(
             dimensionName,
             topic,
             language,
-            targetWordsPerChapter,
+            targetWordsPerChapter: effectiveTargetWordsPerChapter,
             lengthProfile: lp,
             billing,
             budgetMultiplier,
@@ -562,7 +585,7 @@ export async function runPerDimPipeline(
                 failedAttempt,
                 reason,
                 wordCount,
-                targetWordCount: targetWordsPerChapter,
+                targetWordCount: effectiveTargetWordsPerChapter,
                 finalScore,
               }),
             store: deps.store,
@@ -579,7 +602,7 @@ export async function runPerDimPipeline(
           failedAttempt: 1,
           reason: `exception: ${(_err instanceof Error ? _err.message : String(_err)).slice(0, 120)}`,
           wordCount: 0,
-          targetWordCount: targetWordsPerChapter,
+          targetWordCount: effectiveTargetWordsPerChapter,
         }),
       deps,
       { missionId, dimensionName },

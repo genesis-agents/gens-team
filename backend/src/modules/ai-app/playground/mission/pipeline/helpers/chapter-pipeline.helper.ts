@@ -555,15 +555,19 @@ export async function runChapterPipeline(
       //   触发 revise」意味着一篇 70% 交付的章节能拿 90 分 → passed/qualified=true，
       //   欠交付对上游（维度评分、mission 报表）完全不可见。质量分和交付量是两件
       //   事：内容可以很好，但少交了就是少交了，得如实记成 fallback-length。
-      //   注意排序：欠交付只**挡住 passed**，不改写死因。reviewer 连续失败时
-      //   仍须报 fallback-exhausted —— 那才是这一章没被质量把关的真实原因，
-      //   用"字数不足"盖掉它就是又一次把真因说成别的。
+      // ★ 2026-08-03 修正（我上一版的错，生产实证）：欠交付**不得**改写
+      //   chapterDecision / qualified。
+      //
+      //   qualified 在下游的语义是「章节可用 / 撰写成功」：mission-view.projector
+      //   把 qualified=false 记成 failed-finalized，前端据此标红「撰写失败 N/M」。
+      //   而这些章节是写出来了、复审 82/100 通过、内容已落地的，只是字数偏短 ——
+      //   把它报成"撰写失败"比隐瞒欠交付错得更离谱，也正是我这轮一直在修的
+      //   "把真因说成别的"。字数够不够，用独立的 underDelivered 信号表达。
       const chapterDecision:
         | "passed"
         | "fallback-length"
         | "fallback-exhausted" =
-        !isUnderDelivered &&
-        (verdict.decision === "pass" || verdict.score >= PASS_THRESHOLD)
+        verdict.decision === "pass" || verdict.score >= PASS_THRESHOLD
           ? "passed"
           : reviewerExhausted
             ? "fallback-exhausted"
@@ -585,6 +589,9 @@ export async function runChapterPipeline(
             targetWordCount: targetWordsPerChapter,
             finalized: true,
             qualified: chapterDecision === "passed",
+            // ★ 欠交付独立记账：不冒充失败，也不隐瞒。
+            underDelivered: isUnderDelivered,
+            minDeliveryWords,
           },
         })
         .catch((err: unknown) => {
@@ -627,6 +634,18 @@ export async function runChapterPipeline(
               ? "故障耗尽"
               : "未通过且重试上限"
           }，按当前 draft 兜底落地（${draft.wordCount}/${targetWordsPerChapter} 字）`,
+          agentId: reviewerAgentId,
+          dimension: dimensionName,
+        });
+      } else if (isUnderDelivered) {
+        // ★ 2026-08-03：复审通过但字数没写够 —— 必须说清是"字数"，不能混进上面那条
+        //   "因评审未通过"。生产实证里正是这两件事被说成一件（复审 82/100 通过，
+        //   日志却写"因评审未通过且重试上限"），用户一眼就看出对不上。
+        await narrate(deps.emit, missionId, userId, {
+          stage: "s3-researchers",
+          role: "reviewer",
+          tag: "info",
+          text: `${dimensionName} · §${chapter.index} 复审通过但字数欠交付（${draft.wordCount}/${minDeliveryWords} 字交付线，目标 ${targetWordsPerChapter} 字），已落地`,
           agentId: reviewerAgentId,
           dimension: dimensionName,
         });

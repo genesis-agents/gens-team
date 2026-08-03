@@ -3264,4 +3264,41 @@ describe("runPerDimPipeline — RTK finding deduplication", () => {
       expect(result.dimension).toBe("Technology");
     });
   });
+  // ★ 2026-08-03 回归（用户实证「全部兜底落地」）：每章字数目标必须按**实际**
+  //   章节数算。targetWordsPerChapter 原先用 targetChapterCount —— 那只是发给
+  //   outline agent 的**请求值**，真正产出几章由它自己定。生产实测：请求 2 章
+  //   → 每章目标 6250，而 outline 产了 4 章 → 该维隐含目标 25000 字，是本该的
+  //   12500 的两倍，于是每章都被翻倍的尺子量，写得再好也判欠交付。
+  describe("每章字数按实际章节数守恒", () => {
+    it("★ outline 实际章节数 > 请求数时，每章目标同比缩小（dim 总量守恒）", async () => {
+      const chapterCount = 4;
+      const writer = {
+        planDimensionOutline: jest.fn().mockResolvedValue({
+          state: "completed",
+          output: makeOutlineOutput(chapterCount),
+          events: [],
+          iterations: 1,
+          wallTimeMs: 100,
+        }),
+      };
+      const deps = makeDeps({ writer: writer as never });
+
+      await runPerDimPipeline(baseArgs, deps);
+
+      // chapter-writer 拿到的 targetWords 应满足：实际章节数 × 每章目标 ≈ dim 目标，
+      // 而不是沿用按更少章节数算出的那个偏大值。
+      const writerCalls = (deps.invoker.invoke as jest.Mock).mock.calls.filter(
+        (c) => typeof c[1]?.targetWords === "number",
+      );
+      expect(writerCalls.length).toBeGreaterThan(0);
+      const perChapter = writerCalls[0][1].targetWords as number;
+      // baseArgs: depth=standard(40000) / dimensionCount 缺省 5 → dimTarget=8000
+      const dimTarget = 8000;
+      expect(perChapter).toBe(Math.round(dimTarget / chapterCount));
+      // 所有章节拿到同一个值
+      for (const c of writerCalls) {
+        expect(c[1].targetWords).toBe(perChapter);
+      }
+    });
+  });
 });
