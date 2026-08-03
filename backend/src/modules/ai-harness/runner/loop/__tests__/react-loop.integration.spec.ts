@@ -384,6 +384,67 @@ describe("ReActLoop — Extended coverage", () => {
     expect(terminated?.payload).toEqual({ reason: "completed" });
   });
 
+  // ── 2026-08-02 回归：JSON 解析失败时 critique 说了假话 ────────────────────
+  //
+  // 用户实证 prod：模型吐了合法结构但**没被解析出来**（最常见成因是输出过长被截断），
+  // 兜底把 raw text 塞进 finalize.output → schema 报
+  // `<root>: Expected object, received string` → critique 原样回抛。
+  // 模型读到"你写了字符串"，于是连续两轮认真改正一个它根本没犯的错：
+  //   iter2「上次finalize把output写成了字符串，需改为直接输出 JSON 对象」
+  //   iter3「上次失败因output被序列化成字符串。本次不再包一层字符串」
+  // 每轮 40–60s 全部白烧，最后 force-accept 一份废产物。
+  //
+  // 断言 critique 必须说真话（没解析出来 / 输出更短），且**不得**指控模型吐了字符串。
+  it("JSON 抽取失败导致的 finalize-raw：critique 说明是解析失败并要求更短输出，而非指控模型吐字符串", async () => {
+    // 断在半截的 JSON —— extractJsonFromAIResponse 抽不出来
+    const truncated =
+      '{"thinking":"整合12个维度","action":{"kind":"finalize","output":{"factTable":[{"id":"fact-1","entity":"JobBench","attr';
+    const chat = mkChat([
+      { content: truncated },
+      {
+        content: JSON.stringify({
+          thinking: "改短后重发",
+          action: { kind: "finalize", output: { result: "ok" } },
+        }),
+      },
+    ]);
+    const reg = mkToolRegistry({});
+    const hooks = new HookRegistry();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invoker = new ToolInvoker(reg as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const loop = new ReActLoop(chat as any, invoker, hooks);
+
+    const outputSchemaValidator = (output: unknown) =>
+      typeof output === "string"
+        ? {
+            ok: false as const,
+            issues:
+              "Schema: <root>: Expected object, received string (code=invalid_type)",
+          }
+        : { ok: true as const };
+
+    await drain(
+      loop.run(makeEnvelope(), criteria, {
+        agentId: "unparsed1",
+        outputSchemaValidator,
+      }),
+    );
+
+    // 第二轮的入参里应带上纠错消息
+    expect(chat.chat.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const secondArg = chat.chat.mock.calls[1][0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const injected = secondArg.messages.map((m) => m.content).join("\n");
+
+    // 说真话：解析失败 + 要求更短
+    expect(injected).toMatch(/could NOT be parsed as JSON/i);
+    expect(injected).toMatch(/SHORTER/i);
+    // 不得指控模型"吐了字符串"——那正是把它带偏两轮的那句
+    expect(injected).not.toMatch(/you emitted a string/i);
+  });
+
   // ── 2026-08-02 回归：force-accept 收下截断的字符串当产物 ──────────────────
   //
   // 用户实证 prod：grok-4.5 输出被 maxTokens 截断 → JSON 抽取失败 → 兜底把 raw

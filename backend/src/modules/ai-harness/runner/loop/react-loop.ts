@@ -515,6 +515,8 @@ export class ReActLoop implements IAgentLoop {
      */
     let lastIterRawContent = "";
     let lastIterHadParseError = false;
+    /** 上一轮 parse 失败的类型名 —— 决定 critique 该说什么真话（见 finalize 驳回处）。 */
+    let lastIterParseErrorName = "";
 
     // ─── Anthropic P0-3 fix (2026-05-05): SessionStart / UserPromptSubmit fire ───
     //   Hook 类型早就定义但全库 0 dispatch site，导致 SDK 上 hook 注册者收不到事件。
@@ -867,6 +869,7 @@ export class ReActLoop implements IAgentLoop {
           // ★ Claude Code P0-2: 保存原始 content + parse 状态，供后段终止判定使用
           lastIterRawContent = reasoned.rawContent;
           lastIterHadParseError = !!reasoned.parseError;
+          lastIterParseErrorName = reasoned.parseError?.name ?? "";
 
           // ★ 诊断：解析层兜底抛错（正常情况 parseDecision 会 catch JSON.parse /
           // InvalidActionError 自己包装。如果走到这条说明 catch 之外的异常）
@@ -1550,21 +1553,51 @@ export class ReActLoop implements IAgentLoop {
               ? `\n\n${outputSchemaDescription}\n` +
                 `Emit your next finalize.output as JSON matching the shape above.`
               : "";
-            const critique = finalizeIsToolCallEnvelope
-              ? // 专门处理 tool-call-in-finalize：明确"别再吐 tool_call"，给出空结果出口
-                `[FINALIZE REQUIRED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] You emitted a tool_call where the FINAL ANSWER is required. ` +
-                `You are out of search budget — do NOT emit any tool_call. ` +
-                `Produce finalize.output from the tool results already in this conversation. ` +
-                `If you genuinely found no usable sources, emit a schema-valid result with an EMPTY findings array ([]) ` +
-                `and a summary stating that no usable sources were found for this dimension.` +
+            // ★ 2026-08-02（用户实证 prod）：区分「模型真的吐了字符串」与
+            //   「模型吐了 JSON，但我们没解析出来、兜底把 raw 当成了 output」。
+            //
+            //   实测三轮全废的原因就是把后者当成了前者：JsonExtractFailed 之后
+            //   raw 被塞进 finalize.output → schema 报
+            //   `<root>: Expected object, received string` → critique 原样回抛 →
+            //   模型读到「你写了字符串」，于是连续两轮认真地"改正"一个它根本没犯的错：
+            //     iter2「上次finalize把output写成了字符串，需改为直接输出 JSON 对象」
+            //     iter3「上次失败因output被序列化成字符串。本次不再包一层字符串」
+            //   每轮 40–60s，全部白烧，最后 force-accept 一份废产物。
+            //
+            //   真话是：**你的 JSON 没能被解析出来**（最常见成因是输出过长被截断，
+            //   JSON 结尾不完整）。给出的行动也必须不同 —— 不是"别包字符串"，
+            //   而是"输出更短更完整的 JSON"。
+            const finalizeIsUnparsedRaw =
+              typeof output === "string" &&
+              lastIterHadParseError &&
+              lastIterParseErrorName === "JsonExtractFailed";
+
+            const critique = finalizeIsUnparsedRaw
+              ? `[FINALIZE REJECTED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] ` +
+                `Your previous response could NOT be parsed as JSON, so its raw text was used as the output — ` +
+                `you did not "emit a string"; the JSON itself was incomplete (most commonly the output ran past ` +
+                `the token budget and was cut off mid-structure).\n` +
+                `Do NOT change how you wrap the output. Instead emit the SAME structure but SHORTER so it completes:\n` +
+                `  - keep every REQUIRED field, drop optional ones\n` +
+                `  - shorten long free-text values; keep arrays to the most important entries\n` +
+                `  - no markdown fences, no prose before or after the JSON\n` +
+                `DO NOT rerun tools — use the tool results already in this conversation.` +
                 skeletonBlock
-              : `[FINALIZE REJECTED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] Your finalize.output failed validation:\n` +
-                issuesParts.map((p) => `  - ${p}`).join("\n") +
-                `\n\nDO NOT rerun tools. Use the tool results already in this conversation to ` +
-                `produce a corrected finalize that addresses the issues above. ` +
-                `If the existing tool results genuinely don't have the needed information, ` +
-                `you may emit ONE focused tool_call to fill the specific gap (do not search broadly).` +
-                skeletonBlock;
+              : finalizeIsToolCallEnvelope
+                ? // 专门处理 tool-call-in-finalize：明确"别再吐 tool_call"，给出空结果出口
+                  `[FINALIZE REQUIRED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] You emitted a tool_call where the FINAL ANSWER is required. ` +
+                  `You are out of search budget — do NOT emit any tool_call. ` +
+                  `Produce finalize.output from the tool results already in this conversation. ` +
+                  `If you genuinely found no usable sources, emit a schema-valid result with an EMPTY findings array ([]) ` +
+                  `and a summary stating that no usable sources were found for this dimension.` +
+                  skeletonBlock
+                : `[FINALIZE REJECTED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] Your finalize.output failed validation:\n` +
+                  issuesParts.map((p) => `  - ${p}`).join("\n") +
+                  `\n\nDO NOT rerun tools. Use the tool results already in this conversation to ` +
+                  `produce a corrected finalize that addresses the issues above. ` +
+                  `If the existing tool results genuinely don't have the needed information, ` +
+                  `you may emit ONE focused tool_call to fill the specific gap (do not search broadly).` +
+                  skeletonBlock;
             this.logger.log(
               `[${agentId}] finalize rejected (${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}): ${issuesParts.join("; ").slice(0, 200)}`,
             );
