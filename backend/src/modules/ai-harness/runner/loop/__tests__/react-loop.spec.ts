@@ -589,6 +589,49 @@ describe("ReActLoop (Phase 2)", () => {
     expect(JSON.stringify(output?.payload)).toContain('"title":"T"');
   });
 
+  // ★ 2026-08-03（生产日志实证，用户直接指出我漏了这条）：模型把 parallel_tool_call
+  //   内部的数组写成 `actions` 而不是 `calls`：
+  //     InvalidActionError: parallel_tool_call action requires "calls" (array), got undefined
+  //     rawContent={"action":{"kind":"parallel_tool_call","actions":[{"kind":"tool_call",...}]}}
+  //   根因是我们协议自己埋的：顶层简写叫 actions、内部却叫 calls，同一件事两个名字。
+  //   上一批只兜了顶层那种，这条是同一个病的另一半。
+  it("★ parallel_tool_call 用 actions 代替 calls 也认（生产原样形态）", async () => {
+    const chat = mkChat([
+      JSON.stringify({
+        thinking: "web-search failed, use alternative tools in parallel",
+        action: {
+          kind: "parallel_tool_call",
+          actions: [
+            { kind: "tool_call", toolId: "a", input: {} },
+            { kind: "tool_call", toolId: "b", input: {} },
+          ],
+        },
+      }),
+      JSON.stringify({
+        thinking: "done",
+        action: { kind: "finalize", output: "ok" },
+      }),
+    ]);
+    const reg = mkToolRegistry({
+      a: { success: true, data: 1 },
+      b: { success: true, data: 2 },
+    });
+    const hooks = new HookRegistry();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invoker = new ToolInvoker(reg as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const loop = new ReActLoop(chat as any, invoker, hooks);
+
+    const events = await drain(
+      loop.run(makeEnvelope(["a", "b"]), criteria, { agentId: "s-par-alias" }),
+    );
+    const exec = events.find((e) => e.type === "action_executed");
+    expect(exec?.payload).toMatchObject({
+      action: { kind: "parallel_tool_call" },
+    });
+    expect(reg.get).toHaveBeenCalledTimes(2);
+  });
+
   it("actions[] 是正常 tool call 时行为不变（不误伤简写本身）", async () => {
     const chat = mkChat([
       JSON.stringify({ thinking: "t", actions: [{ toolId: "a", input: {} }] }),

@@ -196,6 +196,8 @@ top level — it will be auto-wrapped to parallel_tool_call.
 IMPORTANT: "actions" is ONLY for tool calls. Never put a finalize payload in it.
 To finalize, put the answer in action.output: {"action":{"kind":"finalize","output":{...}}}
 — NOT {"action":{"kind":"finalize"},"actions":[{"output":{...}}]}.
+Inside parallel_tool_call the array key is "calls" (not "actions"):
+  {"action":{"kind":"parallel_tool_call","calls":[{"toolId":"...","input":{...}}]}}
 
 Rules:
 - Respond with raw JSON only, no markdown fences, no prose outside the JSON.
@@ -2386,13 +2388,28 @@ export class ReActLoop implements IAgentLoop {
 
     // ── parallel_tool_call ────────────────────────────
     if (a.kind === "parallel_tool_call") {
-      if (!Array.isArray(a.calls)) {
+      // ★ 2026-08-03 容错（Railway 生产日志实证）：模型把并行调用的数组写成
+      //   `actions` 而不是 `calls`：
+      //     {"action":{"kind":"parallel_tool_call","actions":[{"kind":"tool_call",...}]}}
+      //     → InvalidActionError: requires "calls" (array), got undefined
+      //
+      //   这是**我们自己的协议埋的坑**：顶层简写叫 `actions`（见协议文本
+      //   "you may also send \"actions\": [...]"），而 parallel_tool_call 内部叫
+      //   `calls` —— 同一件事两个名字，模型混用完全可预期。既然是我们教的，
+      //   就该我们兜住：两个键都接受，取先出现且为数组的那个。
+      //   （与上面 actions[] 装 finalize 产物的容错同一批修复，那次只兜了顶层。）
+      const rawCalls = Array.isArray(a.calls)
+        ? a.calls
+        : Array.isArray((a as { actions?: unknown }).actions)
+          ? (a as { actions: unknown[] }).actions
+          : null;
+      if (!rawCalls) {
         throw new InvalidActionError(
           `parallel_tool_call action requires "calls" (array), got ${typeof a.calls}`,
           "empty_parallel_calls",
         );
       }
-      const calls = a.calls
+      const calls = rawCalls
         .map((c) => this.normalizeToolCall(c))
         .filter((c): c is IToolCallAction => c !== null);
       if (calls.length === 0) {
