@@ -306,6 +306,34 @@ export class MissionReportHelper extends BusinessTeamReportHelperFramework<Playg
       });
   }
 
+  /**
+   * ★ 2026-08-03 清空本 mission 的章节草稿 + 维度研究结果缓存（fresh 重跑专用）。
+   *
+   * 用户实证：点「开始」（承诺"从头重跑"）表现得和「更新」一样，一个字都不重写。
+   * 真因：2026-06-11 起重跑改为**同-id**（missionId 不变），而 fresh 只清了
+   * checkpoint；per-dim pipeline 的 cache 读的是 loadQualifiedChapterDrafts(missionId)
+   * 与按 dimension 名命中的 research_results —— 同一个 id 下缓存原封不动，
+   * 于是每个维度直接 cache hit 短路，"从头"成了空话。
+   *
+   * 按钮说了从头，就必须真的从头 —— 与本轮字数那条修复同一个原则。
+   */
+  async clearRerunCaches(missionId: string): Promise<void> {
+    await this.prisma.agentPlaygroundChapterDraft
+      .deleteMany({ where: { missionId } })
+      .catch((err: unknown) => {
+        this.playgroundLog.warn(
+          `[mission-report] clear chapter drafts for ${missionId} failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    await this.prisma.agentPlaygroundResearchResult
+      .deleteMany({ where: { missionId } })
+      .catch((err: unknown) => {
+        this.playgroundLog.warn(
+          `[mission-report] clear research results for ${missionId} failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+  }
+
   async loadQualifiedChapterDrafts(missionId: string): Promise<
     Array<{
       dimension: string;

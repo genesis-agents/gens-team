@@ -47,6 +47,9 @@ function makeStore() {
   return {
     listByUser: jest.fn().mockResolvedValue([]),
     getById: jest.fn().mockResolvedValue(null),
+    // ★ 2026-08-03 fresh 重跑清缓存（章节草稿 / 研究结果）。同-id 重跑下只清
+    //   checkpoint 不够，缓存还在就会 cache hit 短路 → "从头"名不副实。
+    clearRerunCaches: jest.fn().mockResolvedValue(undefined),
     // ★ P-IDOR2 (full): 按 id 查访问元信息（owner + visibility），不带 userId 过滤。
     //   默认 own（owner === 测试常用 requester "user-1"，PRIVATE）让既有读端点
     //   测试直接放行；需 404 / 跨用户场景的测试自行 mock 返回 null 或他人 meta。

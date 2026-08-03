@@ -58,6 +58,9 @@ export class MissionRerunOrchestratorService extends BusinessTeamRerunOrchestrat
   // ★ 2026-08-02 同-id 续跑前置检查：本进程已在跑就直接 409，不再"受理了但实际跳过"。
   //   必须与 pipeline 的重入护栏用**同一个**真源（见 hasActiveLocalRun 注释）。
   private readonly dispatcherRef: PlaygroundPipelineDispatcher;
+  // ★ 2026-08-03 fresh 重跑清缓存用：同-id 重跑下 checkpoint 之外还有章节草稿 /
+  //   研究结果两层缓存，不清就等于没"从头"（用户实证：点开始表现同更新）。
+  private readonly storeRef: MissionStore;
 
   constructor(
     // ★ P-DUR2 (2026-05-30): dispatcher 现在反向 inject 本 orchestrator（orphan boot
@@ -141,6 +144,7 @@ export class MissionRerunOrchestratorService extends BusinessTeamRerunOrchestrat
     super(hooks, "playground");
     this.checkpointRef = checkpoint;
     this.dispatcherRef = orchestrator;
+    this.storeRef = store;
   }
 
   /**
@@ -239,6 +243,15 @@ export class MissionRerunOrchestratorService extends BusinessTeamRerunOrchestrat
     if (mode === "fresh") {
       // 同 id 从头：清自己的 checkpoint，runMission 不会命中 resume 分支。
       await this.checkpointRef.clear(sourceMissionId).catch(() => undefined);
+      // ★ 2026-08-03（用户实证「点开始怎么也变成更新了」）：只清 checkpoint 不够。
+      //   2026-06-11 起重跑改同-id，missionId 不变 → per-dim pipeline 的两层缓存
+      //   （loadQualifiedChapterDrafts(missionId) 章节草稿、按 dimension 名命中的
+      //   research_results）原封不动躺在那里，每个维度直接 cache hit 短路，
+      //   一个字都不会重写 —— "从头重跑"成了空话，行为与「更新」无异。
+      //   按钮说了从头就必须真的从头（与本轮字数那条修复同一个原则）。
+      await this.storeRef
+        .clearRerunCaches(sourceMissionId)
+        .catch(() => undefined);
     } else {
       // ★ 2026-06-12 修「更新全量重跑」（用户实证：失联 mission 点更新 → 14 维度全部重做）：
       //   同-id incremental 在 **无可用 checkpoint** 时（死在首个 stage 断点之前 /

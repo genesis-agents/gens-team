@@ -83,7 +83,11 @@ jest.mock("@/modules/ai-harness/facade", () => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeStore(missionRow: Record<string, unknown> | null = null) {
-  return { getById: jest.fn().mockResolvedValue(missionRow) } as any;
+  return {
+    getById: jest.fn().mockResolvedValue(missionRow),
+    // ★ 2026-08-03 fresh 重跑清缓存（章节草稿 / 研究结果）
+    clearRerunCaches: jest.fn().mockResolvedValue(undefined),
+  } as any;
 }
 
 function makeBuffer() {
@@ -148,6 +152,8 @@ function makeOrchestratorAndDeps(
     dispatcherRunMission?: jest.Mock;
     /** 本进程是否已有活 run（2026-08-02 同-id 续跑前置检查） */
     hasLiveRun?: boolean;
+    /** 复用外部 store mock（断言 clearRerunCaches 调用时用） */
+    store?: ReturnType<typeof makeStore>;
   } = {},
 ) {
   const checkpoint = opts.checkpoint ?? makeCheckpoint({ canResume: false });
@@ -155,7 +161,7 @@ function makeOrchestratorAndDeps(
   if (opts.dispatcherRunMission) {
     dispatcher.runMission = opts.dispatcherRunMission;
   }
-  const store = makeStore(opts.mission ?? null);
+  const store = opts.store ?? makeStore(opts.mission ?? null);
   const buffer = makeBuffer();
   const ownership = makeOwnership();
   const guard = makeRerunGuard();
@@ -468,6 +474,30 @@ describe("MissionRerunOrchestratorService.rerunFullMission", () => {
     });
     await svc.rerunFullMission(sourceMissionId, userId, "fresh");
     expect(checkpoint.clear).toHaveBeenCalledWith(sourceMissionId);
+  });
+
+  // ★ 2026-08-03 回归（用户实证「点开始怎么也变成更新了」）：2026-06-11 起重跑改
+  //   同-id，missionId 不变 → per-dim pipeline 的章节草稿 / research_results 两层
+  //   缓存原封不动，只清 checkpoint 的话每个维度直接 cache hit 短路，一个字都不重写。
+  it("★ mode=fresh → 必须清章节草稿/研究结果缓存（否则 cache hit 短路，等于没重跑）", async () => {
+    const store = makeStore(makeMissionRow());
+    const { svc } = makeOrchestratorAndDeps({
+      mission: makeMissionRow(),
+      store,
+    });
+    await svc.rerunFullMission(sourceMissionId, userId, "fresh");
+    expect(store.clearRerunCaches).toHaveBeenCalledWith(sourceMissionId);
+  });
+
+  it("mode=incremental → 绝不清缓存（清了「更新」的增量承诺就毁了）", async () => {
+    const store = makeStore(makeMissionRow());
+    const { svc } = makeOrchestratorAndDeps({
+      mission: makeMissionRow(),
+      store,
+      checkpoint: makeCheckpoint({ canResume: true }),
+    });
+    await svc.rerunFullMission(sourceMissionId, userId, "incremental");
+    expect(store.clearRerunCaches).not.toHaveBeenCalled();
   });
 
   it("mode=fresh → checkpointRef.canResume NOT called", async () => {

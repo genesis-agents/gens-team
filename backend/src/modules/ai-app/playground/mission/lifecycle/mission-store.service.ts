@@ -512,6 +512,12 @@ export class MissionStore
   ): ReturnType<MissionReportHelper["loadQualifiedChapterDrafts"]> {
     return this.report.loadQualifiedChapterDrafts(...args);
   }
+  /** ★ 2026-08-03 fresh 重跑：清掉同-id 下的章节草稿 / 研究结果缓存。 */
+  clearRerunCaches(
+    ...args: Parameters<MissionReportHelper["clearRerunCaches"]>
+  ): ReturnType<MissionReportHelper["clearRerunCaches"]> {
+    return this.report.clearRerunCaches(...args);
+  }
 
   // ── Query ─────────────────────────────────────────────────────────────────
   // countRunningByUser: framework 已提供
