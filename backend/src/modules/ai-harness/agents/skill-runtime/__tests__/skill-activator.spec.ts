@@ -73,6 +73,36 @@ describe("SkillActivator", () => {
     expect(result.envelope.reminders[1].content).toContain("do s2");
   });
 
+  // ★ 2026-08-03（Railway 生产日志实证）：注入头此前只有 `## Skill: <name>`，
+  //   模型把技能名当成可调用的 action kind，反复抛：
+  //     unsupported action kind: "dim-chapter-integration"
+  //     unsupported action kind: "cross-dim-synthesis"
+  //     unsupported action kind: "integrate"
+  //   每次都走 parseDecision 抛错 → finalize-raw 兜底 → 下游 schema 驳回，白烧一轮。
+  //   逐个改 SKILL.md 治不住（cross-dim-synthesis 文档里连 json 块都没有，纯粹是
+  //   名字被具象化），所以在唯一的注入点声明一次，覆盖所有技能。
+  it("★ 注入头必须声明「技能不是 action」并列出协议三件套", async () => {
+    const registry = new BuiltinSkillCatalog();
+    registry.register(
+      makeSkill("cross-dim-synthesis", { instructions: "body" }),
+    );
+
+    const activator = new SkillActivator(registry, new HookRegistry());
+    const result = await activator.activate(
+      makeIdentity(["cross-dim-synthesis"]),
+      makeEnv(),
+    );
+
+    const content = result.envelope.reminders[0].content;
+    expect(content).toContain("不是可调用的动作");
+    expect(content).toContain("tool_call");
+    expect(content).toContain("parallel_tool_call");
+    expect(content).toContain("finalize");
+    // 技能正文仍然完整注入
+    expect(content).toContain("body");
+    expect(content).toContain("## Skill: cross-dim-synthesis");
+  });
+
   it("skips missing skills with a warning", async () => {
     const registry = new BuiltinSkillCatalog();
     registry.register(makeSkill("exists"));
@@ -311,5 +341,3 @@ describe("SkillActivator", () => {
     });
   });
 });
-
-

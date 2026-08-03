@@ -89,11 +89,29 @@ export class SkillActivator {
     const activated: string[] = [];
     const unregisterFns: Array<() => void> = [];
 
+    /**
+     * ★ 2026-08-03（Railway 生产日志实证）：注入头此前只有 `## Skill: <name>`，
+     * 模型把这个名字当成了可调用的 action kind：
+     *
+     *   InvalidActionError: LLM returned unsupported action kind: "dim-chapter-integration"
+     *   InvalidActionError: LLM returned unsupported action kind: "cross-dim-synthesis"
+     *   InvalidActionError: LLM returned unsupported action kind: "integrate"
+     *   thinking: "Apply dim-chapter-integration skill to merge the 4 chapters"
+     *
+     * 每次都要走 parseDecision 抛错 → finalize-raw 兜底 → 下游 schema 驳回，白烧一轮。
+     * 逐个改 SKILL.md 治不住（cross-dim-synthesis 文档里连 json 块都没有，纯粹是
+     * 名字被具象化）。在**唯一的注入点**加一句声明，一处覆盖所有技能。
+     */
+    const SKILL_IS_NOT_AN_ACTION =
+      "（这是写作指导，不是可调用的动作。协议里只有 " +
+      '"tool_call" / "parallel_tool_call" / "finalize" 三种 action kind；' +
+      "不存在以本技能名命名的 action，请直接按指导自己完成，然后 finalize。）";
+
     for (const skill of skills) {
       // 1. Inject instructions as high-priority reminder
       if (current instanceof ContextEnvelope) {
         current = current.withReminder(
-          `## Skill: ${skill.frontmatter.name}\n${skill.instructions}`,
+          `## Skill: ${skill.frontmatter.name}\n${SKILL_IS_NOT_AN_ACTION}\n\n${skill.instructions}`,
           "high",
           `skill:${skill.frontmatter.name}`,
         ).envelope as ContextEnvelope;
@@ -105,7 +123,7 @@ export class SkillActivator {
             {
               source: `skill:${skill.frontmatter.name}`,
               priority: "high" as const,
-              content: `## Skill: ${skill.frontmatter.name}\n${skill.instructions}`,
+              content: `## Skill: ${skill.frontmatter.name}\n${SKILL_IS_NOT_AN_ACTION}\n\n${skill.instructions}`,
             },
           ],
         };
@@ -192,5 +210,3 @@ export class SkillActivator {
     return null;
   }
 }
-
-
