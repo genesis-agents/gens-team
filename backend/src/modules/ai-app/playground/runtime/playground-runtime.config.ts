@@ -64,6 +64,26 @@ const DEFAULTS = {
    */
   chapterToleranceRatio: 0.3,
 
+  /**
+   * 章节「最低交付比例」：实际字数 / targetWordsPerChapter 低于此值即判欠交付
+   * （打回重写；终局仍不足则记为不合格，不计入 qualified）。
+   *
+   * ★ 2026-08-03（用户实证 + 换模型复盘）：这个旋钮存在的理由是**输出长度不能靠
+   * 提示词措辞保证，只能靠测量+强制**。历史上写手提示词说"建议区间下限 0.7×、
+   * 不是硬约束、低于 800 字也不会被打回"，而闸门在 0.4× 才触发 —— DeepSeek 因
+   * 天然铺陈从不触碰，看起来一切正常；换成照做型模型后，它精确交付提示词里印着
+   * 的那个下限（生产实测多章 612 = round(874 × 0.7)）。同一份代码、同一份提示词，
+   * 换个模型就从"好"变成"系统性欠交付 30%"。
+   *
+   * 所以判定线必须是**唯一的、被真正执行的**那个数：写手提示词印它、reviewer
+   * 按它给分、闸门按它打回、记账按它判合格 —— 四处同一个值（见
+   * chapter-pipeline.helper 的 minDeliveryWords，一次计算向下传）。
+   *
+   * 按模型档位自适应见 playground-tuning-profile.ts：弱模型撑不住长文，硬卡会
+   * 变成重写风暴（minFindingsThreshold 10→5 就是这个教训），故 local 档放宽。
+   */
+  chapterMinDeliveryRatio: 0.75,
+
   // ★ 2026-05-22 follow-up：原 7 个 loop-control 旋钮(researcherMaxIterations /
   //   HardCap / WallTimeMs / chapterWriterInternalMaxIterations /
   //   chapterMaxRevisionAttempts / missionWriterMaxAttempts / reactMaxFinalizeRejects)
@@ -122,6 +142,7 @@ const DEFAULTS = {
 export const PlaygroundRuntimeConfigSchema = z.object({
   minFindingsThreshold: z.number().int().min(0),
   chapterToleranceRatio: z.number().min(0).max(1),
+  chapterMinDeliveryRatio: z.number().min(0).max(1),
   staleThresholdMin: z.number().int().min(1),
   softWarnThresholdMin: z.number().int().min(1),
   wallTimeCapMs: z.number().int().min(0),
@@ -179,6 +200,10 @@ export function loadPlaygroundRuntimeConfig(
     chapterToleranceRatio: parseRatioEnv(
       env.CHAPTER_TOLERANCE_RATIO,
       baseline.chapterToleranceRatio,
+    ),
+    chapterMinDeliveryRatio: parseRatioEnv(
+      env.CHAPTER_MIN_DELIVERY_RATIO,
+      baseline.chapterMinDeliveryRatio,
     ),
     staleThresholdMin: parsePositiveIntEnv(
       env.PLAYGROUND_STALE_THRESHOLD_MIN,

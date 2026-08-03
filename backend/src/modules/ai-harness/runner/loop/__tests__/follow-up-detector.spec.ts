@@ -203,6 +203,59 @@ describe("rawContentHasUnsupportedActionKind", () => {
     expect(rawContentHasUnsupportedActionKind(raw, true)).toBe(true);
   });
 
+  // ★ 2026-08-03（Railway 生产日志实证）：白名单式检测追不上这个病。
+  //   删掉 <available_skills> 里的 skill_invoke 示例后，模型不再写那个词，
+  //   改成**直接把 skill id 当 action kind**：
+  //     LLM returned unsupported action kind: "dim-chapter-integration"
+  //   旧实现只认死三个保留名 → 认不出 → 纠错网漏掉 → 维度章节整合恒定失败
+  //   （表现为 dimension/abstract/keyFindings/... 全部 Required）。
+  it("任意 skill id 当 kind（生产原样：dim-chapter-integration）也要认出", () => {
+    const raw =
+      '{"thinking":"Apply dim-chapter-integration skill to merge the 4 chapters",' +
+      '"kind":"dim-chapter-integration","chapters":[]}';
+    expect(rawContentHasUnsupportedActionKind(raw, true)).toBe(true);
+  });
+
+  it("将来任意新造的 kind 也要认出（反向判定，不是白名单）", () => {
+    const raw = '{"action":{"kind":"some-future-skill-v2","x":1}}';
+    expect(rawContentHasUnsupportedActionKind(raw, true)).toBe(true);
+  });
+
+  it("协议内三件套一律不误伤", () => {
+    for (const k of ["tool_call", "parallel_tool_call", "finalize"]) {
+      const raw = `{"action":{"kind":"${k}","x":1}}`;
+      expect(rawContentHasUnsupportedActionKind(raw, true)).toBe(false);
+    }
+  });
+
+  // ★ 反向判定必须只看**动作位**的 kind。业务 schema 里也有 kind 字段
+  //   （analyst.agent: scenarios[].kind = bull/base/bear），而 rawContent 按定义
+  //   是解析失败的残缺 JSON —— 抓到业务 kind 就会把真实 finalize 劫持成 nudge，
+  //   还对模型谎称"你用了不存在的 action kind"，重演"假话把模型带偏"那类事故。
+  it("业务字段里的 kind 不当作 action kind（模型裸吐 output 的常见形态）", () => {
+    const raw =
+      '{"scenarios":[{"kind":"bull","narrative":"..."},{"kind":"bear"}],"insights":[]}';
+    expect(rawContentHasUnsupportedActionKind(raw, true)).toBe(false);
+  });
+
+  it("finalize 的 output 里嵌业务 kind 也不误伤", () => {
+    const raw =
+      '{"thinking":"done","action":{"kind":"finalize","output":{"scenarios":[{"kind":"bull"}]}}}';
+    expect(rawContentHasUnsupportedActionKind(raw, true)).toBe(false);
+  });
+
+  it("tool_call 的 input 里嵌业务 kind 也不误伤", () => {
+    const raw =
+      '{"action":{"kind":"tool_call","toolId":"chart","input":{"kind":"bar"}}}';
+    expect(rawContentHasUnsupportedActionKind(raw, true)).toBe(false);
+  });
+
+  it("带 ```json 围栏的顶层动作位仍能认出", () => {
+    const raw =
+      '```json\n{"thinking":"apply skill","kind":"dim-chapter-integration"}';
+    expect(rawContentHasUnsupportedActionKind(raw, true)).toBe(true);
+  });
+
   it("无 parseError → false（LLM 是真的主动 finalize，不许劫持）", () => {
     expect(rawContentHasUnsupportedActionKind(prodRaw, false)).toBe(false);
   });

@@ -395,6 +395,68 @@ describe("SingleShotWriterAgent", () => {
       expect(prompt).toContain("600");
     });
 
+    // ★ 2026-08-03 字数契约（与 chapter 路径同一套机制）：
+    //   原提示词写 `must hit ≥80% of this`，而没有任何代码在每章 80% 上执行
+    //   —— 真实信号是 mission 级 lengthAccuracy（另一个口径，跌到 60% 才告警）。
+    //   612 字事故证明：模型会精确执行我们印出的最低数字，所以印出来的必须是
+    //   真正被执行的那个数。交付线由 s8 按 chapterMinDeliveryRatio 旋钮算好下传。
+    describe("字数契约：只印被执行的数", () => {
+      function promptWithFloors(
+        minDeliveryWordsPerChapter: Record<string, number> | undefined,
+      ) {
+        return agent.buildSystemPrompt({
+          input: {
+            ...baseInput,
+            outlinePlan: {
+              chapterOutlines: [
+                {
+                  sectionId: "ch1",
+                  heading: "Market Overview",
+                  subheadings: [],
+                  thesis: "AI is key",
+                  keyPointsToCover: ["adoption"],
+                },
+              ],
+              targetWordsPerChapter: { ch1: 1000 },
+              factAllocation: {},
+              ...(minDeliveryWordsPerChapter
+                ? { minDeliveryWordsPerChapter }
+                : {}),
+            },
+          },
+          identity,
+        } as never);
+      }
+
+      it("★ 不再出现没人执行的 “≥80%” 承诺", () => {
+        // 锁在承诺的措辞上：提示词里另有无关示例 "Training costs dropped 80%"，
+        // 裸 "80%" 会误报（本轮第三次踩同一个坑，记在这里）。
+        const prompt = promptWithFloors({ ch1: 750 });
+        expect(prompt).not.toContain("≥80%");
+        expect(prompt).not.toContain("must hit");
+      });
+
+      it("印出下传的交付线本身（每章 + 全文 hard floor）", () => {
+        const prompt = promptWithFloors({ ch1: 750 });
+        expect(prompt).toContain("750");
+        expect(prompt).toContain("hard floor");
+        expect(prompt).toContain("under-delivered");
+      });
+
+      it("交付线变了，印出来的跟着变（证明是下传值而非自己算比例）", () => {
+        expect(promptWithFloors({ ch1: 321 })).toContain("321");
+      });
+
+      it("拿不到交付线时只报目标，绝不印一个没人执行的判定线", () => {
+        const prompt = promptWithFloors(undefined);
+        expect(prompt).toContain("1000");
+        expect(prompt).not.toContain("≥80%");
+        expect(prompt).not.toContain("must hit");
+        expect(prompt).not.toContain("under-delivered");
+        expect(prompt).not.toContain("hard floor");
+      });
+    });
+
     it("with outlinePlan sums totalTarget correctly", () => {
       const prompt = agent.buildSystemPrompt({
         input: {

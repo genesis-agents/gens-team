@@ -148,7 +148,10 @@ function makeOutlineOutput(chapterCount = 2) {
   };
 }
 
-function makeWriterOutput(wordCount = 1000) {
+// ★ 2026-08-03：默认产出必须达到交付线，否则 happy-path 用例会被"字数欠交付"
+//   判成 fallback-length。本 spec 单维度单章 → targetWordsPerChapter 被夹到上限
+//   8000，交付线 = 8000 × ratio；取 8000 使其对任何 ratio ≤ 1 都成立。
+function makeWriterOutput(wordCount = 8000) {
   return {
     body: `This is a chapter body with ${wordCount} words`.repeat(10),
     wordCount,
@@ -875,8 +878,10 @@ describe("runPerDimPipeline — parallel chapter execution (CHAPTER_CONCURRENCY=
               const override = overrides?.writerOverrides?.[idx];
               if (override) return Promise.resolve(override);
               return Promise.resolve({
+                // 用默认（达交付线）产出：本 fixture 的用例断言"全部 passed"，
+                // 写死 1200 会低于交付线而被判欠交付。
                 state: "completed",
-                output: makeWriterOutput(1200),
+                output: makeWriterOutput(),
                 events: [],
                 iterations: 1,
                 wallTimeMs: 100,

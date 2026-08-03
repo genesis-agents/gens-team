@@ -22,6 +22,7 @@ const baseChapter = {
   body: "This chapter covers AI adoption trends with specific evidence and data points.",
   wordCount: 900,
   targetWords: 1000,
+  minDeliveryWords: 750,
 };
 
 const baseInput = {

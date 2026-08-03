@@ -151,8 +151,31 @@ export function rawContentHasUnsupportedActionKind(
   if (!hadParseError) return false;
   if (!rawContent || rawContent.trim().length === 0) return false;
 
-  return /"kind"\s*:\s*"(skill_invoke|subagent_spawn|llm_generate)"/.test(
-    rawContent,
+  // ★ 2026-08-03（Railway 生产日志实证）：此前只认死三个保留名，认不出模型
+  //   **把 skill id 当 action kind** 的形态：
+  //     LLM returned unsupported action kind: "dim-chapter-integration"
+  //     thinking: "Apply dim-chapter-integration skill to merge the 4 chapters..."
+  //   删掉 <available_skills> 里的 skill_invoke 示例后，模型不再写 skill_invoke，
+  //   改成直接用 skill 名当 kind —— 同一个病换了形态，而白名单式检测天然追不上。
+  //
+  //   改为**反向判定**：kind 不在协议三件套内即视为协议外（这与 normalizeAction
+  //   抛 InvalidActionError 的判据一致）。这样 skill_invoke / subagent_spawn /
+  //   llm_generate / 任意 skill id / 任意将来新造的名字，全都被兜住。
+  //
+  //   ★ 但反向判定必须先定位到**动作位**的 kind，不能在整段 raw 里抓第一个 "kind"：
+  //   rawContent 按定义是解析失败的残缺 JSON，业务 schema 里同样有 kind 字段
+  //   （如 analyst.agent 的 scenarios[].kind = bull/base/bear）。模型在 parse 失败
+  //   时常把 output 裸吐出来，抓到 "bull" 就会把一次真实 finalize 劫持成 nudge，
+  //   还告诉模型"你用了不存在的 action kind"—— 又是一次假话带偏模型。
+  //   只认两个位置：action 对象内的 kind，或顶层 kind（生产实测就是顶层那种）。
+  const kind =
+    // ① {"action":{... "kind":"X" ...}} —— [^{}] 保证没跨进嵌套对象
+    /"action"\s*:\s*\{[^{}]*?"kind"\s*:\s*"([^"]+)"/.exec(rawContent)?.[1] ??
+    // ② {"thinking":"...","kind":"X",...} —— 顶层动作位（dim-chapter-integration 原样）
+    /^[^{}]*\{[^{}]*?"kind"\s*:\s*"([^"]+)"/.exec(rawContent)?.[1];
+  if (!kind) return false;
+  return (
+    kind !== "tool_call" && kind !== "parallel_tool_call" && kind !== "finalize"
   );
 }
 

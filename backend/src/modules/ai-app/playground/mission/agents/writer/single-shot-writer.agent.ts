@@ -68,6 +68,20 @@ const Input = z.object({
         }),
       ),
       targetWordsPerChapter: z.record(z.string(), z.number()).default({}),
+      /**
+       * ★ 2026-08-03 每章交付线（绝对字数，由 s8 按 chapterMinDeliveryRatio 旋钮
+       * 算好下传），与 chapter 路径同一个旋钮、同一套语义。
+       *
+       * 为什么改成传绝对值而不是让提示词写"≥80%"：原提示词印的
+       * `must hit ≥80% of this` **没有任何代码在 80% 上执行** —— 真实信号是
+       * mission 级 lengthAccuracy（全文 vs lengthProfile 目标，另一个口径），
+       * 且要跌到 60% 才出警告。模型完全可以整体达标、个别章节只写 40%。
+       * 承诺与执行不一致正是 612 字那次事故的成因，这里同源修掉。
+       *
+       * 缺省 {}（老调用方 / S7 未跑 outline）时提示词不印任何判定线 ——
+       * 宁可不说，也不说一个没人执行的数。
+       */
+      minDeliveryWordsPerChapter: z.record(z.string(), z.number()).default({}),
       factAllocation: z.record(z.string(), z.array(z.string())).default({}),
     })
     // ★ 2026-08-01 .optional() → .nullish()：zod 的 .optional() **只接受
@@ -226,6 +240,7 @@ export class SingleShotWriterAgent extends AgentSpec<
       ``,
     ];
     let totalTarget = 0;
+    let totalFloor = 0;
     for (let i = 0; i < outline.chapterOutlines.length; i++) {
       const ch = outline.chapterOutlines[i];
       const target = outline.targetWordsPerChapter[ch.sectionId];
@@ -235,8 +250,17 @@ export class SingleShotWriterAgent extends AgentSpec<
       lines.push(`- **sectionId**: \`${ch.sectionId}\``);
       lines.push(`- **Thesis**: ${ch.thesis}`);
       if (typeof target === "number") {
+        // ★ 只印被真正执行的那个数：交付线由 s8 按旋钮算好下传，并在 s8 装配后
+        //   按同一个数核账。拿不到交付线时只报目标，绝不再写"≥80%"这种没人执行
+        //   的承诺 —— 模型会照着我们印出的最低数字交付。
+        // ?. 不是多余防御：buildSystemPrompt 会被未经 zod 解析的 input 调用
+        //   （spec 实证），此时 .default({}) 不生效，直接下标会 TypeError。
+        const floor = outline.minDeliveryWordsPerChapter?.[ch.sectionId];
+        if (typeof floor === "number") totalFloor += floor;
         lines.push(
-          `- **Target word count**: ~${target} words (must hit ≥80% of this)`,
+          typeof floor === "number"
+            ? `- **Target word count**: ~${target} words (**at least ${floor} words — below this the chapter is recorded as under-delivered**)`
+            : `- **Target word count**: ~${target} words`,
         );
       }
       if (ch.keyPointsToCover.length > 0) {
@@ -264,7 +288,9 @@ export class SingleShotWriterAgent extends AgentSpec<
     }
     if (totalTarget > 0) {
       lines.push(
-        `**Total target word count for the report**: ~${totalTarget} words. Aim for the prescribed length per chapter.`,
+        totalFloor > 0
+          ? `**Total target word count for the report**: ~${totalTarget} words (**hard floor ${totalFloor} words** — the assembled report is checked against this and a shortfall is recorded as under-delivery). Aim for the prescribed length per chapter.`
+          : `**Total target word count for the report**: ~${totalTarget} words. Aim for the prescribed length per chapter.`,
       );
     }
     return lines.join("\n");

@@ -45,6 +45,13 @@ const Input = z.object({
   // ★ P0-R4-5 (round 4): 25000 与 budget.maxTokens=22000 矛盾导致 epic 死循环；
   // 降到 12000 让 LLM 单次输出可达 ≥85% 字数门槛；epic 200K → 17 章 × 12K 拼接
   targetWords: z.number().int().min(200).max(12000),
+  /**
+   * ★ 2026-08-03 交付线（绝对字数，由 pipeline 按策略旋钮算好下传）。
+   * 低于此值 → chapter-pipeline 打回重写；终局仍低于 → 记为 fallback-length 不合格。
+   * **必填**：设为必填是刻意的——提示词里承诺的判定线必须来自真正执行判定的那个值，
+   * 少传一个参数应该编译不过，而不是悄悄退化成"提示词说了但没人执行"。
+   */
+  minDeliveryWords: z.number().int().min(1),
   /** lengthProfile 档位（可选，用于 prompt 中展示 per-profile 字数范围） */
   lengthProfile: z
     .enum(["brief", "standard", "deep", "extended", "epic", "mega"])
@@ -185,9 +192,29 @@ export class ChapterWriterAgent extends AgentSpec<typeof Input, typeof Output> {
       //   targetWordsPerChapter 在常见配置下被夹逼成定值(dimTargetWords/章节数)，LLM
       //   把单一数字当硬锚 → 大量章节恒为同一字数(实测 728)。给 0.7–1.4× 区间让
       //   LLM 按话题密度自然浮动。
-      `- **建议字数: ${Math.round(input.targetWords * 0.7)}–${Math.round(input.targetWords * 1.4)} 字（目标牵引区间，按本章话题密度自行决定，不是硬约束）**${profileRange ? `\n- 档位范围参考: ${profileRange[0]}-${profileRange[1]} 字` : ""}`,
-      `- 字数语义：**该章话题密度高就多写，密度低就少写**。低于 800 字也可以接受，不会因为字数不足被打回。`,
-      `- **不要为凑字数而堆砌**。1500 字的扎实分析 > 4000 字的注水稀释。`,
+      // ★ 2026-08-03 修「所有章节恒为区间下限」（用户实证：两个不同 mission、
+      //   不同主题，多章精确落在 612 字 = round(targetWords × 0.7)）。
+      //
+      //   这是 P2-728 那次修复的复发。当时的症状是"大量章节恒为同一字数(实测 728)"，
+      //   诊断是"LLM 把单一数字当硬锚"，办法是给 0.7–1.4× 区间。但**区间的下限
+      //   同样是锚**，而且是更省力的那个锚 —— 于是 728 变成了 612，病没走。
+      //
+      //   真正的成因不是"给了数字"，是我们同时用四条指令告诉模型少写是可以的：
+      //     · 区间下限 0.7×，还明写"不是硬约束"
+      //     · "低于 800 字也可以接受，不会因为字数不足被打回"
+      //     · "不要为凑字数而堆砌"
+      //     · helper 只在 < 0.4× 时才触发重写（612 远在其上 → 系统认可）
+      //   模型完全照做了。targetWordsPerChapter 是生产方按预算算出的**目标**，
+      //   交付 70% 是欠交付，不是"按密度浮动"。
+      //
+      //   修法：给单一目标 + 把下限表述成**会被打回的判定线**（而非可选的低点），
+      //   并与 chapter-pipeline.helper 的真实阈值保持一致 —— 说了会打回就真打回。
+      // ★ 档位范围的**下限被交付线夹住**：PROFILE_WORD_RANGES 的低端（如 brief 的
+      //   600）可能低于交付线，那就又是一个"比判定线更省力的合法数字"——本次事故
+      //   的全部教训就是模型会挑我们印出的最小那个数。凡印出的字数都 ≥ 交付线。
+      `- **目标字数: ${input.targetWords} 字**（按本章话题密度上下浮动，写长不扣分）${profileRange ? `\n- 档位范围参考: ${Math.max(profileRange[0], input.minDeliveryWords)}-${profileRange[1]} 字` : ""}`,
+      `- **低于 ${input.minDeliveryWords} 字会被自动判定为欠交付并打回重写** —— 这不是建议，是判定线。`,
+      `- 字数靠**内容**达成：多写一层因果推演、多引一条证据、把结论展开成可操作判断。**不要为凑字数堆砌辞藻或复述已有信息** —— 注水同样会被复审扣分。`,
       input.targetWords >= 3000
         ? `- 章节体量参考: ${input.targetWords} 字 ≈ ${Math.round(input.targetWords / 600)} 个论述段落（每段 ~600 字）`
         : "",

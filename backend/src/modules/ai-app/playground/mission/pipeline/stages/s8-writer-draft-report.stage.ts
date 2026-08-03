@@ -56,6 +56,7 @@ import { agentUsageDetail } from "../helpers/agent-usage.util";
 import { clampScore, scaleScore } from "@/modules/ai-harness/facade";
 import { defaultStructuralReportAssembler } from "@/modules/ai-harness/facade";
 import { extractReportSegments } from "../../artifacts/util/segment-extractors.util";
+import { getPlaygroundStrategyThresholds } from "../../../runtime/playground-strategy-policy";
 import { redactCreditCards } from "../../artifacts/util/pii-redactor.util";
 
 // ★ 2026-05-01 (PR-G iter8): 走 ai-harness 集中阈值（quality-thresholds.constants.ts）
@@ -97,6 +98,38 @@ function makeProxyAgent(missionId: string, roleId: string): IAgent {
       /* no-op */
     },
   };
+}
+
+/**
+ * ★ 2026-08-03：给 S7 outline 附上每章「交付线」（绝对字数）。
+ *
+ * 与 chapter 路径同一个旋钮（chapterMinDeliveryRatio：DEFAULTS → 模型档位
+ * profile → env → DB overlay），同一套语义，一次算好向下传。
+ *
+ * 为什么必须这么做：原提示词写 `must hit ≥80% of this`，而**没有任何代码在
+ * 每章 80% 上执行** —— 真实信号是 mission 级 lengthAccuracy（全文 vs
+ * lengthProfile 目标，另一个口径，跌到 60% 才告警）。模型完全可以整体达标而
+ * 个别章节只写 40%。"承诺的数 ≠ 执行的数"正是 612 字那次事故的成因。
+ *
+ * outline 缺省（S7 未跑 outline-planner，非 thorough+ 档位）时返回原值，
+ * 提示词那边也就不印任何判定线 —— 宁可不说，也不说一个没人执行的数。
+ */
+export function withChapterDeliveryFloors<
+  T extends { targetWordsPerChapter: Record<string, number> },
+>(
+  outline: T | undefined,
+): (T & { minDeliveryWordsPerChapter: Record<string, number> }) | undefined {
+  if (!outline) return undefined;
+  const ratio = getPlaygroundStrategyThresholds().chapterMinDeliveryRatio;
+  const minDeliveryWordsPerChapter: Record<string, number> = {};
+  for (const [sectionId, target] of Object.entries(
+    outline.targetWordsPerChapter,
+  )) {
+    if (typeof target === "number" && target > 0) {
+      minDeliveryWordsPerChapter[sectionId] = Math.round(target * ratio);
+    }
+  }
+  return { ...outline, minDeliveryWordsPerChapter };
 }
 
 export async function runWriterStage(
@@ -209,7 +242,9 @@ export async function runWriterStage(
         rawFindings,
         // ★ P1-E (2026-04-29): 注入 S7 outline，让 Writer 严格按章节大纲起草
         // 仅 thorough+ 档位 S7 跑了 outline-planner，否则 ctx.outlinePlan 为空
-        outlinePlan: ctx.outlinePlan,
+        // ★ 2026-08-03: 附上每章交付线（同一个 chapterMinDeliveryRatio 旋钮），
+        //   提示词只印这个数，装配后也按这个数核账 —— 说的和做的是同一个数。
+        outlinePlan: withChapterDeliveryFloors(ctx.outlinePlan),
       },
       {
         missionId,
@@ -653,6 +688,31 @@ export async function runWriterStage(
       reportArtifact.quality.warnings.push({
         dimension: "coverage",
         message: `${degradedDims}/${totalDims} 维度降级（无 findings）`,
+      });
+    }
+  }
+  // ★ 2026-08-03 交付线核账：提示词已向模型承诺"低于 N 字记为欠交付"，这里就必须
+  //   真的按同一个 N 核对，否则又是一次"说了不做"——那正是 612 字事故的成因。
+  //   核在**全文总量**上：ArtifactSection 用的是自己的 id/title，与 outline 的
+  //   sectionId 没有可靠映射，按章硬认会误判；总量用的是同一批交付线之和，
+  //   数据可靠且与提示词里印给模型的 "hard floor" 是同一个数。
+  if (reportArtifact && ctx.outlinePlan) {
+    const floors = withChapterDeliveryFloors(
+      ctx.outlinePlan,
+    )?.minDeliveryWordsPerChapter;
+    const totalFloor = Object.values(floors ?? {}).reduce((a, b) => a + b, 0);
+    const totalWords = reportArtifact.sections.reduce(
+      (a, s) => a + s.wordCount,
+      0,
+    );
+    if (totalFloor > 0 && totalWords < totalFloor) {
+      reportArtifact.quality.dimensions.lengthAccuracy = scaleScore(
+        reportArtifact.quality.dimensions.lengthAccuracy,
+        totalWords / totalFloor,
+      );
+      reportArtifact.quality.warnings.push({
+        dimension: "lengthAccuracy",
+        message: `全文 ${totalWords} 字，低于 outline 交付线 ${totalFloor} 字（欠交付 ${totalFloor - totalWords} 字）`,
       });
     }
   }

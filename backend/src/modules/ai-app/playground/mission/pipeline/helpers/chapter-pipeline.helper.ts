@@ -27,6 +27,9 @@ import {
 } from "@/modules/ai-harness/facade";
 import { stripChartJsonFromContent } from "@/modules/ai-engine/facade";
 import { narrate } from "../../artifacts/narrative.util";
+// ★ 章节交付线走 playground 策略旋钮（DEFAULTS → 模型档位 profile → env → DB
+//   overlay），不再是写死的常量 —— 换模型不必改代码、不必发版。
+import { getPlaygroundStrategyThresholds } from "../../../runtime/playground-strategy-policy";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -139,6 +142,20 @@ export async function runChapterPipeline(
 
   const MAX_REVISION_ATTEMPTS = CHAPTER_MAX_REVISION_ATTEMPTS;
   const PASS_THRESHOLD = REVIEW_PASS_THRESHOLD;
+  // ★ 2026-08-03 章节交付线：**整条链路只算这一次**，然后向下传给所有消费方
+  //   （写手提示词 / reviewer 评分 / 打回闸门 / 打回话术 / 终局记账）。
+  //
+  //   为什么必须一次计算而不是各处各乘一次比例：本次事故的根因就是同一个概念在
+  //   四处各写各的数字（提示词 0.7×、闸门 0.4×、话术 0.6×、reviewer 满分 0.5×），
+  //   模型永远挑其中最省力的那个照做。同源之后，"提示词承诺的"与"代码执行的"在
+  //   结构上就不可能再分叉——不是靠人记得同步。
+  //
+  //   比例来自 playground 策略旋钮（DEFAULTS → 模型档位 profile → env → DB
+  //   overlay），换模型/换档位不必改代码，见 playground-runtime.config.ts。
+  const minDeliveryWords = Math.round(
+    targetWordsPerChapter *
+      getPlaygroundStrategyThresholds().chapterMinDeliveryRatio,
+  );
   // ★ L1-1: stuck-revision guard
   const STUCK_SIMILARITY_THRESHOLD = 0.9;
   const MAX_STUCK_COUNT = 2;
@@ -227,6 +244,9 @@ export async function runChapterPipeline(
         },
         sources: chapterSources,
         targetWords: targetWordsPerChapter,
+        // ★ 交付线由 pipeline 算好后下传，agent 不自己乘比例 —— 提示词印的数字
+        //   与闸门判定的数字在结构上是同一个值，不是同一个公式的两次计算。
+        minDeliveryWords,
         lengthProfile: ctx.lengthProfile,
         previousChapterHeadings: previousHeadingsSnapshot,
         previousCritique: lastCritique,
@@ -384,6 +404,9 @@ export async function runChapterPipeline(
           body: draft.body,
           wordCount: draft.wordCount,
           targetWords: targetWordsPerChapter,
+          // ★ reviewer 的字数评分线 = 闸门的打回线（同一个下传值）。此前 reviewer
+          //   自带 "≥ target×50% 给满分"，比闸门宽 —— 它给满分的区间里，系统正在打回。
+          minDeliveryWords,
         },
         // ★ 2026-05-21 P2 Evidence Contract：本章实际分到的唯一来源数 →
         //   reviewer 的引用门槛 = min(2, N)，治"采得少却要求 ≥2 引用"的结构性死区。
@@ -493,10 +516,14 @@ export async function runChapterPipeline(
       dimension: dimensionName,
     });
 
-    // ★ Word count hard threshold (2026-05-01): relaxed to < 40% of target
-    const isLengthFail =
-      draft.wordCount < Math.round(targetWordsPerChapter * 0.4) &&
-      attempt < MAX_REVISION_ATTEMPTS;
+    // ★ 2026-08-03 欠交付判定，用统一算好的 minDeliveryWords（见函数开头）。
+    //   拆成两个量，因为它们回答的是不同问题：
+    //     · isUnderDelivered —— **事实**：这一稿够不够交付线（与还剩几次重试无关）
+    //     · isLengthFail     —— **动作**：还有重试机会时才打回（避免死循环）
+    //   此前只有后者，于是最后一轮的欠交付章节既不打回、又因 reviewer 给字数满分
+    //   而以高分记为 passed —— 欠交付在报表上完全隐身。记账必须用事实那一个。
+    const isUnderDelivered = draft.wordCount < minDeliveryWords;
+    const isLengthFail = isUnderDelivered && attempt < MAX_REVISION_ATTEMPTS;
     // ★ L1-2: reviewer threshold decay — each attempt drops 10, floor 40
     //   attempt=1→60, attempt=2→50, attempt=3→40
     const dynamicThreshold = Math.max(
@@ -523,11 +550,20 @@ export async function runChapterPipeline(
         restoreGlobalIndices(draft.body, localToGlobal),
       );
 
+      // ★ 2026-08-03 记账诚实：字数不达交付线的章节，**无论 reviewer 给多少分**
+      //   都不记 passed。此前 reviewer 侧「≥ target×50% 给字数满分 + 字数永不
+      //   触发 revise」意味着一篇 70% 交付的章节能拿 90 分 → passed/qualified=true，
+      //   欠交付对上游（维度评分、mission 报表）完全不可见。质量分和交付量是两件
+      //   事：内容可以很好，但少交了就是少交了，得如实记成 fallback-length。
+      //   注意排序：欠交付只**挡住 passed**，不改写死因。reviewer 连续失败时
+      //   仍须报 fallback-exhausted —— 那才是这一章没被质量把关的真实原因，
+      //   用"字数不足"盖掉它就是又一次把真因说成别的。
       const chapterDecision:
         | "passed"
         | "fallback-length"
         | "fallback-exhausted" =
-        verdict.decision === "pass" || verdict.score >= PASS_THRESHOLD
+        !isUnderDelivered &&
+        (verdict.decision === "pass" || verdict.score >= PASS_THRESHOLD)
           ? "passed"
           : reviewerExhausted
             ? "fallback-exhausted"
@@ -610,8 +646,16 @@ export async function runChapterPipeline(
     }
 
     // Continue loop — build critique for next attempt
+    // ★ 2026-08-03：这段打回话术此前是**第五条"少写没关系"的指令** —— 它一边说
+    //   "< 40%"（交付线已由策略旋钮接管，这句已是假话），一边
+    //   把重写目标降到 0.6×，比判定线还低。模型照着 0.6× 重写 → 下一轮仍在判定线
+    //   之下 → 要么再被打回、要么耗尽 attempt 兜底落地。给模型的每一个数字都会被
+    //   当成锚，所以这里只给**目标本身**和**判定线**，不再另造一个折扣目标。
+    //   缺口写成绝对字数（"还差 N 字"）而不是比例：对任何模型都是可直接执行的
+    //   指令，不需要它自己做乘法 —— 上一轮的教训正是"模型会精确执行我们印出的
+    //   那个数字"，那就只印我们真正想要的那个。
     const lengthCritiquePrefix = isLengthFail
-      ? `[字数极度不足] 上轮仅 ${draft.wordCount} 字（目标 ${targetWordsPerChapter} 字，< 40%）。补充分析段落、案例数据、深化推理 —— 重点是质量内容（独立观点 / 具体证据 / 充分引用），不是单纯凑字数。目标 ${Math.round(targetWordsPerChapter * 0.6)} 字以上即可。\n\n`
+      ? `[字数欠交付·已自动打回] 上轮仅 ${draft.wordCount} 字，交付线 ${minDeliveryWords} 字，目标 ${targetWordsPerChapter} 字 —— 还差 ${targetWordsPerChapter - draft.wordCount} 字。请重写到 ${targetWordsPerChapter} 字左右：补一层因果推演、补具体案例与数据、把结论展开成可操作判断 —— 字数必须靠**新增内容**达成，复述已有信息或堆砌辞藻属注水，复审会扣分。\n\n`
       : "";
     const MAX_CRITIQUE_CHARS = 2000;
     lastCritique = (

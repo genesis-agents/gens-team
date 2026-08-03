@@ -30,6 +30,11 @@ export const PLAYGROUND_STRATEGY_POLICY_KEY =
 const StrategyOverlaySchema = z.object({
   minFindingsThreshold: z.number().int().min(0).optional(),
   chapterToleranceRatio: z.number().min(0).max(1).optional(),
+  // ★ 2026-08-03：章节最低交付比例。属"策略类"（影响产出质量的业务决策），
+  //   故可数据化；与之相对的安全网旋钮（看门狗/墙钟/token cap）永不数据化。
+  //   可调是刚需：换模型不该等发版——历史上正是"换模型 → 同一份阈值不再适用"
+  //   让系统性欠交付潜伏了两个多月。
+  chapterMinDeliveryRatio: z.number().min(0).max(1).optional(),
 });
 
 export type PlaygroundStrategyOverlay = z.infer<typeof StrategyOverlaySchema>;
@@ -37,6 +42,7 @@ export type PlaygroundStrategyOverlay = z.infer<typeof StrategyOverlaySchema>;
 export interface PlaygroundStrategyThresholds {
   minFindingsThreshold: number;
   chapterToleranceRatio: number;
+  chapterMinDeliveryRatio: number;
 }
 
 const logger = new Logger("PlaygroundStrategyPolicy");
@@ -56,6 +62,8 @@ export function getPlaygroundStrategyThresholds(): PlaygroundStrategyThresholds 
       overlay?.minFindingsThreshold ?? base.minFindingsThreshold,
     chapterToleranceRatio:
       overlay?.chapterToleranceRatio ?? base.chapterToleranceRatio,
+    chapterMinDeliveryRatio:
+      overlay?.chapterMinDeliveryRatio ?? base.chapterMinDeliveryRatio,
   };
 }
 

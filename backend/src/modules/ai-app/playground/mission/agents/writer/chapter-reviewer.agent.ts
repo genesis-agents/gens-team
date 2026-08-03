@@ -30,6 +30,12 @@ const Input = z.object({
     body: z.string(),
     wordCount: z.number().int(),
     targetWords: z.number().int(),
+    /**
+     * ★ 2026-08-03 交付线（绝对字数，由 pipeline 下传，与打回闸门同一个值）。
+     * 必填：reviewer 的字数评分线若与闸门不同，就会出现"它给满分、系统在打回"
+     * 的自相矛盾——历史上正是 reviewer 的 50% 满分线掩盖了 30% 的系统性欠交付。
+     */
+    minDeliveryWords: z.number().int().min(1),
   }),
   /**
    * ★ 2026-05-21 P2 Evidence Contract：本章实际分到的唯一来源数。
@@ -141,11 +147,15 @@ export class ChapterReviewerAgent extends AgentSpec<
       `   ★ 不允许每章首段都用 \`> **核心判断**：\` blockquote + 末段都用 \`**Implications**：\` 前缀`,
       `   ★ 不允许同一句式在所有章节复用（章节有自己的开头/收尾节奏）`,
       `   ★ 不允许"随着 X 的发展"/"在当今"/"众所周知"/"综上所述"等套话开头`,
-      // ★ 2026-05-07 字数软化（用户对齐）：字数永不触发 revise
+      // ★ 2026-05-07 字数软化（用户对齐）：字数永不触发 revise —— 保留，字数由
+      //   pipeline 的交付线闸门负责打回，reviewer 专注内容质量，职责不重叠。
+      // ★ 2026-08-03：但评分线必须与闸门同线。原来写死"≥ target × 50% 给满分"，
+      //   比闸门宽——于是 70% 交付的章节拿字数满分、总分 90 → 记为 passed，
+      //   30% 的系统性欠交付对上游完全不可见。现在用下传的 minDeliveryWords。
       `5. 字数参考 (10 分)：targetWords ${input.chapter.targetWords} 字（牵引参考），实际 ${input.chapter.wordCount} 字。`,
-      `   ★ 字数权重最低（10/100）。**字数永不触发 revise** —— 即使章节只有 200 字，也不能以"字数不足"为由打回。`,
-      `   ★ 评分依然给 0-10：实际字数 ≥ target × 50% 给满分；< 50% 时酌情扣分（最多扣 10）。`,
-      `   ★ 字数超出（甚至 1.5×）不扣分 —— 详尽分析比硬塞更有价值。`,
+      `   ★ 字数权重最低（10/100）。**字数永不触发 revise** —— 打回由系统的交付线闸门负责，不需要你以字数为由 revise。`,
+      `   ★ 评分依然给 0-10：实际字数 ≥ ${input.chapter.minDeliveryWords} 字（交付线）给满分；低于交付线按缺口扣分（最多扣 10）。`,
+      `   ★ 字数超出目标不扣分 —— 详尽分析比硬塞更有价值。`,
       ``,
       `## decision 规则`,
       `- ≥ 60 分 → "pass"（核心 4 维度达标即可放行）`,

@@ -40,6 +40,7 @@ const baseInput = {
   chapter: baseChapter,
   sources: [baseSource],
   targetWords: 1000,
+  minDeliveryWords: 750,
 };
 
 const baseOutput = {
@@ -238,19 +239,31 @@ describe("ChapterWriterAgent", () => {
       expect(prompt).toContain("Market Overview");
     });
 
-    it("contains targetWords range in prompt (P2-728: 区间而非单一数字)", () => {
+    // ★ 2026-08-03：这两条断言此前锁的正是缺陷本身，已改写。
+    //
+    //   原断言要求提示词里出现 "700"（=targetWords x 0.7 的区间下限）与
+    //   "不是硬约束"。生产实证：模型精确落在那个下限 —— 两个 mission、不同主题，
+    //   多章都是 612 字 = round(874 x 0.7)。同一维度内未重写的章节 612/612、
+    //   被打回重写的 1852/1850，证明模型有能力写长，只是我们没要求。
+    //
+    //   P2-728 当时的诊断（"LLM 把单一数字当硬锚"）没错，但"改成给区间"这个办法
+    //   错了：**区间下限同样是锚**，而且是更省力的那个，728 于是变成 612。
+    //   现在给单一目标 + 明确的打回判定线，且判定线与 helper 共用同一常量。
+    it("给出单一目标字数，不再暴露可被当作目标的区间下限", () => {
       const prompt = agent.buildSystemPrompt({ input: baseInput, identity });
-      // targetWords=1000 → 区间 700–1400（避免 LLM 硬锚单一数字 → 章节恒为同字数）
-      expect(prompt).toContain("700");
-      expect(prompt).toContain("1400");
+      expect(prompt).toContain("目标字数");
+      expect(prompt).toContain("1000");
+      // 关键负向断言：0.7x 下限不得再出现在提示词里（那正是模型锚定的数字）
+      expect(prompt).not.toContain("700");
     });
 
-    it("emits soft word-count guidance instead of hard threshold (2026-05-07)", () => {
+    it("把下限表述为会被打回的判定线，而非可选的低点", () => {
       const prompt = agent.buildSystemPrompt({ input: baseInput, identity });
-      // 字数软化后："建议字数: N 字（这是目标牵引，不是硬约束）" 取代 0.85/0.7 硬阈值
-      expect(prompt).toContain("建议字数");
-      expect(prompt).toContain("牵引");
-      expect(prompt).toContain("不是硬约束");
+      expect(prompt).toContain("打回重写");
+      expect(prompt).toContain("判定线");
+      // 这两句此前明确告诉模型"少写没关系"，是四条互相矛盾指令中的两条
+      expect(prompt).not.toContain("不是硬约束");
+      expect(prompt).not.toContain("不会因为字数不足被打回");
     });
 
     it("explicitly tells LLM 不要为凑字数堆砌 (anti-padding)", () => {

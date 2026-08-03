@@ -22,6 +22,9 @@ describe("playground-runtime.config", () => {
       expect(cfg).toEqual({
         minFindingsThreshold: 5,
         chapterToleranceRatio: 0.3,
+        // ★ 2026-08-03：章节最低交付比例。frontier 基线 0.75，local 档 profile
+        //   放宽到 0.6（弱模型撑不住长文，硬卡会变成重写风暴）。
+        chapterMinDeliveryRatio: 0.75,
         staleThresholdMin: 15,
         softWarnThresholdMin: 20,
         // ★ 2026-06-11：guard 墙钟默认降为 0（不限）——卡死改由进度检测回收，

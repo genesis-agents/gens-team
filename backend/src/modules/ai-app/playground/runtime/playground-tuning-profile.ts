@@ -61,15 +61,22 @@ const PROFILE_OVERRIDES: Record<
   // ★ 2026-05-22 follow-up：原 loop-control / disableBudgetAbort 覆盖已删——这些 key
   //   生产代码零消费(详见 playground-runtime.config.ts 注释),profile 设了也无效。
   //   现存覆盖只保留真正生效的:findings 下限 / 章节容忍 / liveness 阈值。
+  // ★ 2026-08-03 chapterMinDeliveryRatio：frontier 用基线 0.75。local 档放宽到
+  //   0.6 —— 量化/本地模型单次可持续输出长度明显更短，按 frontier 的线硬卡会把
+  //   欠交付变成重写风暴（minFindingsThreshold 10→5 的教训：脆弱硬门槛 → 反复
+  //   reject → max-iter 失败 → 维度降级）。放宽不等于放任：0.6 仍远高于历史上
+  //   那条形同虚设的 0.4，欠交付依旧会被打回、终局仍会记为不合格。
   "local-quantized": {
     minFindingsThreshold: 5, // local 采集力弱，低于 frontier 的 10，但仍高于旧 3
     chapterToleranceRatio: 0.4, // 40% missing tolerated (vs 30% frontier)
+    chapterMinDeliveryRatio: 0.6,
     staleThresholdMin: 30,
     softWarnThresholdMin: 40,
   },
   "local-reasoning": {
     minFindingsThreshold: 5,
     chapterToleranceRatio: 0.4,
+    chapterMinDeliveryRatio: 0.6,
     staleThresholdMin: 60,
     softWarnThresholdMin: 75,
   },

@@ -48,6 +48,12 @@ import {
   type ChapterPipelineContext,
 } from "../chapter-pipeline.helper";
 import { jaccardSimilarity } from "@/modules/ai-harness/facade";
+// ★ 交付线比例来自 playground 策略旋钮（DEFAULTS → 模型档位 profile → env →
+//   DB overlay），spec 读同一个源，避免"测试写死一个数、生产用另一个"。
+import { getPlaygroundStrategyThresholds } from "../../../../runtime/playground-strategy-policy";
+
+const MIN_DELIVERY_RATIO =
+  getPlaygroundStrategyThresholds().chapterMinDeliveryRatio;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -616,6 +622,128 @@ describe("runChapterPipeline", () => {
   });
 
   describe("word count length fail path", () => {
+    // ★ 2026-08-03 回归（用户实证：多章精确落在 612 字 = round(target × 0.7)）：
+    //   判定线此前内联 0.4，意味着"交付 70% 目标字数"被系统判为合格，而 writer
+    //   提示词恰好把 0.7× 写成建议下限 —— 模型精确贴着系统认可的地板写。
+    //   现在交付线由 pipeline 一次算出，writer/reviewer/闸门/记账共用同一个值。
+    it("★ 事故复现：0.7× 目标字数（612/874 那种）现在会被判欠交付并打回", async () => {
+      const target = 1000;
+      const belowLine = Math.round(target * 0.7); // 700，旧判定线 400 之上 → 旧代码放行
+      expect(belowLine).toBeGreaterThan(Math.round(target * 0.4));
+      expect(belowLine).toBeLessThan(Math.round(target * MIN_DELIVERY_RATIO));
+
+      const deps = makeDeps([
+        makeWriterResult({ wordCount: belowLine }),
+        makeReviewerResult({ decision: "pass", score: 90 }), // 质量满分也不放行
+        makeWriterResult({ wordCount: target }),
+        makeReviewerResult({ decision: "pass", score: 90 }),
+      ]);
+
+      const result = await runChapterPipeline(
+        makeChapter(1),
+        [],
+        makeCtx({ targetWordsPerChapter: target }),
+        deps,
+      );
+
+      // 第 2 次 writer 调用存在 == 第一稿被打回了（旧代码只会调 1 次 writer）
+      const writerCalls = (deps.invoker.invoke as jest.Mock).mock.calls;
+      expect(writerCalls.length).toBeGreaterThanOrEqual(3);
+      expect(result!.wordCount).toBe(target);
+    });
+
+    it("打回话术给的重写目标不得低于判定线（否则又是一个更省力的锚）", async () => {
+      const target = 1000;
+      const rewriteLine = Math.round(target * MIN_DELIVERY_RATIO);
+      const deps = makeDeps([
+        makeWriterResult({ wordCount: 300 }),
+        makeReviewerResult({ decision: "pass", score: 90 }),
+        makeWriterResult({ wordCount: target }),
+        makeReviewerResult({ decision: "pass", score: 90 }),
+      ]);
+
+      await runChapterPipeline(
+        makeChapter(1),
+        [],
+        makeCtx({ targetWordsPerChapter: target }),
+        deps,
+      );
+
+      const critique = (deps.invoker.invoke as jest.Mock).mock.calls[2][1]
+        .previousCritique as string;
+      expect(critique).toContain(String(rewriteLine)); // 判定线要如实告知
+      expect(critique).toContain(String(target)); // 重写目标 = 目标本身
+      // 旧话术："< 40%" + "目标 600 字以上即可"（比判定线还低）
+      expect(critique).not.toContain("40%");
+      expect(critique).not.toContain(String(Math.round(target * 0.6)));
+    });
+
+    it("★ 交付线下传给 writer 与 reviewer（两处印的是同一个值，不是各算各的）", async () => {
+      const target = 1000;
+      const expected = Math.round(target * MIN_DELIVERY_RATIO);
+      const deps = makeDeps([
+        makeWriterResult({ wordCount: target }),
+        makeReviewerResult({ decision: "pass", score: 90 }),
+      ]);
+
+      await runChapterPipeline(
+        makeChapter(1),
+        [],
+        makeCtx({ targetWordsPerChapter: target }),
+        deps,
+      );
+
+      const calls = (deps.invoker.invoke as jest.Mock).mock.calls;
+      expect(calls[0][1].minDeliveryWords).toBe(expected); // writer
+      expect(calls[1][1].chapter.minDeliveryWords).toBe(expected); // reviewer
+    });
+
+    it("★ 记账诚实：终局仍欠交付 → 即使 reviewer 给 90 分也不记 passed", async () => {
+      const target = 1000;
+      const short = Math.round(target * MIN_DELIVERY_RATIO) - 1;
+      // 每一轮都欠交付；最后一轮不再打回（attempt 用尽）但必须如实记账
+      const deps = makeDeps([
+        makeWriterResult({ wordCount: short }),
+        makeReviewerResult({ decision: "pass", score: 90 }),
+        makeWriterResult({ wordCount: short }),
+        makeReviewerResult({ decision: "pass", score: 90 }),
+        makeWriterResult({ wordCount: short }),
+        makeReviewerResult({ decision: "pass", score: 90 }),
+      ]);
+
+      const result = await runChapterPipeline(
+        makeChapter(1),
+        [],
+        makeCtx({ targetWordsPerChapter: target }),
+        deps,
+      );
+
+      expect(result).not.toBeNull();
+      // 修复前：verdict.score 90 ≥ PASS_THRESHOLD → passed / qualified=true，
+      //         30% 的欠交付对上游（维度评分、mission 报表）完全隐身
+      expect(result!.decision).toBe("fallback-length");
+      expect(result!.qualified).toBe(false);
+    });
+
+    it("达到交付线则照常按质量分记 passed（不误伤）", async () => {
+      const target = 1000;
+      const ok = Math.round(target * MIN_DELIVERY_RATIO);
+      const deps = makeDeps([
+        makeWriterResult({ wordCount: ok }),
+        makeReviewerResult({ decision: "pass", score: 90 }),
+      ]);
+
+      const result = await runChapterPipeline(
+        makeChapter(1),
+        [],
+        makeCtx({ targetWordsPerChapter: target }),
+        deps,
+      );
+
+      expect(result!.decision).toBe("passed");
+      expect(result!.qualified).toBe(true);
+    });
+
     it("wordCount < 40% of target on attempt < max → continues (length fail)", async () => {
       // targetWordsPerChapter=1000, 40% = 400; wordCount=100 < 400 → length fail, continue
       const deps = makeDeps([
