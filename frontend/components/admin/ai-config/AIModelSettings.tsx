@@ -28,6 +28,7 @@ import { CostTierField } from './CostTierField';
 import { useAdminAIProviders } from '@/hooks/domain/useAdminAIProviders';
 import { ModelEndpointWarning } from './ModelEndpointWarning';
 import { confirm } from '@/stores';
+import { useTranslation } from '@/lib/i18n';
 // AI模型类型枚举 - 支持 Tier 分级
 type AIModelType =
   | 'CHAT'
@@ -2339,6 +2340,7 @@ function AddModelModal({
   onClose: () => void;
   saving: boolean;
 }) {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     name: '',
     provider: '',
@@ -2813,7 +2815,7 @@ function AddModelModal({
                   <input
                     type="number"
                     value={formData.maxTokens > 0 ? formData.maxTokens : ''}
-                    placeholder="留空 = 按模型已知上限自动推导"
+                    placeholder={t('admin.aiModels.maxTokensPlaceholder')}
                     onChange={(e) => {
                       const parsed = parseInt(e.target.value);
                       setFormData({

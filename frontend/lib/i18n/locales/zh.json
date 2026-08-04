@@ -4904,6 +4904,9 @@
         "userDonated": "用户捐赠",
         "other": "其他"
       }
+    },
+    "aiModels": {
+      "maxTokensPlaceholder": "留空 = 按模型已知上限自动推导"
     }
   },
   "auth": {

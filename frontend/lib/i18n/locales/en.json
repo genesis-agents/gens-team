@@ -4904,6 +4904,9 @@
         "userDonated": "User Donated",
         "other": "Other"
       }
+    },
+    "aiModels": {
+      "maxTokensPlaceholder": "Leave blank = auto-derive from the model's known limit"
     }
   },
   "auth": {
