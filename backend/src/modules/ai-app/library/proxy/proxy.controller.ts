@@ -1342,7 +1342,48 @@ export class ProxyController {
         res.send(Buffer.from(response.data));
         return;
       } catch (fetchError) {
-        // 如果直接获取失败（403），尝试使用 FlareSolverr
+        // ★ 2026-08-04（容器内实测，21 张配图逐个跑）：403 先试**裸请求**，
+        //   再考虑 FlareSolverr。
+        //
+        //   反直觉但实测如此：我们伪装成 Chrome 的那套 header 正是被拒的原因。
+        //   Akamai 的 bot 检测认出「自称 Chrome 但不像真浏览器」（缺 sec-ch-ua /
+        //   sec-fetch-*、TLS 指纹对不上），返回 AkamaiGHost 的 Access Denied；
+        //   而不带 UA、不带 Referer 的裸请求被当成普通客户端**正常放行**
+        //   （同一 URL：伪装 403 server=AkamaiGHost，裸请求 200 server=Apache，
+        //   37102 字节 image/webp）。
+        //
+        //   实测数据（mission 4dfaa4b3 的 21 张图）：
+        //     伪装 header 成功 20/21，裸请求成功 20/21，两者都失败 0 张，
+        //     **裸请求独家救回 1 张**（web-assets.bcg.com）。
+        //   所以这是净收益：不改变已经成功的 20 张，只多救回被 bot 检测误伤的那类。
+        //   裸请求比 FlareSolverr(30s) 便宜得多，故排在它前面。
+        if (
+          axios.isAxiosError(fetchError) &&
+          fetchError.response?.status === 403
+        ) {
+          try {
+            this.logger.log(
+              `Direct image fetch 403, retrying bare (no spoofed browser headers): ${url}`,
+            );
+            const bare = await safeProxyGet(url, {
+              responseType: "arraybuffer",
+              timeout: 15000,
+            });
+            const bareType = String(
+              bare.headers["content-type"] ?? "image/jpeg",
+            );
+            if (bareType.startsWith("image/")) {
+              res.setHeader("Content-Type", bareType);
+              res.setHeader("Cache-Control", "public, max-age=86400");
+              res.setHeader("Access-Control-Allow-Origin", "*");
+              res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+              res.send(Buffer.from(bare.data));
+              return;
+            }
+          } catch {
+            // 裸请求也不行 → 继续走 FlareSolverr / 如实报错，不吞掉后续链路
+          }
+        }
         if (
           axios.isAxiosError(fetchError) &&
           fetchError.response?.status === 403

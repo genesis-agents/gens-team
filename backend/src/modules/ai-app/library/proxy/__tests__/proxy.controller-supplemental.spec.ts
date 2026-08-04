@@ -550,6 +550,11 @@ describe("ProxyController (supplemental)", () => {
       mockedAxios.get.mockRejectedValueOnce(fetchError);
       (axios as unknown as Record<string, unknown>).isAxiosError = () => true;
 
+      // ★ 2026-08-04：403 后先试**裸请求**（不带伪装浏览器头），它排在
+      //   FlareSolverr 之前（即时 vs 30s）。要覆盖 FlareSolverr 这条路，
+      //   必须让裸请求也失败。
+      mockedAxios.get.mockRejectedValueOnce(fetchError);
+
       // FlareSolverr available, returns success with cookies
       mockFlareSolverr.getIsAvailable.mockReturnValue(true);
       mockFlareSolverr.fetchPage.mockResolvedValue({
@@ -563,7 +568,7 @@ describe("ProxyController (supplemental)", () => {
         userAgent: "Mozilla/5.0 (FlareSolverr)",
       });
 
-      // 2nd axios.get: retry with cookies → success
+      // 3rd axios.get: retry with cookies → success
       const imageBuffer = Buffer.from("fake-image-data");
       mockedAxios.get.mockResolvedValueOnce({
         status: 200,
@@ -584,8 +589,9 @@ describe("ProxyController (supplemental)", () => {
       // Verify FlareSolverr was used
       expect(mockFlareSolverr.fetchPage).toHaveBeenCalled();
       // Verify retry request included cookies
-      expect(mockedAxios.get).toHaveBeenCalledTimes(2);
-      const retryCall = mockedAxios.get.mock.calls[1];
+      // 1) 伪装头 403  2) 裸请求 403  3) 带 FlareSolverr cookie 重试成功
+      expect(mockedAxios.get).toHaveBeenCalledTimes(3);
+      const retryCall = mockedAxios.get.mock.calls[2];
       expect(retryCall[1]?.headers?.Cookie).toContain("cf_clearance=abc123");
       expect(retryCall[1]?.headers?.Cookie).toContain("session=xyz789");
       // Verify image was sent

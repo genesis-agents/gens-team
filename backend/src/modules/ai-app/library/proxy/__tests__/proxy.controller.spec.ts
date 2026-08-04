@@ -455,6 +455,66 @@ describe("ProxyController - PDF Proxy", () => {
       expect(res.send).not.toHaveBeenCalled();
     });
 
+    // ★ 2026-08-04 容器内实测：我们伪装成 Chrome 的 header 正是被 Akamai bot
+    //   检测拒绝的原因（403 server=AkamaiGHost），而**裸请求**被当普通客户端放行
+    //   （200 server=Apache）。21 张图逐个跑：伪装成功 20/21、裸请求成功 20/21、
+    //   两者都失败 0 张，裸请求独家救回 1 张。故 403 后先试裸请求。
+    it("★ 403 后用裸请求（不带伪装浏览器头）重试成功 → 正常返回图片", async () => {
+      const fetchError = {
+        isAxiosError: true,
+        response: { status: 403 },
+        message: "403 Forbidden",
+      };
+      (axios as unknown as Record<string, unknown>).isAxiosError = () => true;
+      mockedAxios.get.mockRejectedValueOnce(fetchError);
+      mockedAxios.get.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from("real-image-bytes"),
+        headers: { "content-type": "image/webp" },
+      });
+
+      const res = mockResponse();
+      await controller.proxyImage(
+        "https://web-assets.bcg.com/blocked-by-bot-detection.webp",
+        res as never,
+      );
+
+      expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "image/webp");
+      expect(res.send).toHaveBeenCalled();
+      expect(res.status).not.toHaveBeenCalledWith(404);
+
+      // 裸请求必须**不带**伪装的浏览器 header —— 带上就是被拒的原因
+      const bareCall = mockedAxios.get.mock.calls[1];
+      const bareHeaders = (bareCall[1] as { headers?: Record<string, string> })
+        ?.headers;
+      expect(bareHeaders?.["User-Agent"]).toBeUndefined();
+      expect(bareHeaders?.Referer).toBeUndefined();
+    });
+
+    it("裸请求拿到的不是图片（如拦截页 HTML）→ 不当成功，继续走失败路径", async () => {
+      const fetchError = {
+        isAxiosError: true,
+        response: { status: 403 },
+        message: "403 Forbidden",
+      };
+      (axios as unknown as Record<string, unknown>).isAxiosError = () => true;
+      mockedAxios.get.mockRejectedValueOnce(fetchError);
+      mockedAxios.get.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from("<html>Access Denied</html>"),
+        headers: { "content-type": "text/html" },
+      });
+
+      const res = mockResponse();
+      await controller.proxyImage(
+        "https://example.com/blocked.png",
+        res as never,
+      );
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.send).not.toHaveBeenCalled();
+    });
+
     it("★ 非 axios 异常 → 同样 404（且仍不是 5xx，不触发 Critical 告警）", async () => {
       mockedAxios.get.mockRejectedValueOnce(new Error("Generic network error"));
 
