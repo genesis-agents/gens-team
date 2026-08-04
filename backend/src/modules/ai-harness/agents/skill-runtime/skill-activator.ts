@@ -102,10 +102,17 @@ export class SkillActivator {
      * 逐个改 SKILL.md 治不住（cross-dim-synthesis 文档里连 json 块都没有，纯粹是
      * 名字被具象化）。在**唯一的注入点**加一句声明，一处覆盖所有技能。
      */
+    // ★ 2026-08-03 二次修正（我自己造成的生产事故）：初版结尾写的是
+    //   「请直接按指导自己完成，然后 finalize」。对 researcher 这类**必须先调
+    //   搜索工具**的 agent，这句等于叫它别搜直接交 —— 生产实测 12/12 维度
+    //   RUNNER_OUTPUT_SCHEMA_MISMATCH、17 秒内全挂、0 条 findings 落库；
+    //   而同一天改动前的 mission 在同样的外部搜索故障下仍拿到 86 条 findings。
+    //   本句的唯一目的是「别把技能名当 action」，**不该对是否调用工具表态**。
     const SKILL_IS_NOT_AN_ACTION =
-      "（这是写作指导，不是可调用的动作。协议里只有 " +
-      '"tool_call" / "parallel_tool_call" / "finalize" 三种 action kind；' +
-      "不存在以本技能名命名的 action，请直接按指导自己完成，然后 finalize。）";
+      "（以下是方法指导，不是可调用的动作：协议里只有 " +
+      '"tool_call" / "parallel_tool_call" / "finalize" 三种 action kind，' +
+      "不存在以本技能名命名的 action。该调用工具时照常调用 tool_call，" +
+      "本说明不改变你的工具使用方式。）";
 
     for (const skill of skills) {
       // 1. Inject instructions as high-priority reminder

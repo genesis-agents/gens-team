@@ -98,6 +98,12 @@ describe("SkillActivator", () => {
     expect(content).toContain("tool_call");
     expect(content).toContain("parallel_tool_call");
     expect(content).toContain("finalize");
+    // ★ 2026-08-03 事故回归：初版结尾写「请直接按指导自己完成，然后 finalize」，
+    //   对 researcher 这类必须先调搜索工具的 agent 等于叫它别搜直接交 ——
+    //   生产实测 12/12 维度 schema mismatch、0 条 findings 落库。
+    //   这句话只负责「别把技能名当 action」，**不得对是否调用工具表态**。
+    expect(content).not.toContain("直接按指导自己完成");
+    expect(content).not.toMatch(/自己完成[^。]*finalize/);
     // 技能正文仍然完整注入
     expect(content).toContain("body");
     expect(content).toContain("## Skill: cross-dim-synthesis");

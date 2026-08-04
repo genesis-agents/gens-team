@@ -162,16 +162,34 @@ export class AgentFactory {
     //   findUserDefaultByType → resolveKey(userId, "deepseek") → 那条
     //   quota-exhausted 的 deepseek key 报 402 / 直接 NoAvailableKeyError。
     //
-    //   修法：BYOK userId 上下文整体跳过 election，返回 modelId=undefined。
-    //   react-loop.ts:568 byokUserId 闸已经处理"无 preferredModelId 时让 chat()
-    //   走 findUserDefaultByType"，全链路对齐"用户选啥用啥"。
+    //   当时修法：BYOK userId 上下文整体跳过 election，返回 modelId=undefined。
     //
-    //   admin/cron 无 userId 路径仍走 election（admin downgrade 行为不变）。
-    if (args.userId) {
-      return {};
-    }
-
+    // ★ 2026-08-04 恢复 BYOK 多模型（用户实证："Leader 拆完任务后这么多任务
+    //   应该分配给多类模型，现在全跑一个模型"）。
+    //
+    //   为什么现在可以恢复：8e991cb4a 那次是"三层闸"，**正确修法与一刀切保险丝
+    //   同批上线**。真正治本的那层（ModelElectionService Step 3 改用
+    //   `keyResolver.getHealthyProviders()`，把 quota-exhausted 的 provider 整条
+    //   剔除）已经在跑；再叠加 `healthy !== "unhealthy" && recentErrorRate < 0.5`
+    //   硬过滤。当年"只看有没有 key 不看 key 健康度"的缺口已经补上。
+    //
+    //   但 election 内部仍有两条**回退到全量池**的口子（healthy provider 集为空、
+    //   或过滤后候选为空时回退 notBlacklisted，注释说明是为了让 chat() 抛更清晰的
+    //   错误码）。那两条口子意味着 election 仍可能吐出用户解不出 key 的模型 ——
+    //   正是当年 402 的成因。所以这里做**出口校验**：选出来的模型必须同时
+    //     · 在本次 envSnapshot 的候选池里（= 用户自己的可用模型）
+    //     · provider ∈ userKeys.byokProviders（用户真有这家的 key）
+    //     · healthy !== "unhealthy"
+    //   任一不满足 → 返回 {}，退回今天的行为（chat() 走 findUserDefaultByType）。
+    //   即：**能安全分流就分流，不能就维持现状，绝不比现在差**。
     const candidates = this.buildElectionCandidates(args.envSnapshot);
+    if (args.userId) {
+      const safe = this.filterByokSafeCandidates(candidates, args.envSnapshot);
+      if (safe.length === 0) {
+        // 没有可安全选举的模型（无快照 / 无 BYOK / 全不健康）→ 维持现状
+        return {};
+      }
+    }
     const missionId = MissionContext.get()?.missionId;
     const role = this.resolveElectionRoleHint(args.roleId);
     const runElection = async (previouslyElected: ReadonlyArray<string>) => {
@@ -195,11 +213,59 @@ export class AgentFactory {
         )
       : { result: (await runElection([])).result };
 
+    const electedId = selection.result.elected.modelId;
+
+    // ★ 2026-08-04 出口校验（BYOK 才做）：election 内部有两条"回退全量池"的口子，
+    //   可能吐出用户解不出 key 的模型 —— 那正是 8e991cb4a 当年 402 的成因。
+    //   这里最后把一道关：选出来的必须在本次 BYOK 安全池内，否则退回现状。
+    if (args.userId) {
+      const safeIds = new Set(
+        this.filterByokSafeCandidates(candidates, args.envSnapshot).map(
+          (c) => c.modelId,
+        ),
+      );
+      // 本类无 logger（保持零依赖），不为一条告警引入 Logger —— 退回行为本身
+      // 与今天一致，可观测性由下游 chat() 的 model 日志承担。
+      if (!electedId || !safeIds.has(electedId)) {
+        return {};
+      }
+    }
+
     return {
-      modelId: selection.result.elected.modelId,
+      modelId: electedId,
       missionId,
       reservation: selection.reservation,
     };
+  }
+
+  /**
+   * BYOK 安全候选：只留**用户真能用**的模型。
+   *
+   * 判据（三条全满足）：
+   *   1. provider ∈ envSnapshot.userKeys.byokProviders —— 用户确实配了这家的 key
+   *   2. healthy !== "unhealthy" —— 排除已探测为不健康的
+   *   3. 在 envSnapshot 候选池内 —— 快照本身就是"用户自己的可用模型"
+   *
+   * 无快照 / 无 BYOK provider 时返回空数组 ⇒ 调用方退回 findUserDefaultByType
+   * （今天的行为），保证**不比现状差**。
+   */
+  private filterByokSafeCandidates(
+    candidates: ReadonlyArray<{
+      modelId: string;
+      provider: string;
+      healthy: "healthy" | "unhealthy" | "unknown";
+    }>,
+    envSnapshot?: EnvironmentSnapshot,
+  ): Array<{ modelId: string; provider: string }> {
+    const providers = envSnapshot?.userKeys?.byokProviders ?? [];
+    if (providers.length === 0) return [];
+    const allowed = new Set(providers.map((p) => p.toLowerCase()));
+    return candidates
+      .filter(
+        (c) =>
+          allowed.has(c.provider.toLowerCase()) && c.healthy !== "unhealthy",
+      )
+      .map((c) => ({ modelId: c.modelId, provider: c.provider }));
   }
 
   /**

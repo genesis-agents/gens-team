@@ -181,10 +181,136 @@ describe("AgentFactory.setElectionService", () => {
     expect(roles).toEqual(["researcher", "researcher"]);
   });
 
-  // 2026-05-12 BYOK fix: 有 userId 上下文时 election 必须整体跳过，避免
-  //   候选池跨 modelType (CHAT∪REASONING) 把 deepseek-reasoner 评分压过用户
-  //   isDefault 的 grok。详细原因见 agent-factory.ts:148 注释。
-  it("skips election when args.userId is set (BYOK path)", async () => {
+  // ★ 2026-08-04 恢复 BYOK 多模型（用户实证：Leader 拆完任务后所有任务全跑同一个
+  //   模型）。8e991cb4a(2026-05-12) 是"三层闸"：治本的那层（election 改用
+  //   getHealthyProviders 剔除 quota-exhausted provider）与一刀切保险丝
+  //   `if (userId) return {}` 同批上线。治本层已在跑，保险丝可以拆——但必须补
+  //   出口校验，因为 election 内部仍有两条"回退全量池"的口子。
+  const envSnapshot = (opts: {
+    byokProviders: string[];
+    models: Array<{
+      modelId: string;
+      provider: string;
+      healthy: "healthy" | "unhealthy" | "unknown";
+    }>;
+  }) =>
+    ({
+      generatedAt: new Date(0).toISOString(),
+      userId: "user-1",
+      models: {
+        CHAT: opts.models.map((m) => ({
+          ...m,
+          modelType: "CHAT" as const,
+          contextWindow: 128000,
+          costTier: "standard" as const,
+        })),
+        REASONING: [],
+        EMBEDDING: [],
+        VISION: [],
+      },
+      agents: [],
+      tools: [],
+      skills: [],
+      userKeys: {
+        hasByok: true,
+        byokProviders: opts.byokProviders,
+        sharedKeyAvailable: false,
+      },
+      externalDeps: {},
+    }) as never;
+
+  it("★ BYOK 用户现在会选举（多模型分流恢复）", async () => {
+    const factory = new AgentFactory();
+    const electMock = jest.fn().mockResolvedValue({
+      elected: { modelId: "deepseek-v4-pro" },
+      scores: [],
+      reason: "test",
+    });
+    factory.setElectionService({ elect: electMock } as never);
+
+    const result = await factory.electPreferredModelSelection({
+      roleId: "researcher#0",
+      userId: "user-1",
+      envSnapshot: envSnapshot({
+        byokProviders: ["xai", "deepseek"],
+        models: [
+          {
+            modelId: "grok-4-1-fast-reasoning",
+            provider: "xai",
+            healthy: "healthy",
+          },
+          {
+            modelId: "deepseek-v4-pro",
+            provider: "deepseek",
+            healthy: "healthy",
+          },
+        ],
+      }),
+    });
+
+    expect(electMock).toHaveBeenCalled();
+    expect(result.modelId).toBe("deepseek-v4-pro");
+  });
+
+  // ★ 事故回归（8e991cb4a 当年 402 的原样场景）：election 因内部"回退全量池"
+  //   吐出一个用户没有 key 的 provider 模型 —— 出口校验必须拦下，退回默认。
+  it("★ 选出的模型 provider 用户没 key → 退回默认（不重演 NoAvailableKeyError）", async () => {
+    const factory = new AgentFactory();
+    const electMock = jest.fn().mockResolvedValue({
+      elected: { modelId: "deepseek-reasoner" },
+      scores: [],
+      reason: "test",
+    });
+    factory.setElectionService({ elect: electMock } as never);
+
+    const result = await factory.electPreferredModelSelection({
+      roleId: "researcher#0",
+      userId: "user-1",
+      envSnapshot: envSnapshot({
+        byokProviders: ["xai"], // 只有 xai 的 key，没有 deepseek
+        models: [
+          {
+            modelId: "grok-4-1-fast-reasoning",
+            provider: "xai",
+            healthy: "healthy",
+          },
+          {
+            modelId: "deepseek-reasoner",
+            provider: "deepseek",
+            healthy: "healthy",
+          },
+        ],
+      }),
+    });
+
+    expect(result).toEqual({});
+  });
+
+  it("★ 候选全 unhealthy → 不选举，退回默认", async () => {
+    const factory = new AgentFactory();
+    const electMock = jest.fn();
+    factory.setElectionService({ elect: electMock } as never);
+
+    const result = await factory.electPreferredModelSelection({
+      roleId: "researcher#0",
+      userId: "user-1",
+      envSnapshot: envSnapshot({
+        byokProviders: ["xai"],
+        models: [
+          {
+            modelId: "grok-4-1-fast-reasoning",
+            provider: "xai",
+            healthy: "unhealthy",
+          },
+        ],
+      }),
+    });
+
+    expect(electMock).not.toHaveBeenCalled();
+    expect(result).toEqual({});
+  });
+
+  it("★ 无 envSnapshot（老调用方）→ 维持现状，不选举", async () => {
     const factory = new AgentFactory();
     const electMock = jest.fn();
     factory.setElectionService({ elect: electMock } as never);
