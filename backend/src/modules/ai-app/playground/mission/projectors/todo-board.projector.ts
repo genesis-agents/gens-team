@@ -40,12 +40,17 @@
  */
 
 import type { MissionDetail } from "../lifecycle/mission-store.service";
+import {
+  isPersistedMissionTerminal,
+  toPublicMissionStatus,
+} from "../lifecycle/mission-status.contract";
 import type {
   TodoAssigneeRole,
   TodoBoardEntry,
   TodoBoardSentinel,
   TodoNarrativeItem,
   TodoStatus,
+  MissionStatus,
 } from "../../api/contracts/view-state.contract";
 import { ORDERED_STAGE_IDS } from "../rerun/resume-rerun-policy.service";
 import {
@@ -819,9 +824,7 @@ class PlaygroundTodoBoardProjector extends BusinessTeamTodoBoardProjectorFramewo
           const narrativeLog = warnings.map((w) => ({
             ts,
             text: `[${w?.kind ?? w?.severity ?? "note"}] ${w?.message ?? ""}`,
-            tone: (w?.severity === "info" ? "info" : "warn") as
-              | "info"
-              | "warn",
+            tone: (w?.severity === "info" ? "info" : "warn") as "info" | "warn",
           }));
           // ★ 2026-06-12 fix: 稳定 id（不带 ts）。s9-critic 重跑会再发一次
           //   critic:verdict——按时间戳的 id 会新增第二条"复审意见"。改用固定 id，
@@ -1726,12 +1729,13 @@ class PlaygroundTodoBoardProjector extends BusinessTeamTodoBoardProjectorFramewo
     );
     bump("s10-leader-signoff", row.leaderSigned === true);
 
+    // isSuccess = "跑完全程"。quality-failed **故意**不在此列：它是终态但未必跑到
+    // 尾，只按产物 high-water 补偿，不向上编造（见 todo-board-stage-lifecycle.spec
+    // "quality-failed → s9-critic-l4 仍 pending"）。legacy "rejected" 沿用历史行为
+    // （spec "rejected mission → all pending system stages marked done"）——两个拼写
+    // 在这里语义不一致是**已知历史差异**，与本次取消 bug 无关，不在本次改动范围。
     const isSuccess = row.status === "completed" || row.status === "rejected";
-    const isTerminalFailure =
-      row.status === "failed" ||
-      row.status === "cancelled" ||
-      row.status === "quality-failed";
-    const isTerminal = isSuccess || isTerminalFailure;
+    const isTerminal = isPersistedMissionTerminal(row);
 
     // (a) 通用产物补偿（全状态机）：idx<=HW 的 system stage 必然跑完 → done。
     //     终态：产物是最终真相，覆盖残留 failed/pending；
@@ -1797,7 +1801,7 @@ class PlaygroundTodoBoardProjector extends BusinessTeamTodoBoardProjectorFramewo
           scope: "dimension",
           title: dimName,
           assignee: { role: "researcher", dimensionName: dimName },
-          status: mapMissionStatusToTodo(row.status),
+          status: mapMissionStatusToTodo(toPublicMissionStatus(row)),
           artifacts: [],
           narrativeLog: [],
           dimensionRef: dimName,
@@ -1917,21 +1921,23 @@ function extractDimensionNames(raw: unknown): string[] {
     .filter((n) => n.length > 0);
 }
 
-function mapMissionStatusToTodo(status: string): TodoStatus {
-  switch (status) {
-    case "completed":
-      return "done";
-    case "failed":
-      return "failed";
-    case "rejected":
-      return "failed";
-    case "cancelled":
-      return "cancelled";
-    case "running":
-      return "in_progress";
-    default:
-      return "pending";
-  }
+/**
+ * ★ 2026-08-04：入参改成 **public** 状态（调用方经 toPublicMissionStatus 归一）。
+ *   原先直接吃 persisted 字符串，漏了现役写入值 "quality-failed" → 走 default
+ *   "pending"，Leader 拒签的 mission 里 rollup 出来的维度 todo 永远显"待启动"。
+ *   public 枚举是闭集（6 值），Record 穷举保证以后加值编译期就炸。
+ */
+function mapMissionStatusToTodo(status: MissionStatus): TodoStatus {
+  const MAP: Record<MissionStatus, TodoStatus> = {
+    starting: "pending",
+    running: "in_progress",
+    completed: "done",
+    failed: "failed",
+    cancelled: "cancelled",
+    // 产出齐了但 Leader 拒签 —— 展示为失败（与 legacy rejected 一致）
+    "quality-failed": "failed",
+  };
+  return MAP[status];
 }
 
 // (unused param suppress)

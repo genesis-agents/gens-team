@@ -378,17 +378,31 @@ describe("MissionQueryService", () => {
         terminalOutcome: null,
         expectedPublicStatus: "running",
       },
-      // default branch: cancelled → terminalOutcome=null → "running"
+      // ★ 2026-08-04：以下两条原先断言 cancelled → "running" / "failed"，
+      //   那是把缺陷本身冻结成契约 —— policy 里的手抄 switch 没有 cancelled 分支，
+      //   落 default 靠 terminalOutcome 猜。同款病根让 quality-failed 被投影成
+      //   running，进而取消按钮常亮、点了必被 400 顶回（Screenshot_46）。
+      //   现与 projector 共用 mission-status.contract，取消就是取消。
       {
         status: "cancelled",
         terminalOutcome: null,
-        expectedPublicStatus: "running",
+        expectedPublicStatus: "cancelled",
       },
-      // default branch: cancelled → terminalOutcome="cancelled" → "failed"
       {
         status: "cancelled",
         terminalOutcome: "cancelled",
-        expectedPublicStatus: "failed",
+        expectedPublicStatus: "cancelled",
+      },
+      // ★ 现役写入拼写：policy 也必须认，不能再降级 running
+      {
+        status: "quality-failed",
+        terminalOutcome: "quality-failed",
+        expectedPublicStatus: "quality-failed",
+      },
+      {
+        status: "quality-failed",
+        terminalOutcome: null,
+        expectedPublicStatus: "quality-failed",
       },
     ];
 

@@ -17,11 +17,7 @@
  * - 不在 controller 中混用（controller 仅 wire）
  */
 
-import {
-  ForbiddenException,
-  Injectable,
-  Logger,
-} from "@nestjs/common";
+import { ForbiddenException, Injectable, Logger } from "@nestjs/common";
 
 import { MissionOwnershipRegistry } from "@/modules/ai-harness/facade";
 
@@ -29,6 +25,7 @@ import {
   MissionStore,
   type MissionDetail,
 } from "../lifecycle/mission-store.service";
+import { toPublicMissionStatus } from "../lifecycle/mission-status.contract";
 import type { PlaygroundReportVersionRow } from "../lifecycle/mission-report.helper";
 import { MissionEventBuffer } from "../lifecycle/mission-event-buffer.service";
 import {
@@ -36,7 +33,10 @@ import {
   type ResumeDecision,
 } from "../rerun/resume-rerun-policy.service";
 import { ArtifactComposerService } from "../services/artifact-composer.service";
-import type { RerunnableStageEntry } from "../../api/contracts/view-state.contract";
+import type {
+  MissionStatus,
+  RerunnableStageEntry,
+} from "../../api/contracts/view-state.contract";
 import type { ReportArtifactV2 } from "../../api/contracts/artifact.contract";
 import type { EmptyArtifactSentinel } from "../../api/contracts/view-state.contract";
 
@@ -149,7 +149,8 @@ export class MissionQueryService {
       });
 
     // P0-2：ArtifactComposerService（含 R2 off-load fetch）
-    const composedArtifact = await this.artifactComposer.composeArtifactView(row);
+    const composedArtifact =
+      await this.artifactComposer.composeArtifactView(row);
 
     // 4. checkpoint availability
     const { hasConfigSnapshot, hasCheckpoint } =
@@ -221,32 +222,14 @@ export class MissionQueryService {
   }
 
   /**
-   * 给 policy 用的状态启发式投影。
-   * 与 §6.4.1.a 完整映射有差异，仅供 policy 决策——policy 行为只对 running/starting
-   * 与 completed/quality-failed 做不同分支（详见 ResumeRerunPolicyService.computeResumable），
-   * 不依赖 cancelled vs failed 的细分。
+   * 给 policy 用的状态投影。
+   *
+   * ★ 2026-08-04：原先是 projector 之外**另一份**手抄 switch，同样漏了现役写入值
+   *   "quality-failed" 和 "cancelled"（走 default 降级 running/failed），导致
+   *   resumable / rerunnableStages 的决策依据与页面上显示的状态不是同一个东西。
+   *   现与 projector 共用 mission-status.contract 单一源，两者永不再漂移。
    */
-  private projectPublicStatusForPolicy(
-    row: MissionDetail,
-  ):
-    | "starting"
-    | "running"
-    | "completed"
-    | "failed"
-    | "cancelled"
-    | "quality-failed" {
-    switch (row.status) {
-      case "completed":
-        return "completed";
-      case "rejected":
-        return "quality-failed";
-      case "failed":
-        return "failed";
-      case "running":
-        return "running";
-      default:
-        // future Prisma 状态值（如 cancelled）保守降级
-        return row.terminalOutcome ? "failed" : "running";
-    }
+  private projectPublicStatusForPolicy(row: MissionDetail): MissionStatus {
+    return toPublicMissionStatus(row);
   }
 }

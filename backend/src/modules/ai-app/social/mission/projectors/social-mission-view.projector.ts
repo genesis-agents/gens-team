@@ -123,6 +123,13 @@ function resolvePublicStatus(persisted: string): MissionStatus {
       return "completed";
     case "failed":
       return "failed";
+    // ★ 2026-08-04：social-mission-store.markCancelled 写的是 "cancelled"
+    //   （social-mission-store.service.ts），这里原先只认 "aborted" → 真实写入值
+    //   落进 default 被投影成 running：被取消的 mission 永远显示"运行中"、取消
+    //   按钮常亮，点击必被 cancel 端点以 400 not-running 顶回。与 playground
+    //   Screenshot_46「点取消，始终无效」同款病根，见
+    //   playground/mission/lifecycle/mission-status.contract.ts。
+    case "cancelled":
     case "aborted":
       // social-specific mapping per readiness assessment §2:
       // aborted -> cancelled (social has no quality-failed)
@@ -137,7 +144,7 @@ function resolvePublicStatus(persisted: string): MissionStatus {
 function deriveTerminalOutcome(persisted: string): string | null {
   if (persisted === "completed") return "completed";
   if (persisted === "failed") return "failed";
-  if (persisted === "aborted") return "cancelled";
+  if (persisted === "aborted" || persisted === "cancelled") return "cancelled";
   return null;
 }
 

@@ -14,6 +14,11 @@
  */
 
 import type { MissionDetail } from "../lifecycle/mission-store.service";
+import {
+  isPersistedMissionSuccessLike,
+  isPersistedMissionTerminal,
+  toPublicMissionStatus,
+} from "../lifecycle/mission-status.contract";
 import type { MissionQueryInputs } from "../query/mission-query.service";
 import { projectStages } from "./stage-view.projector";
 import { projectAgents } from "./agent-view.projector";
@@ -102,18 +107,13 @@ function buildRowLoadedView(inputs: MissionQueryInputs): PlaygroundDomainView {
   //   可能因为 explicit agent:lifecycle 'completed' 事件被 buffer evict / 网络
   //   race 而永远卡 running，导致 "23 个 Agent 正在工作" 假象。这是已知的
   //   "事件缺失" 容灾：mission 已盖章 terminal，下游展示必须一致。
-  const isTerminal =
-    row.status === "completed" ||
-    row.status === "failed" ||
-    row.status === "cancelled" ||
-    row.status === "quality-failed";
-  if (isTerminal) {
+  //   ★ 2026-08-04：清单原先手抄在这里（且与本文件另外两处子集不一致），改走
+  //   mission-status.contract 单一源。
+  if (isPersistedMissionTerminal(row)) {
+    const phase = isPersistedMissionSuccessLike(row) ? "completed" : "failed";
     for (const a of agents) {
       if (a.phase === "running" || a.phase === "pending") {
-        a.phase =
-          row.status === "completed" || row.status === "quality-failed"
-            ? "completed"
-            : "failed";
+        a.phase = phase;
       }
     }
   }
@@ -455,12 +455,12 @@ function extractDimensionPipelines(
   // mission terminal cleanup：mission row 已 terminal 但 events 没收到
   // chapter:done 的 chapter（事件 buffer 过期或漏 emit），统一标 'done'
   // 让前端 ArtifactReader 不会显示 "Revising N chapters" 假象。
-  const isTerminal =
-    row.status === "completed" ||
-    row.status === "failed" ||
-    row.status === "cancelled" ||
-    row.status === "rejected";
-  if (isTerminal) {
+  //   ★ 2026-08-04：终态判定原先漏 quality-failed（只认 legacy 的 rejected），
+  //   Leader 拒签的 mission 章节永远卡"撰写中/复审中"。改走 mission-status.contract
+  //   单一源。收尾取值维持原样：只有 completed 才敢标 done —— 其余终态下我们只
+  //   知道章节"开始过"，不知道写完没有，标 done 是编造。
+  if (isPersistedMissionTerminal(row)) {
+    const settled = row.status === "completed" ? "done" : "failed";
     for (const dim of Object.values(out)) {
       for (const ch of dim.chapters) {
         if (
@@ -469,7 +469,7 @@ function extractDimensionPipelines(
           ch.status === "reviewing" ||
           ch.status === "revising"
         ) {
-          ch.status = row.status === "completed" ? "done" : "failed";
+          ch.status = settled;
         }
       }
     }
@@ -509,19 +509,16 @@ function extractReferences(
 // §6.4.1.a Persistence-to-view mapping（严格优先级）
 // ============================================================================
 
+/**
+ * §6.4.1.a 映射实现已下沉到 mission-status.contract（单一源 + Record 穷举）。
+ *
+ * ★ 2026-08-04 事故：本函数原先分支表漏 "quality-failed"，落到兜底 `return
+ *   "running"` —— 终态 mission 对外报 running + canCancel=true，取消按钮常亮、
+ *   点击必被后端 400 顶回，用户侧表现为「点取消，始终无效」。兜底一律 running
+ *   正是病根，现按终态证据判定，见 contract 注释。
+ */
 function resolvePublicStatus(row: MissionDetail): MissionStatus {
-  // rule 2：cancelled lifecycle 信号目前未在 MissionDetail.status 暴露；预留 cancelled enum 透传
-  if (row.status === "cancelled") return "cancelled";
-  // rule 3
-  if (row.status === "completed") return "completed";
-  // rule 4：persisted "rejected" → public "quality-failed"（playground 专属）
-  if (row.status === "rejected") return "quality-failed";
-  // rule 5
-  if (row.status === "failed") return "failed";
-  // rule 6
-  if (row.status === "running") return "running";
-  // rule 1：no durable row → starting；row 已存在但 status 未匹配任何枚举的边界
-  return "running";
+  return toPublicMissionStatus(row);
 }
 
 // ============================================================================

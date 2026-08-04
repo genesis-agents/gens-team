@@ -2802,9 +2802,13 @@ describe("projectTodoBoard — sortKey fallback 13.0 (line 1874)", () => {
   });
 });
 
-describe("projectTodoBoard — mapMissionStatusToTodo default branch (line 1933)", () => {
-  it("returns pending for unrecognized mission status", () => {
-    // Trigger via dimension rollup with an unknown status
+describe("projectTodoBoard — 未登记的 mission status 走 mission-status.contract 兜底", () => {
+  // ★ 2026-08-04：原先 mapMissionStatusToTodo 直接吃 persisted 字符串，未匹配的一律
+  //   落 default → "pending"。这个"未知即 pending"的兜底正是取消 bug 的同款病根：
+  //   现役写入值 "quality-failed" 不在分支表里 → 拒签 mission 的维度 todo 永远显
+  //   "待启动"。现在先经 toPublicMissionStatus 归一（未知 + 无终态证据 = 仍在跑），
+  //   再走 public 闭集 Record 映射。
+  it("未知状态 + 无终态证据 → in_progress（仍在跑，不是待启动）", () => {
     const row = makeRow({
       status: "paused",
       dimensions: [{ name: "Economy" }],
@@ -2812,7 +2816,18 @@ describe("projectTodoBoard — mapMissionStatusToTodo default branch (line 1933)
     const result = projectTodoBoard(row, []) as any;
     const dim = result.items.find((t: any) => t.id === "dim:Economy");
     expect(dim).toBeDefined();
-    // "paused" → default case → "pending"
-    expect(dim.status).toBe("pending");
+    expect(dim.status).toBe("in_progress");
+  });
+
+  it("★ 现役写入值 quality-failed 不再落进 pending 兜底", () => {
+    const row = makeRow({
+      status: "quality-failed",
+      completedAt: new Date("2025-01-01T01:00:00.000Z"),
+      dimensions: [{ name: "Economy" }],
+    });
+    const result = projectTodoBoard(row, []) as any;
+    const dim = result.items.find((t: any) => t.id === "dim:Economy");
+    expect(dim).toBeDefined();
+    expect(dim.status).not.toBe("pending");
   });
 });
