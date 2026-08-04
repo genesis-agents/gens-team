@@ -65,6 +65,10 @@ import { classifyProviderFailure } from "@/modules/ai-engine/llm/providers/provi
 import { mapProviderFailure } from "./provider-failure-mapping";
 import { wrapToolObservation } from "./external-observation.util";
 import {
+  buildMalformedEnvelopeCritique,
+  liftFlattenedEnvelope,
+} from "./utils/envelope-dialects.util";
+import {
   MAX_TOOL_GATE_NUDGES,
   shouldBlockFinalizeForToolGate,
   buildToolGateCritique,
@@ -163,26 +167,11 @@ class InvalidActionError extends Error {
 //   （见下方协议收敛）。仍然成立的是另一半：flag-on / flag-off 两条路径共用同一份
 //   字面（DECISION_FC_SUFFIX = DECISION_SYSTEM_SUFFIX），所以**切 flag 不会**触发
 //   cache miss；只有改这段文本本身才会，且是一次性重新预热。
-// ★ 2026-08-04 协议收敛（四次同类事故后的治本改动）：
-//
-//   在此之前协议给同一件事教了多种写法：`action` 对象 / 顶层 `actions` 简写 /
-//   parallel 内部 `calls` 又和简写的 `actions` 撞名。模型混用完全可预期，于是
-//   f50b50d36 / 5e860b47b / 6b813fcfd 以及本次，四条容错一次事故补一条。
-//
-//   更糟的是**反例被原样渲染成合法 JSON 贴进 prompt**：
-//     WRONG: {"kind":"parallel_tool_call","calls":[...]}
-//     — NOT {"action":{"kind":"finalize"},"actions":[{"output":{...}}]}
-//   而 5e860b47b 修的那个 bug，模型吐出来的**就是第二行那个反例的形状**。
-//   把错误答案印在题面上，模型照抄是可预期的。
-//
-//   改法：
-//     · 反例一律改成散文描述，prompt 里不再出现任何「错误形状的合法 JSON」
-//     · 删掉 `actions` 顶层简写的教学 —— 每个意图只留一种写法
-//     · parser 侧的四条容错**全部保留**（见 parseDecision / normalizeAction）：
-//       存量模型和别的服务商仍会吐旧方言，安全网不撤，只是不再主动教
-//
-//   代价：prompt 字节变化 → 部署后各 agent 的 prompt cache 一次性重新预热
-//   （任何 prompt 改动都有，不是持续损失）；文本变短，单次调用还略省。
+// ★ 2026-08-04 协议收敛：反例不再渲染成合法 JSON（5e860b47b 修的 bug，模型吐的
+//   就是 prompt 里那个反例的形状），并删掉 actions 顶层简写的教学 —— 每个意图
+//   只留一种写法。parser 侧四条方言容错全部保留，见
+//   utils/envelope-dialects.util.ts 的文件头（含四次事故的完整时间线）。
+//   代价：prompt 字节变化 → 部署后一次性重新预热 cache，文本变短还略省。
 const DECISION_SYSTEM_SUFFIX = `
 
 ## Decision Protocol
@@ -238,16 +227,6 @@ const RESERVED_ACTION_KINDS = new Set([
   "subagent_spawn",
   "skill_invoke",
   "llm_generate",
-]);
-
-// normalizeAction 真正实现的三个协议 kind（协议文本也只教这三个）。
-// 用于「action 退化成 kind 字符串、载荷升到顶层」的容错判定：只认这三个，
-// 其它任意字符串不猜，照旧抛准确错误。与 RESERVED_ACTION_KINDS 用途不同
-// （那个是 toolId-as-kind 的反向排除表，含未实现的保留字）。
-const PROTOCOL_ACTION_KINDS = new Set([
-  "tool_call",
-  "parallel_tool_call",
-  "finalize",
 ]);
 
 // flag-on / native FC 路径用 SUFFIX —— 真等于 DECISION_SYSTEM_SUFFIX（同字面）。
@@ -1617,42 +1596,23 @@ export class ReActLoop implements IAgentLoop {
               lastIterHadParseError &&
               lastIterParseErrorName === "JsonExtractFailed";
 
-            // ★ 2026-08-04（生产实证 researcher 81653316 iter=2）：上面那条 2026-08-02
-            //   的修复只网住 JsonExtractFailed（JSON 压根没解出来）。**JSON 解出来了、
-            //   但 action 信封形状不合法**（InvalidActionError）走的是同一个兜底
-            //   —— raw 被塞进 finalize.output —— 却掉进下面的通用分支，于是：
-            //
-            //     模型吐 {"action":"parallel_tool_call","calls":[5 个工具调用]}
-            //       → 信封畸形，一个工具都没执行
-            //       → critique 却说「你的 finalize.output 校验失败：
-            //          dimension Required; findings Required; summary Required」
-            //
-            //   一个**想搜索**的 agent 被告知「该交 findings 了」，下一轮很可能不搜
-            //   就编 —— 与 a5a1f0963「critique 说假话把模型带偏两轮」同款危害。
-            //
-            //   真话是：你的意图我们没能执行，因为信封形状不对；工具**没有跑**。
-            //   给出的行动也必须不同 —— 不是"补字段"，而是"用正确信封重发同一个意图"。
-            //   注意**不能**加 `typeof output === "string"` 条件（JsonExtractFailed
-            //   那条可以，因为解不出 JSON 时 raw 必然是字符串）。信封畸形时 raw 是
-            //   一段**合法 JSON 文本**，会被 unwrapDoubleEncodedJson 解回对象 ——
-            //   加了字符串条件这条分支就永远不触发。（本条件写错过一次，被
-            //   envelope-dialects.spec 的 critique 用例当场抓出。）
+            // ★ 2026-08-04：上面那条只网住 JsonExtractFailed（JSON 没解出来）。
+            //   **JSON 解出来了但 action 信封形状不合法**走同一个兜底，却掉进下面
+            //   的通用分支，回一条"产物缺字段"的假 critique —— 一个想搜索的 agent
+            //   被告知"该交 findings 了"。详见 buildMalformedEnvelopeCritique。
+            //   注意**不能**加 typeof output === "string"：信封畸形时 raw 是合法
+            //   JSON，会被 unwrapDoubleEncodedJson 解回对象，加了这条分支永不触发
+            //   （写错过一次，被 envelope-dialects.spec 的 critique 用例抓出）。
             const finalizeIsMalformedEnvelope =
               lastIterHadParseError &&
               lastIterParseErrorName === "InvalidActionError";
 
             const critique = finalizeIsMalformedEnvelope
-              ? `[ENVELOPE REJECTED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] ` +
-                `Your JSON parsed fine, but its "action" envelope was not in an executable shape ` +
-                `(${lastIterParseErrorMessage.slice(0, 200)}). ` +
-                `NOTHING you asked for was run — no tool was called — and your raw text was used as the ` +
-                `output instead, which is why any schema complaints look unrelated to what you wrote.\n` +
-                `Re-send the SAME intent using exactly one of these envelopes:\n` +
-                `  one tool:    {"thinking":"...","action":{"kind":"tool_call","toolId":"<id>","input":{...}}}\n` +
-                `  many tools:  {"thinking":"...","action":{"kind":"parallel_tool_call","calls":[{"toolId":"<id>","input":{...}}]}}\n` +
-                `  final answer:{"thinking":"...","action":{"kind":"finalize","output":<answer>}}\n` +
-                `"kind"/"toolId"/"input"/"calls" go INSIDE "action" — never as siblings of "thinking".\n` +
-                `If you intended tool calls, emit them now — they were NOT executed.`
+              ? buildMalformedEnvelopeCritique(
+                  finalizeRejectCount,
+                  MAX_FINALIZE_REJECTS,
+                  lastIterParseErrorMessage,
+                )
               : finalizeIsUnparsedRaw
                 ? `[FINALIZE REJECTED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] ` +
                   `Your previous response could NOT be parsed as JSON, so its raw text was used as the output — ` +
@@ -2393,37 +2353,12 @@ export class ReActLoop implements IAgentLoop {
         };
       }
 
-      // ★ 2026-08-04 容错（Railway 生产实证，researcher 81653316 iter=2）：
-      //   模型把信封**压平**——action 退化成 kind 字符串，本该在 action 里的字段
-      //   升到顶层当兄弟：
-      //     {"action":"parallel_tool_call","calls":[{"toolId":"web-search",...}, ...]}
-      //     → InvalidActionError: missing valid 'action' field (got string)
-      //
-      //   JSON 完整、5 个工具调用参数齐全（web-search / job-search /
-      //   radar-signal-search / explore-search / whitehouse-…），却被整份丢弃，
-      //   然后 catch 分支把 raw 当 finalize.output，schema 回一条**假 critique**
-      //   "dimension/findings/summary Required" —— 一个想搜索的 agent 被告知
-      //   "该交 findings 了"，下一轮很可能不搜就编（同 a5a1f0963 的危害）。
-      //
-      //   这与本文件已有两条容错同源：协议里同一件事存在多种写法（顶层裸 kind /
-      //   actions 简写 / action 对象），模型混用完全可预期。这里补第三种：
-      //   action 是**协议保留 kind 字符串**时，把顶层兄弟字段当作它的载荷提上来，
-      //   走与"顶层裸 kind"（上方 2235 分支）完全相同的归一化路径。
-      //
-      //   保守判定：只认三个协议 kind。其它任意字符串不猜，照旧抛错——错误信息
-      //   本身是准确的，不该被容错吞掉。
-      if (typeof obj.action === "string") {
-        const liftedKind = obj.action.trim();
-        if (PROTOCOL_ACTION_KINDS.has(liftedKind)) {
-          const lifted: Record<string, unknown> = {
-            ...(obj as Record<string, unknown>),
-            kind: liftedKind,
-          };
-          delete lifted.action;
-          delete lifted.thinking;
-          const action = this.normalizeAction(lifted);
-          return { decision: { thinking, action } };
-        }
+      // ★ 2026-08-04 容错：信封被压平（action 退化成 kind 字符串、载荷升顶层）。
+      //   生产实证 researcher 81653316 iter=2，5 个工具调用参数齐全却被整份丢弃。
+      //   判定与提升逻辑见 utils/envelope-dialects.util.ts（含完整背景）。
+      const lifted = liftFlattenedEnvelope(obj as Record<string, unknown>);
+      if (lifted) {
+        return { decision: { thinking, action: this.normalizeAction(lifted) } };
       }
 
       const action = this.normalizeAction(obj.action);
