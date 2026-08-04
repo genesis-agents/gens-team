@@ -345,6 +345,7 @@ describe("ProxyController - PDF Proxy", () => {
       const res = {
         setHeader: jest.fn(),
         send: jest.fn(),
+        end: jest.fn(),
         status: jest.fn(),
         headersSent: false,
       };
@@ -421,7 +422,13 @@ describe("ProxyController - PDF Proxy", () => {
     });
 
     // ★ 2026-05-25: 外部图拉取失败改为返回透明占位图(200)，不再抛 5xx(避免误报告警)。
-    it("serves a transparent placeholder when direct fetch fails with 403 and FlareSolverr unavailable", async () => {
+    // ★ 2026-08-04（生产实证 mission 4dfaa4b3：报告 21 张配图全是空框）：
+    //   原行为是"拉不到图 → 200 + 1×1 透明 PNG"。躲开了 5xx 的 Critical 告警，
+    //   代价是**把失败伪装成成功**：浏览器判定加载成功 → <img onError> 永不触发
+    //   → FigureRenderer 两道"隐藏无效图"的防线全废 → 预留出一大片空白。
+    //   现在默认 404（同样不是 5xx、同样不触发 Critical 告警，但对 <img> 是明确
+    //   失败信号）。想要旧行为必须显式传 onFail=pixel。
+    it("★ 直接抓取 403 且 FlareSolverr 不可用 → 404，绝不伪装成 200 图片", async () => {
       const fetchError = {
         isAxiosError: true,
         response: { status: 403 },
@@ -435,12 +442,20 @@ describe("ProxyController - PDF Proxy", () => {
         "https://example.com/protected-image.png",
         res as never,
       );
-      expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "image/png");
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.send).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.setHeader).toHaveBeenCalledWith(
+        "X-Image-Proxy-Failure",
+        "upstream-fetch-failed",
+      );
+      // 关键：不得再发出任何"看起来是图片"的响应体
+      expect(res.setHeader).not.toHaveBeenCalledWith(
+        "Content-Type",
+        "image/png",
+      );
+      expect(res.send).not.toHaveBeenCalled();
     });
 
-    it("serves a transparent placeholder for non-axios errors (no 5xx)", async () => {
+    it("★ 非 axios 异常 → 同样 404（且仍不是 5xx，不触发 Critical 告警）", async () => {
       mockedAxios.get.mockRejectedValueOnce(new Error("Generic network error"));
 
       const res = mockResponse();
@@ -448,9 +463,30 @@ describe("ProxyController - PDF Proxy", () => {
         "https://example.com/image.png",
         res as never,
       );
+      expect(res.status).toHaveBeenCalledWith(404);
+      const statuses = res.status.mock.calls.map((c: unknown[]) => c[0]);
+      expect(statuses.every((st: number) => st < 500)).toBe(true);
+    });
+
+    it("onFail=pixel 时才回到旧的占位图行为（调用方显式选择）", async () => {
+      mockedAxios.get.mockRejectedValueOnce(new Error("boom"));
+
+      const res = mockResponse();
+      await controller.proxyImage(
+        "https://example.com/image.png",
+        res as never,
+        "pixel",
+      );
       expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "image/png");
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.send).toHaveBeenCalled();
+      // 即便是占位图也要带上失败原因头，便于排障。
+      // 这条路径走的是内层 catch（抓取失败），reason=upstream-fetch-failed；
+      // proxy-error 是外层 catch（URL 解析/SSRF 之外的异常）才用的。
+      expect(res.setHeader).toHaveBeenCalledWith(
+        "X-Image-Proxy-Failure",
+        "upstream-fetch-failed",
+      );
     });
   });
 

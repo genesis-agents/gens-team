@@ -1282,6 +1282,8 @@ export class ProxyController {
   async proxyImage(
     @Query("url") url: string,
     @Res() res: Response,
+    // ★ 2026-08-04：默认失败即 404（如实）；调用方可显式要旧的 1×1 占位图行为。
+    @Query("onFail") onFail?: string,
   ): Promise<void> {
     if (!url) {
       throw new HttpException("URL is required", HttpStatus.BAD_REQUEST);
@@ -1387,11 +1389,26 @@ export class ProxyController {
           }
         }
 
-        // ★ 2026-05-25 机制级修：外部图拉取失败是常态(403/404/超时)，不应抛 5xx
-        //   —— 5xx 会被 AllExceptionsFilter 升级为 Critical/[MONITORING] 告警刷屏。
-        //   改为返回透明占位图(200)，<img> 自然空白，无破图、无错误告警。
-        this.logger.warn(`Failed to proxy image (placeholder served): ${url}`);
-        this.sendTransparentPixel(res);
+        // ★ 2026-08-04 修「把失败伪装成成功」（生产实证 mission 4dfaa4b3：
+        //   报告里 21 张配图全是空框）。
+        //
+        //   2026-05-25 那版为了躲开 5xx 触发的 Critical/[MONITORING] 告警刷屏，
+        //   改成返回 **200 + 1×1 透明 PNG**。躲告警的目的达到了，代价是**所有下游
+        //   再也无法区分「这就是一张空图」和「我们没取到」**：浏览器把占位图当成
+        //   加载成功，<img onError> 永不触发，FigureRenderer 里两道"隐藏无效图"
+        //   的防线全部失效，最终按 16:9 预留出一大片空白。
+        //
+        //   躲告警是对的，撒谎是错的 —— 二者并不冲突：用 **404** 即可。它同样不是
+        //   5xx、不会触发 Critical 告警，但对 <img> 是明确的失败信号，onError 正常
+        //   触发。两个消费方（FigureRenderer / ResourceThumbnail）都已实现 onError。
+        //   直接写 res 而不 throw，连 AllExceptionsFilter 的 Client Error 日志都不产生。
+        //
+        //   确实需要"永远有个像素"的调用方（如某些截图/PDF 链路）可显式传
+        //   ?onFail=pixel 拿回旧行为 —— 但那必须是**调用方主动选择**，不是默认撒谎。
+        this.logger.warn(
+          `Failed to proxy image (upstream unavailable): ${url}`,
+        );
+        this.sendImageUnavailable(res, onFail, "upstream-fetch-failed");
         return;
       }
     } catch (error) {
@@ -1402,24 +1419,50 @@ export class ProxyController {
       // 其余(网络/超时等外部失败)同样降级为占位图，避免误报严重错误。
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
-      this.logger.warn(
-        `Image proxy failed (placeholder served): ${errorMessage}`,
-      );
-      this.sendTransparentPixel(res);
+      this.logger.warn(`Image proxy failed (unavailable): ${errorMessage}`);
+      this.sendImageUnavailable(res, onFail, "proxy-error");
     }
   }
 
   /**
-   * 返回 1×1 透明 PNG 占位图（200）。外部图代理失败时用，避免 5xx 误报严重错误，
-   * 前端 <img> 显示为空白而非破图。
+   * 外部图取不到时的响应。
+   *
+   * 默认 **404 + 诊断头**：对 <img> 是明确失败信号（onError 触发），同时不是 5xx，
+   * 不会触发 Critical/[MONITORING] 告警——这正是 2026-05-25 那版想要的效果，只是
+   * 它当时用"假装成功"实现，代价是下游全瞎。
+   *
+   * `onFail=pixel` 让确实需要"永远有个像素"的调用方显式选择旧行为。
    */
-  private sendTransparentPixel(res: Response): void {
+  private sendImageUnavailable(
+    res: Response,
+    onFail: string | undefined,
+    reason: string,
+  ): void {
+    if (res.headersSent) return;
+    if (onFail === "pixel") {
+      this.sendTransparentPixel(res, reason);
+      return;
+    }
+    res.setHeader("X-Image-Proxy-Failure", reason);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    res.status(HttpStatus.NOT_FOUND).end();
+  }
+
+  /**
+   * 返回 1×1 透明 PNG 占位图（200）。**仅在调用方显式传 onFail=pixel 时使用**。
+   * 注意：这是一个"看起来成功"的响应，任何依赖它的调用方必须自己有别的手段
+   * 判断真实性（例如检查 naturalWidth）——不要把它作为默认行为。
+   */
+  private sendTransparentPixel(res: Response, reason?: string): void {
     if (res.headersSent) return;
     const pixel = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
       "base64",
     );
     res.setHeader("Content-Type", "image/png");
+    if (reason) res.setHeader("X-Image-Proxy-Failure", reason);
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");

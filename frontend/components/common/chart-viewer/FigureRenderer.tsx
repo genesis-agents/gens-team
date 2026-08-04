@@ -24,6 +24,12 @@ import { config } from '@/lib/utils/config';
  * Convert external image URL to proxy URL to avoid CORS/hotlink issues.
  * data: URLs and already-proxied URLs are returned as-is.
  */
+/**
+ * 判定"退化图"的像素阈值：占位/间隔图通常是 1×1，少数是 2×2 / 4×4。
+ * 真实图表没有任何一边 ≤ 4px，所以这个阈值不会误杀正常图。
+ */
+const DEGENERATE_IMAGE_PX = 4;
+
 function toProxyImageUrl(url: string): string {
   if (url.startsWith('data:') || url.includes('/proxy/image')) {
     return url;
@@ -143,10 +149,37 @@ function ReferenceFigureRenderer({
     }
   };
 
-  const handleImageLoad = () => {
-    if (isMountedRef.current) {
+  /**
+   * ★ 2026-08-04：「加载成功但是空图」是第三种失败，此前无人处理。
+   *
+   * 实证（mission 4dfaa4b3，报告里 21 张配图全是空框）：BCG 的 CDN 对数据中心 IP
+   * 返回 403，后端 /proxy/image 拉不到图时**返回 200 + 1×1 透明 PNG**（当时是为了
+   * 不让 5xx 触发 Critical 告警）。浏览器把它当成一张有效图片加载成功 →
+   * onError 永不触发 → 上层 imageLoadFailed 恒为 false → 两道"隐藏无效图"的防线
+   * 全部绕过 → <Image width={800} height={450}> 按 16:9 预留出一大片空白，
+   * 用户看到的就是"有边框、有标题、里面全空"。
+   *
+   * 后端已改为如实报错（不再假成功），这里再加一道与之独立的防线：**尺寸退化的
+   * 图一律按加载失败处理**。任何来源（别的代理、CDN 的 spacer.gif、缓存里的旧
+   * 占位图）吐空图都会被挡住，不依赖后端行为。
+   */
+  const handleImageLoad = (
+    e: React.SyntheticEvent<HTMLImageElement, Event>
+  ) => {
+    if (!isMountedRef.current) return;
+    const img = e.currentTarget;
+    const degenerate =
+      img.naturalWidth > 0 &&
+      img.naturalHeight > 0 &&
+      (img.naturalWidth <= DEGENERATE_IMAGE_PX ||
+        img.naturalHeight <= DEGENERATE_IMAGE_PX);
+    if (degenerate) {
+      setImageError(true);
       setImageLoading(false);
+      onImageErrorCallback?.();
+      return;
     }
+    setImageLoading(false);
   };
 
   const handleCitationClick = () => {
