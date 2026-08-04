@@ -305,6 +305,13 @@ export async function runAnalystStage(
         agentId: "analyst",
       });
     }
+    // ★ 2026-08-04 兜底可观测：结构化 metrics 行，"洞察兜底率"可直接从日志聚合
+    //   （此前只有散文式 warn，兜底大量发生却无法量化，靠用户肉眼发现）
+    deps.log.warn(
+      `[metrics] playground_analyst_fallback=1 missionId=${missionId} ` +
+        `code=${failureCode ?? "UNKNOWN"} providerLevel=${isProviderLevel ? 1 : 0} ` +
+        `state=${analystRes.state}`,
+    );
     const fallback: AnalystOutputShape = {
       insights: [],
       themeSummary: `（analyst 阶段未产出有效综合分析；下游基于 ${researcherResults.length} 个维度的原始研究发现直接撰写报告）`,

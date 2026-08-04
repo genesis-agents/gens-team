@@ -852,7 +852,12 @@ export default function AIModelSettings({
   };
 
   const handleAddModel = async (
-    model: Omit<AIModel, 'id' | 'createdAt' | 'updatedAt' | 'hasApiKey'>,
+    // ★ 2026-08-04：maxTokens 可缺省 —— 不传时后端按模型已知上限推导，
+    //   避免前端预填值把化石默认 4096 落库（长输出被硬闸截断的根因）。
+    model: Omit<
+      AIModel,
+      'id' | 'createdAt' | 'updatedAt' | 'hasApiKey' | 'maxTokens'
+    > & { maxTokens?: number },
     workerCount: number = 1
   ) => {
     setSaving(true);
@@ -2325,7 +2330,10 @@ function AddModelModal({
   saving,
 }: {
   onAdd: (
-    model: Omit<AIModel, 'id' | 'createdAt' | 'updatedAt' | 'hasApiKey'>,
+    model: Omit<
+      AIModel,
+      'id' | 'createdAt' | 'updatedAt' | 'hasApiKey' | 'maxTokens'
+    > & { maxTokens?: number },
     workerCount?: number
   ) => void;
   onClose: () => void;
@@ -2345,7 +2353,11 @@ function AddModelModal({
     isEnabled: true,
     isDefault: false,
     isReasoning: false,
-    maxTokens: 4096,
+    // ★ 2026-08-04：0 = 未指定（提交时不传，让后端按模型已知上限推导）。
+    //   此前预填 4096 → 提交总是带 4096 → 后端 `?? getKnownModelLimit` 推导
+    //   分支永远走不到，"默认值"被落库成"管理员显式值"，运行时被当硬闸
+    //   clamp 导致长输出截断（与 BYOK 模态框 2026-08-02 同款修复）。
+    maxTokens: 0,
     temperature: 0.7,
     description: '',
     // ★ 新增：模型能力配置字段
@@ -2800,13 +2812,15 @@ function AddModelModal({
                   </label>
                   <input
                     type="number"
-                    value={formData.maxTokens}
-                    onChange={(e) =>
+                    value={formData.maxTokens > 0 ? formData.maxTokens : ''}
+                    placeholder="留空 = 按模型已知上限自动推导"
+                    onChange={(e) => {
+                      const parsed = parseInt(e.target.value);
                       setFormData({
                         ...formData,
-                        maxTokens: parseInt(e.target.value),
-                      })
-                    }
+                        maxTokens: Number.isFinite(parsed) ? parsed : 0,
+                      });
+                    }}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
@@ -3087,6 +3101,10 @@ function AddModelModal({
                     ...formData,
                     apiKey: formData.apiKey || null,
                     secretKey: formData.secretKey || null,
+                    // 0 = 管理员未填 → 不传字段，后端按已知上限推导；
+                    // 不能发 0 或 4096（会被当成显式配置落库并成为运行时硬闸）
+                    maxTokens:
+                      formData.maxTokens > 0 ? formData.maxTokens : undefined,
                   },
                   workerCount
                 )

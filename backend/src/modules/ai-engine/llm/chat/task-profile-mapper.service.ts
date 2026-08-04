@@ -171,6 +171,25 @@ export class TaskProfileMapperService {
           );
           this.warnedHardCaps.add(staleKey);
         }
+      } else if (
+        !realLimit &&
+        effectiveMaxTokens >= 16000 &&
+        modelMaxTokens <= 8192
+      ) {
+        // ★ 2026-08-04：名单外模型（中转/自定义 modelId，MODEL_KNOWN_LIMITS 查不到）
+        //   把长输出请求（extended/long 档）砍到 <=8192 时也要可见。此前这条路走
+        //   debug 静默砍，长输出被截断后只在下游表现为 JSON 解析失败/兜底落库，
+        //   根因整段不可见。无法区分"运营方真实上限"与旧默认值化石，故只告警不改行为。
+        const unknownKey = `unknown:${modelConfig?.modelId ?? ""}`;
+        if (!this.warnedHardCaps.has(unknownKey)) {
+          this.logger.warn(
+            `[mapToParameters] 模型 ${modelConfig?.modelId} 不在已知上限名单中，` +
+              `其配置 maxTokens=${modelMaxTokens} 把长输出请求从 ${effectiveMaxTokens} ` +
+              `砍到 ${modelMaxTokens} —— 报告/整合类任务可能被截断（表现为 JSON 解析失败/兜底）。` +
+              `若该模型实际支持更大输出，请到模型配置调大 Max Tokens。`,
+          );
+          this.warnedHardCaps.add(unknownKey);
+        }
       } else {
         this.logger.debug(
           `[mapToParameters] Capping tokens at model max: ` +

@@ -628,7 +628,10 @@ export class AdminService {
         apiEndpoint: data.apiEndpoint,
         apiKey: apiKey,
         secretKey: data.secretKey,
-        maxTokens: data.maxTokens ?? 4096,
+        // ★ 2026-08-04：未显式指定时按模型已知上限推导，与 BYOK 创建路径
+        // (user-model-configs.service.ts) 同款。此前一律 4096（2025-11 那代模型的
+        // 真实上限被化石化），运行时被当硬闸 clamp，长输出任务必截断。
+        maxTokens: data.maxTokens ?? getKnownModelLimit(data.modelId) ?? 4096,
         temperature: data.temperature ?? 0.7,
         description: data.description,
         isEnabled: true,

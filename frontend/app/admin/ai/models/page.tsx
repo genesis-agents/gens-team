@@ -62,9 +62,12 @@ export default function AIModelsPage() {
         supportsFunctionCalling: false,
         supportsVision: false,
       };
+    // ★ 2026-08-04：文本输出类型不再前端猜 maxTokens（此前 CHAT 硬发 4096、
+    //   MULTIMODAL 硬发 8192——这是批量制造化石配置的源头之一：显式值让后端
+    //   按已知上限推导的 `??` 分支永远走不到，运行时又把它当硬闸 clamp，
+    //   长输出必截断）。不传 = 交给后端 getKnownModelLimit 按模型推导。
     if (modelType === 'MULTIMODAL')
       return {
-        maxTokens: 8192,
         temperature: 0.7,
         supportsTemperature: true,
         supportsStreaming: true,
@@ -74,7 +77,6 @@ export default function AIModelsPage() {
       };
     // CHAT / CHAT_FAST / CODE / EVALUATOR 默认
     return {
-      maxTokens: 4096,
       temperature: 0.7,
       supportsTemperature: true,
       supportsStreaming: true,
