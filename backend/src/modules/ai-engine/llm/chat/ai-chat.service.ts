@@ -18,6 +18,7 @@ import {
 } from "../models/config/ai-model-config.service";
 // 模型级 failover：chat() 的 BYOK 换模型逻辑抽到独立 util（god-class 不膨胀）。
 import { runChatWithModelFailover } from "../models/selection/chat-model-failover.util";
+import { raceWithAbortSignal } from "./abort-race.util";
 // ★ 2026-05-21 Capability Contract: modelType 选择的单一权威（quality-first 默认）
 import {
   resolveEffectiveModelType,
@@ -1324,15 +1325,23 @@ export class AiChatService {
     const userId = options.userId ?? RequestContext.getUserId();
     // 短路：显式指定模型（caller 自管 failover，如 ReAct loop）或无 userId →
     // 保持原行为，单次 chatOnce，不在本层做 failover（避免与 loop 层重复）。
+    // ★ 2026-08-04：signal 从"仅派发前 fast-path 检查"升级为全程 race——
+    //   in-flight 长输出调用（30K tokens / reasoning 超时 540-900s）期间用户
+    //   取消 mission 时立即返回 AbortError，不再等 HTTP 自然跑完（此前取消后
+    //   事件继续滚数分钟，用户看到"取消无效"）。abort 已被 failover 分类器
+    //   排除（isModelLevelFailoverError），不会触发模型轮询重试。
     if (options.model || !userId) {
-      return this.chatOnce(options);
+      return raceWithAbortSignal(this.chatOnce(options), options.signal);
     }
     // BYOK + 走 modelType→默认模型路径 → 模型级 failover（逻辑见
     // chat-model-failover.util，避免 god-class 膨胀）。
-    return runChatWithModelFailover(options, userId, {
-      chatOnce: (o) => this.chatOnce(o),
-      modelConfigService: this.modelConfigService,
-    });
+    return raceWithAbortSignal(
+      runChatWithModelFailover(options, userId, {
+        chatOnce: (o) => this.chatOnce(o),
+        modelConfigService: this.modelConfigService,
+      }),
+      options.signal,
+    );
   }
 
   /**
