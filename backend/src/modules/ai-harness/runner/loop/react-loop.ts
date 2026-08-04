@@ -1460,10 +1460,17 @@ export class ReActLoop implements IAgentLoop {
             continue;
           }
 
-          const output =
+          // ★ 2026-08-04（生产实证：Leader.plan 卡死 s2，整条 mission 起不来）：
+          //   模型有时把对象**序列化两次** —— finalize.output 是一个内容为 JSON
+          //   的字符串，schema 校验直接报 `<root>: Expected object, received string`，
+          //   然后连拒三轮触底。与本文件已有的 actions/kind 容错同类：模型没按协议
+          //   给结构，但**内容是完整的**，再解一层就能用。
+          //   只在「字符串 + 解出来是对象/数组」时接受，其余原样交给 schema 报错。
+          const rawOutput =
             decision.action.kind === "finalize"
               ? decision.action.output
               : actionResult.output;
+          const output = this.unwrapDoubleEncodedJson(rawOutput);
 
           // ★ 2026-05-29 (screenshot_22 根因)：模型在 finalize 槽位塞了 tool-call 信封
           //   （{kind:"tool_call", calls:[...]}）——它没数据、还想搜，而非 finalize 字段缺失。
@@ -2124,6 +2131,25 @@ export class ReActLoop implements IAgentLoop {
    * "parallel_tool_call", calls:[...]} 塞进 finalize 槽位。这不是"字段缺失"型 schema
    * 不达标，需专门处理（否则普通 critique 让模型继续吐 tool_call 死循环烧预算）。
    */
+  /**
+   * 模型把对象序列化两次时（finalize.output 是一个内容为 JSON 的字符串），
+   * 再解一层还原成对象。解不动 / 不是对象就原样返回，交给 schema 报准确错误。
+   *
+   * ★ 2026-08-04 生产实证：`<root>: Expected object, received string` 让
+   * Leader.plan 在 s2 连拒触底，整条 mission 起不来。
+   */
+  private unwrapDoubleEncodedJson(value: unknown): unknown {
+    if (typeof value !== "string") return value;
+    const s = value.trim();
+    if (!s.startsWith("{") && !s.startsWith("[")) return value;
+    try {
+      const parsed: unknown = JSON.parse(s);
+      return parsed !== null && typeof parsed === "object" ? parsed : value;
+    } catch {
+      return value;
+    }
+  }
+
   private isToolCallEnvelopeOutput(output: unknown): boolean {
     if (!output || typeof output !== "object") return false;
     const o = output as Record<string, unknown>;

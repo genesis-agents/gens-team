@@ -674,6 +674,29 @@ export class LlmExecutor {
         continue;
       }
 
+      // ★ 2026-08-04（生产实证：Leader.plan 卡死在 s2，整条 mission 起不来）：
+      //   模型有时把对象**序列化两次**——抽出来的是一个内容为 JSON 的字符串，
+      //   直接送 zod 就是 `<root>: Expected object, received string`。
+      //   这与 react-loop 里已有的 actions/kind 容错同类：模型没按协议给结构，
+      //   但**内容是完整的**，再解一层就能用，不该整轮作废重试。
+      //   只在「字符串 + 解出来是对象/数组」时接受，其余保持原样交给 zod 报错。
+      if (typeof jsonObj === "string") {
+        const s = jsonObj.trim();
+        if (s.startsWith("{") || s.startsWith("[")) {
+          try {
+            const reparsed: unknown = JSON.parse(s);
+            if (reparsed !== null && typeof reparsed === "object") {
+              this.logger.warn(
+                `[${input.agentId}] output 是被序列化的 JSON 字符串，已再解一层（模型协议偏差，非致命）`,
+              );
+              jsonObj = reparsed;
+            }
+          } catch {
+            /* 解不动就维持原值，下面 zod 会给出准确报错 */
+          }
+        }
+      }
+
       const parseResult = input.outputSchema.safeParse(jsonObj);
       if (!parseResult.success) {
         const issues = parseResult.error.issues

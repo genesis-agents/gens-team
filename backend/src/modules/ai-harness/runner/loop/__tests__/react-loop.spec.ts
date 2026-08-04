@@ -653,6 +653,57 @@ describe("ReActLoop (Phase 2)", () => {
     expect(events.some((e) => e.type === "action_executed")).toBe(true);
   });
 
+  // ★ 2026-08-04（生产实证：Leader.plan 卡死 s2，整条 mission 起不来）：
+  //   模型把对象序列化两次 —— finalize.output 是一个内容为 JSON 的字符串，
+  //   schema 校验报 `<root>: Expected object, received string`，连拒三轮触底。
+  //   与 actions/kind 容错同类：结构不对但内容完整，再解一层就能用。
+  it("★ finalize.output 是被序列化的 JSON 字符串时自动再解一层", async () => {
+    const payload = { dimensions: ["a", "b"], themeSummary: "t" };
+    const chat = mkChat([
+      JSON.stringify({
+        thinking: "plan done",
+        // 模型把对象 stringify 后塞进 output（生产原样形态）
+        action: { kind: "finalize", output: JSON.stringify(payload) },
+      }),
+    ]);
+    const reg = mkToolRegistry({});
+    const hooks = new HookRegistry();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invoker = new ToolInvoker(reg as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const loop = new ReActLoop(chat as any, invoker, hooks);
+
+    const events = await drain(
+      loop.run(makeEnvelope(), criteria, { agentId: "s-double-encoded" }),
+    );
+    const output = events.find((e) => e.type === "output");
+    // 修复前：output 是字符串 → schema 报 <root>: Expected object
+    expect((output?.payload as { output?: unknown })?.output).toEqual(payload);
+  });
+
+  it("普通字符串 output 不被误解析（只认 JSON 对象/数组）", async () => {
+    const chat = mkChat([
+      JSON.stringify({
+        thinking: "done",
+        action: { kind: "finalize", output: "一段普通的中文结论，不是 JSON" },
+      }),
+    ]);
+    const reg = mkToolRegistry({});
+    const hooks = new HookRegistry();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invoker = new ToolInvoker(reg as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const loop = new ReActLoop(chat as any, invoker, hooks);
+
+    const events = await drain(
+      loop.run(makeEnvelope(), criteria, { agentId: "s-plain-string" }),
+    );
+    const output = events.find((e) => e.type === "output");
+    expect((output?.payload as { output?: unknown })?.output).toBe(
+      "一段普通的中文结论，不是 JSON",
+    );
+  });
+
   // ── v2: BudgetAccountant integration ──
   it("aborts loop when BudgetAccountant.exhausted() returns true", async () => {
     const { BudgetAccountant } =
