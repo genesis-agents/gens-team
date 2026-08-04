@@ -986,7 +986,9 @@
       "blockedDesc": "This site requires human verification, so the content proxy cannot reach it. Please open it in your browser.",
       "networkDesc": "Could not retrieve the content, possibly a network issue. Retry or open it in your browser.",
       "extractFailedDesc": "No readable article could be extracted from this page. Please open it in your browser."
-    }
+    },
+    "loadFailed": "Failed to load",
+    "retry": "Tap to retry"
   },
   "aiInsights": {
     "title": "AI Insights",

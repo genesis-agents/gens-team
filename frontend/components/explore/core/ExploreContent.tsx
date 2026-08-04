@@ -2236,7 +2236,9 @@ function HomeContent() {
                   否则一次网络抖动就把无限滚动永久停掉，还告诉用户已经看完了。 */}
               {!loading && filteredResources.length > 0 && loadError && (
                 <div className="mt-6 text-center">
-                  <p className="mb-2 text-sm text-gray-500">加载失败</p>
+                  <p className="mb-2 text-sm text-gray-500">
+                    {t('explore.loadFailed')}
+                  </p>
                   <button
                     type="button"
                     onClick={() => {
@@ -2246,7 +2248,7 @@ function HomeContent() {
                     }}
                     className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-50"
                   >
-                    点击重试
+                    {t('explore.retry')}
                   </button>
                 </div>
               )}

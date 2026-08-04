@@ -986,7 +986,9 @@
       "blockedDesc": "该网站启用了人机验证，内容代理无法访问，请在浏览器中直接打开。",
       "networkDesc": "内容获取失败，可能是网络问题，请重试或在浏览器中直接打开。",
       "extractFailedDesc": "未能从该页面提取出正文，请点击下方按钮在浏览器中直接打开。"
-    }
+    },
+    "loadFailed": "加载失败",
+    "retry": "点击重试"
   },
   "aiInsights": {
     "title": "AI 洞察",
