@@ -139,6 +139,8 @@ function HomeContent() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  /** ★ 2026-08-04 #8：翻页失败 ≠ 没有更多。分开存，避免把故障说成"已看完"。 */
+  const [loadError, setLoadError] = useState(false);
   const [page, setPage] = useState(0);
 
   // ★ 2026-07-26: 无限滚动触发器用 callback ref（node state）而不是 useRef。
@@ -628,6 +630,7 @@ function HomeContent() {
       } else {
         setResources(newResources);
       }
+      setLoadError(false);
       setHasMore(newResources.length >= PAGE_SIZE);
       setPage(currentPage);
     } catch (error) {
@@ -635,8 +638,13 @@ function HomeContent() {
       if (!loadMore) {
         setResources([]);
       }
-      // 请求失败必须落 hasMore=false：否则触发器留在页面上被 observer 反复
-      // 命中（无限重试），空态也会一直停在"还在加载"分支
+      // ★ 2026-08-04 深度检视 #8：「加载失败」与「没有更多」此前共用 hasMore 一个
+      //   布尔。网络抖动/500 → hasMore=false → 触发器不再挂载 → 本 tab 无限滚动
+      //   彻底停止，页面底部还写着「已加载全部内容」，用户被告知全部看完了
+      //   （实际只加载了几十条）。必须切 tab / 改筛选 / 整页刷新才能恢复。
+      //   拆成两个状态：仍然落 hasMore=false（避免 observer 无限重试），但另外
+      //   标记 loadError，让 UI 显示「加载失败，点击重试」而不是「已加载全部」。
+      setLoadError(true);
       setHasMore(false);
     } finally {
       setLoading(false);
@@ -2224,12 +2232,34 @@ function HomeContent() {
                 </div>
               )}
 
-              {/* No More Results */}
-              {!loading && filteredResources.length > 0 && !hasMore && (
+              {/* ★ 2026-08-04 #8：加载失败 —— 必须与"没有更多"分开显示，并给重试入口。
+                  否则一次网络抖动就把无限滚动永久停掉，还告诉用户已经看完了。 */}
+              {!loading && filteredResources.length > 0 && loadError && (
                 <div className="mt-6 text-center">
-                  <p className="text-sm text-gray-400">— 已加载全部内容 —</p>
+                  <p className="mb-2 text-sm text-gray-500">加载失败</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoadError(false);
+                      setHasMore(true);
+                      void fetchResources(true);
+                    }}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-50"
+                  >
+                    点击重试
+                  </button>
                 </div>
               )}
+
+              {/* No More Results */}
+              {!loading &&
+                filteredResources.length > 0 &&
+                !hasMore &&
+                !loadError && (
+                  <div className="mt-6 text-center">
+                    <p className="text-sm text-gray-400">— 已加载全部内容 —</p>
+                  </div>
+                )}
 
               {/* Empty State
                   ★ 2026-07-26 修回归：此前这里在 hasMore 时渲染 LoadingState，

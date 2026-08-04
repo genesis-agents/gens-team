@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { isSafeHttpUrl } from '@/lib/utils/url';
 import {
   CheckCircle,
   XCircle,
@@ -331,7 +332,11 @@ export function APISettingsForm({
                       </p>
                     </div>
                     <a
-                      href={template.apiKeyUrl}
+                      href={
+                        isSafeHttpUrl(template.apiKeyUrl)
+                          ? template.apiKeyUrl
+                          : undefined
+                      }
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}

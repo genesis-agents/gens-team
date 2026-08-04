@@ -90,7 +90,10 @@ describe("prompt-policy.contract", () => {
       // 规范，故更新锚点而非回退文案；其余 6 角色文本未动，hash 保持原值。
       expect(hashes).toEqual({
         leader: "a4be5984517907d0",
-        researcher: "6af03a8a2bc4f1d3",
+        // ★ 2026-08-04：0c0871bbe（2026-08-03「findings 条数 4-5 在四处复读」）
+        //   改了 agents/researcher/SKILL.md 但**没同步本锚点**，main 上红了一天。
+        //   按该 commit 之后的真实内容更新（与本轮改动无关，顺手修红灯）。
+        researcher: "205d0b6197a92b8d",
         reconciler: "006eac6d00b866d3",
         analyst: "9f3f5a208abcfa68",
         writer: "d5a86a213764ff78",

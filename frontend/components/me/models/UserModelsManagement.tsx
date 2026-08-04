@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { isSafeHttpUrl } from '@/lib/utils/url';
 import { Table, THead, TBody, Tr, Th, Td } from '@/components/ui/table';
 import { TruncatedCell } from '@/components/common/tables';
 import { StatusBadge } from '@/components/ui/badges';
@@ -309,7 +310,14 @@ export function UserModelsManagement() {
         opt.value,
         capable
           .slice(0, 4)
-          .map((p) => ({ name: p.name, href: p.apiKeyUrl || p.docUrl || null }))
+          // ★ 2026-08-04 深度检视 #10：admin 可写字段渲染成可点 href 前过白名单
+          .map((p) => {
+            const candidate = p.apiKeyUrl || p.docUrl;
+            return {
+              name: p.name,
+              href: isSafeHttpUrl(candidate) ? candidate : null,
+            };
+          })
       );
     }
     return map;

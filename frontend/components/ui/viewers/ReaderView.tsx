@@ -281,6 +281,13 @@ export default function ReaderView({
       setLoading(true);
       setError(null);
       setErrorKind('extract-failed');
+      // ★ 2026-08-04 深度检视 #9：区分「我们真的判定过失败原因」与「压根没跑到判定」。
+      //   catch 分支此前从不写 errorKind，于是后端 500 / 超时 / 断网一律沿用初值
+      //   'extract-failed' → 面板显示「未能从该页面提取出正文，请在浏览器中直接打开」
+      //   —— 把自家服务故障说成对方页面提不出正文，用户去开原始页面发现完全正常。
+      //   i18n 的 networkDesc 早就写好也接进了渲染，只是没有任何代码把 kind 置成
+      //   'network'。用显式标记而不是猜 error.message，避免文案一改就失效。
+      let classified = false;
 
       try {
         // 根据资源类别选择合适的API端点
@@ -354,6 +361,7 @@ export default function ReaderView({
                 ? 'blocked'
                 : 'extract-failed'
           );
+          classified = true;
           throw new Error('Failed to extract readable content from this page');
         }
 
@@ -366,6 +374,8 @@ export default function ReaderView({
         setError(null);
       } catch (err) {
         logger.error(`Failed to load article from ${url}:`, err);
+        // 没走到"判定失败原因"那一步 = 请求本身就没成功（断网 / 超时 / 5xx）。
+        if (!classified) setErrorKind('network');
         setLoading(false);
         setError(
           err instanceof Error

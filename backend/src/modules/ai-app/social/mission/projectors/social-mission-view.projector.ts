@@ -17,6 +17,7 @@
  */
 
 import type { SocialMissionQueryInputs } from "../query/social-mission-query.service";
+import { TERMINAL_MISSION_STATUSES } from "../../api/contracts/view-state.contract";
 import type {
   MissionStatus,
   SocialDomainView,
@@ -165,17 +166,27 @@ function projectSocialAgents(row: {
   status: string;
   platforms?: unknown;
 }): SocialDomainView["agents"] {
-  const status = row.status;
-  const isTerminal =
-    status === "completed" || status === "failed" || status === "aborted";
-  const phase: "pending" | "running" | "completed" | "failed" =
-    status === "completed"
-      ? "completed"
-      : status === "failed" || status === "aborted"
-        ? "failed"
-        : status === "running"
-          ? "running"
-          : "pending";
+  // ★ 2026-08-04（深度检视自查发现，我自己的半修）：本函数原先又手抄了一份
+  //   `completed / failed / aborted` 清单，**同样漏掉 store 现役写入的
+  //   "cancelled"** —— 上面 resolvePublicStatus 补了、这里没补，被取消的
+  //   mission 页头显示"已取消"、agent 卡却全部落 default 显示"待启动"。
+  //   同一个文件里同一份清单抄两遍、各漏各的，正是这次要根治的病根本身。
+  //   改法：**唯一入口** —— 一律先经 resolvePublicStatus 归一到 public 枚举，
+  //   再用穷举 Record 映射；public 枚举是闭集，以后加值漏映射直接编译失败。
+  const publicStatus = resolvePublicStatus(row.status);
+  const PHASE_BY_STATUS: Record<
+    MissionStatus,
+    "pending" | "running" | "completed" | "failed"
+  > = {
+    starting: "pending",
+    running: "running",
+    completed: "completed",
+    failed: "failed",
+    cancelled: "failed",
+    "quality-failed": "failed",
+  };
+  const isTerminal = TERMINAL_MISSION_STATUSES.has(publicStatus);
+  const phase = PHASE_BY_STATUS[publicStatus];
 
   const agents: SocialDomainView["agents"] = [
     {

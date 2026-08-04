@@ -26,6 +26,7 @@ import {
   MaxLength,
   Matches,
   Min,
+  IsUrl,
 } from "class-validator";
 import { JwtAuthGuard } from "../../../../common/guards/jwt-auth.guard";
 import { AdminGuard } from "../../../../common/guards/admin.guard";
@@ -67,14 +68,21 @@ class UpsertAIProviderDto {
   description?: string;
 
   @IsOptional()
+  // ★ 2026-08-04 深度检视 #10：这两个字段随 /user/api-keys 下发给**每一个普通用户**，
+  //   并被三处 UI 直接 `href={...}` 渲染成可点链接。React 不过滤 href 协议，
+  //   admin 误粘贴/账号被接管写入 `javascript:...` 就会在任意用户会话里执行。
+  //   原先只有 @IsString + @MaxLength 放行。前端渲染前另有一道白名单（双保险，
+  //   挡存量脏数据）。
   @IsString()
   @MaxLength(500)
+  @IsUrl({ protocols: ["http", "https"], require_protocol: true })
   docUrl?: string;
 
   /** 申领 API Key 的控制台页（区别于 docUrl 的文档首页），admin 可维护 */
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @IsUrl({ protocols: ["http", "https"], require_protocol: true })
   apiKeyUrl?: string;
 
   @IsOptional()

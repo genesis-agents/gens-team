@@ -1801,7 +1801,18 @@ class PlaygroundTodoBoardProjector extends BusinessTeamTodoBoardProjectorFramewo
           scope: "dimension",
           title: dimName,
           assignee: { role: "researcher", dimensionName: dimName },
-          status: mapMissionStatusToTodo(toPublicMissionStatus(row)),
+          // ★ 2026-08-04 深度检视 #2（我自己引入的分裂）：rollup placeholder 必须
+          //   与上面 (b) 终态收尾用**同一判据**。此前 placeholder 走
+          //   mapMissionStatusToTodo → quality-failed 映成 "failed"（红），而同一
+          //   mission 里由事件建出的维度 todo 走 (b) 的 `isSuccess ? done :
+          //   cancelled` → "cancelled"（灰）。结果：事件还在 buffer 里的维度显灰、
+          //   被 FIFO 挤掉的显红，同样都没跑完，红灰全看事件有没有被挤掉。
+          //   终态下一律与 (b) 对齐；运行中/未知才回落状态映射。
+          status: isTerminal
+            ? isSuccess
+              ? "done"
+              : "cancelled"
+            : mapMissionStatusToTodo(toPublicMissionStatus(row)),
           artifacts: [],
           narrativeLog: [],
           dimensionRef: dimName,

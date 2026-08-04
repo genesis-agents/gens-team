@@ -616,25 +616,41 @@ export class RssService {
    * 顺序有讲究——先补 BOM/控制字符，再补裸 &，最后补无值属性。
    */
   static sanitizeXml(xml: string): string {
-    return (
-      xml
-        // BOM + XML 1.0 非法控制字符（\t \n \r 保留）
-        .replace(/^\uFEFF/, "")
-        // eslint-disable-next-line no-control-regex
-        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
-        // 裸 & → &amp;（已是合法实体的不动）
-        .replace(/&(?!(?:[a-zA-Z][a-zA-Z0-9]*|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;")
-        // 无值属性 <a disabled> → <a disabled="disabled">
-        .replace(
-          /<([a-zA-Z][\w:-]*)((?:\s+[\w:-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*)\s*(\/?)>/g,
-          (_m, tag: string, attrs: string, selfClose: string) => {
-            const fixed = attrs.replace(
-              /\s+([\w:-]+)(?!\s*=)(?=\s|$)/g,
-              (_a, name: string) => ` ${name}="${name}"`,
-            );
-            return `<${tag}${fixed}${selfClose}>`;
-          },
-        )
+    // ★ 2026-08-04 深度检视 #7：CDATA 段先挖走、转义完再放回。
+    //   CDATA 内部 XML 解析器**不做实体还原**，此前对全文无差别把裸 & 换成
+    //   &amp;，于是 WordPress 系 feed 常见的 <title><![CDATA[AT&T]]></title>
+    //   被解析成字面量 "AT&amp;T" 写进 Resource.title/abstract —— 信源卡片显示
+    //   "AT&amp;T"，且脏数据入库后不会被后续修复回滚。
+    //   （BOM / 控制字符清理仍对全文生效：那两类在 CDATA 内同样非法。）
+    const cdataStash: string[] = [];
+    const CDATA_TOKEN = "CDATA";
+    const sanitized = xml
+      // BOM + XML 1.0 非法控制字符（\t \n \r 保留）
+      .replace(/^\uFEFF/, "")
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
+      // CDATA 段整体抽出占位（其内容不参与下面的实体转义 / 属性修补）
+      .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, (m: string) => {
+        cdataStash.push(m);
+        return `${CDATA_TOKEN}${cdataStash.length - 1}${CDATA_TOKEN}`;
+      })
+      // 裸 & → &amp;（已是合法实体的不动）
+      .replace(/&(?!(?:[a-zA-Z][a-zA-Z0-9]*|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;")
+      // 无值属性 <a disabled> → <a disabled="disabled">
+      .replace(
+        /<([a-zA-Z][\w:-]*)((?:\s+[\w:-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*)\s*(\/?)>/g,
+        (_m, tag: string, attrs: string, selfClose: string) => {
+          const fixed = attrs.replace(
+            /\s+([\w:-]+)(?!\s*=)(?=\s|$)/g,
+            (_a, name: string) => ` ${name}="${name}"`,
+          );
+          return `<${tag}${fixed}${selfClose}>`;
+        },
+      );
+    // 占位还原：原样放回，CDATA 内容一个字符都没被改过
+    return sanitized.replace(
+      new RegExp(`${CDATA_TOKEN}(\\d+)${CDATA_TOKEN}`, "g"),
+      (_m, idx: string) => cdataStash[Number(idx)] ?? "",
     );
   }
 

@@ -16,6 +16,7 @@
  */
 
 import { ExternalLink, KeyRound } from 'lucide-react';
+import { isSafeHttpUrl } from '@/lib/utils/url';
 import { useTranslation } from '@/lib/i18n';
 import { Modal } from '@/components/ui/dialogs/Modal';
 import { EmptyState } from '@/components/ui/states/EmptyState';
@@ -53,7 +54,11 @@ export function ProviderKeyHelpModal({ open, onClose, providers }: Props) {
       ) : (
         <ul className="divide-y divide-gray-100">
           {sorted.map((p) => {
-            const href = p.apiKeyUrl || p.docUrl;
+            // ★ 2026-08-04 深度检视 #10：这两个字段由 admin 维护、下发给所有用户，
+            //   React 不过滤 href 协议 —— 渲染前必须过 http(s) 白名单，挡住
+            //   javascript: 之类伪协议（后端 DTO 已加 @IsUrl，这里挡存量脏数据）。
+            const candidate = p.apiKeyUrl || p.docUrl;
+            const href = isSafeHttpUrl(candidate) ? candidate : undefined;
             return (
               <li
                 key={p.id}

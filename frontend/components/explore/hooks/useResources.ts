@@ -33,6 +33,8 @@ export function useResources({
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  /** ★ 2026-08-04 #8：翻页失败 ≠ 没有更多。分开存，避免把故障说成"已看完"。 */
+  const [loadError, setLoadError] = useState(false);
   const [page, setPage] = useState(0);
 
   // ★ 2026-07-26: 导出 callback ref（而非 useRef 对象）——消费方 `ref={loadMoreTriggerRef}`
@@ -188,6 +190,7 @@ export function useResources({
       } else {
         setResources(newResources);
       }
+      setLoadError(false);
       setHasMore(newResources.length >= PAGE_SIZE);
       setPage(currentPage);
     } catch (error) {
@@ -195,7 +198,13 @@ export function useResources({
       if (!loadMore) {
         setResources([]);
       }
-      // 失败落 hasMore=false，避免触发器留在页面上被 observer 反复命中重试
+      // ★ 2026-08-04 深度检视 #8：「加载失败」与「没有更多」此前共用 hasMore 一个
+      //   布尔。网络抖动/500 → hasMore=false → 触发器不再挂载 → 本 tab 无限滚动
+      //   彻底停止，页面底部还写着「已加载全部内容」，用户被告知全部看完了
+      //   （实际只加载了几十条）。必须切 tab / 改筛选 / 整页刷新才能恢复。
+      //   拆成两个状态：仍然落 hasMore=false（避免 observer 无限重试），但另外
+      //   标记 loadError，让 UI 显示「加载失败，点击重试」而不是「已加载全部」。
+      setLoadError(true);
       setHasMore(false);
     } finally {
       setLoading(false);
@@ -243,6 +252,10 @@ export function useResources({
     loading,
     loadingMore,
     hasMore,
+    // ★ 2026-08-04 #8：与 ExploreContent 保持等价 —— 该 hook 目前零消费方，
+    //   但两份实现必须同步，否则将来接线时又是一次半修。
+    loadError,
+    setLoadError,
     loadMoreTriggerRef: setLoadMoreNode,
     setResources,
     fetchResources,

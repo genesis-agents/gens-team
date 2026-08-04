@@ -2495,16 +2495,41 @@ describe("projectTodoBoard — dimension rollup", () => {
     expect(dim.status).toBe("done");
   });
 
-  it("mapMissionStatusToTodo: rejected → failed (rollup runs after terminal cleanup)", () => {
-    // dim rollup runs at step 4, after terminal cleanup at step b.
-    // mapMissionStatusToTodo("rejected") = "failed"
-    const row = makeRow({
-      status: "rejected",
-      dimensions: [{ name: "Finance" }],
-    });
+  // ★ 2026-08-04 深度检视 #2：rollup placeholder 与 (b) 终态收尾必须同判据。
+  //   原断言（rejected → "failed"）冻结的是两者的**分裂**：同一个 mission 里，
+  //   事件还在 buffer 的维度走 (b) 得 "done"/"cancelled"，事件被 FIFO 挤掉的走
+  //   placeholder 得 "failed" —— 红灰全看事件有没有被挤掉，与维度本身无关。
+  //   现在 placeholder 在终态下一律与 (b) 对齐。
+  it.each([
+    ["completed", "done"],
+    ["rejected", "done"], // 产出齐了、Leader 拒签：与 (b) 的 isSuccess 分支一致
+    ["quality-failed", "cancelled"], // 与 (b) 的非 isSuccess 分支一致
+    ["failed", "cancelled"],
+    ["cancelled", "cancelled"],
+  ])("rollup placeholder 与终态收尾同判据：%s → %s", (status, expected) => {
+    const row = makeRow({ status, dimensions: [{ name: "Finance" }] });
     const result = projectTodoBoard(row, []) as any;
     const dim = result.items.find((t: any) => t.id === "dim:Finance");
-    expect(dim.status).toBe("failed");
+    expect(dim.status).toBe(expected);
+  });
+
+  it("★ 同一 mission 内不得出现「有事件的维度一种色、被挤掉的另一种色」", () => {
+    // A 有 fanout 事件（走 (b)），B 只在 row.dimensions 里（走 rollup placeholder）
+    const row = makeRow({
+      status: "quality-failed",
+      dimensions: [{ name: "A" }, { name: "B" }],
+    });
+    const events = [
+      mkEv("dimensions:appended", { dimensions: [{ name: "A" }] }),
+      mkEv("dimension:research:started", { dimension: "A" }),
+    ];
+    const result = projectTodoBoard(row, events) as any;
+    const a = result.items.find((t: any) => t.id === "dim:A");
+    const b = result.items.find((t: any) => t.id === "dim:B");
+    expect(a).toBeDefined();
+    expect(b).toBeDefined();
+    // 恢复旧实现时：a="cancelled"(灰) vs b="failed"(红)
+    expect(b.status).toBe(a.status);
   });
 
   it("row.dimensions is not array → no rollup", () => {
