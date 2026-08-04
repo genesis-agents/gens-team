@@ -157,8 +157,32 @@ class InvalidActionError extends Error {
   }
 }
 
-// flag-off / prompt-driven 路径用 SUFFIX —— 字节字面与 commit f50b50d36a 之前的
-// 原版完全等价（保 prompt cache prefix 命中率，避免切 flag 触发 cache miss）。
+// flag-off / prompt-driven 路径用 SUFFIX。
+//
+// ⚠ 原注释曾声称"字节字面与 f50b50d36a 之前的原版完全等价"——**2026-08-04 起不再成立**
+//   （见下方协议收敛）。仍然成立的是另一半：flag-on / flag-off 两条路径共用同一份
+//   字面（DECISION_FC_SUFFIX = DECISION_SYSTEM_SUFFIX），所以**切 flag 不会**触发
+//   cache miss；只有改这段文本本身才会，且是一次性重新预热。
+// ★ 2026-08-04 协议收敛（四次同类事故后的治本改动）：
+//
+//   在此之前协议给同一件事教了多种写法：`action` 对象 / 顶层 `actions` 简写 /
+//   parallel 内部 `calls` 又和简写的 `actions` 撞名。模型混用完全可预期，于是
+//   f50b50d36 / 5e860b47b / 6b813fcfd 以及本次，四条容错一次事故补一条。
+//
+//   更糟的是**反例被原样渲染成合法 JSON 贴进 prompt**：
+//     WRONG: {"kind":"parallel_tool_call","calls":[...]}
+//     — NOT {"action":{"kind":"finalize"},"actions":[{"output":{...}}]}
+//   而 5e860b47b 修的那个 bug，模型吐出来的**就是第二行那个反例的形状**。
+//   把错误答案印在题面上，模型照抄是可预期的。
+//
+//   改法：
+//     · 反例一律改成散文描述，prompt 里不再出现任何「错误形状的合法 JSON」
+//     · 删掉 `actions` 顶层简写的教学 —— 每个意图只留一种写法
+//     · parser 侧的四条容错**全部保留**（见 parseDecision / normalizeAction）：
+//       存量模型和别的服务商仍会吐旧方言，安全网不撤，只是不再主动教
+//
+//   代价：prompt 字节变化 → 部署后各 agent 的 prompt cache 一次性重新预热
+//   （任何 prompt 改动都有，不是持续损失）；文本变短，单次调用还略省。
 const DECISION_SYSTEM_SUFFIX = `
 
 ## Decision Protocol
@@ -169,9 +193,8 @@ You MUST reply with a single JSON object that has EXACTLY this two-level wrapper
   "action": { "kind": "...", ... }
 }
 
-DO NOT put the action content at the top level. WRONG:
-  {"kind":"tool_call","toolId":"...","input":{...}}     ← missing wrapper
-  {"kind":"parallel_tool_call","calls":[...]}           ← missing wrapper
+DO NOT put the action content at the top level: "kind", "toolId", "input" and
+"calls" all belong INSIDE "action", never as siblings of "thinking".
 RIGHT:
   {"thinking":"I will search","action":{"kind":"tool_call","toolId":"...","input":{...}}}
   {"thinking":"I will run two searches","action":{"kind":"parallel_tool_call","calls":[...]}}
@@ -191,13 +214,9 @@ The "action" field must be EXACTLY one of these 3 kinds:
   3. Finalize with the final answer (use this when no more tool calls are needed):
      { "kind": "finalize", "output": <final answer matching the required output schema> }
 
-Shorthand: you may also send "actions": [<tool_call>, <tool_call>, ...] at the
-top level — it will be auto-wrapped to parallel_tool_call.
-IMPORTANT: "actions" is ONLY for tool calls. Never put a finalize payload in it.
-To finalize, put the answer in action.output: {"action":{"kind":"finalize","output":{...}}}
-— NOT {"action":{"kind":"finalize"},"actions":[{"output":{...}}]}.
-Inside parallel_tool_call the array key is "calls" (not "actions"):
-  {"action":{"kind":"parallel_tool_call","calls":[{"toolId":"...","input":{...}}]}}
+There is exactly ONE way to express each intent — the three shapes above.
+To run several tools, use parallel_tool_call with its "calls" array.
+To return the final answer, put it in action.output. Nothing else is needed.
 
 Rules:
 - Respond with raw JSON only, no markdown fences, no prose outside the JSON.
@@ -219,6 +238,16 @@ const RESERVED_ACTION_KINDS = new Set([
   "subagent_spawn",
   "skill_invoke",
   "llm_generate",
+]);
+
+// normalizeAction 真正实现的三个协议 kind（协议文本也只教这三个）。
+// 用于「action 退化成 kind 字符串、载荷升到顶层」的容错判定：只认这三个，
+// 其它任意字符串不猜，照旧抛准确错误。与 RESERVED_ACTION_KINDS 用途不同
+// （那个是 toolId-as-kind 的反向排除表，含未实现的保留字）。
+const PROTOCOL_ACTION_KINDS = new Set([
+  "tool_call",
+  "parallel_tool_call",
+  "finalize",
 ]);
 
 // flag-on / native FC 路径用 SUFFIX —— 真等于 DECISION_SYSTEM_SUFFIX（同字面）。
@@ -522,6 +551,8 @@ export class ReActLoop implements IAgentLoop {
     let lastIterHadParseError = false;
     /** 上一轮 parse 失败的类型名 —— 决定 critique 该说什么真话（见 finalize 驳回处）。 */
     let lastIterParseErrorName = "";
+    /** 上一轮 parse 失败的具体消息 —— 信封畸形时要原样告诉模型哪里不对。 */
+    let lastIterParseErrorMessage = "";
 
     // ─── Anthropic P0-3 fix (2026-05-05): SessionStart / UserPromptSubmit fire ───
     //   Hook 类型早就定义但全库 0 dispatch site，导致 SDK 上 hook 注册者收不到事件。
@@ -875,6 +906,7 @@ export class ReActLoop implements IAgentLoop {
           lastIterRawContent = reasoned.rawContent;
           lastIterHadParseError = !!reasoned.parseError;
           lastIterParseErrorName = reasoned.parseError?.name ?? "";
+          lastIterParseErrorMessage = reasoned.parseError?.message ?? "";
 
           // ★ 诊断：解析层兜底抛错（正常情况 parseDecision 会 catch JSON.parse /
           // InvalidActionError 自己包装。如果走到这条说明 catch 之外的异常）
@@ -1412,6 +1444,7 @@ export class ReActLoop implements IAgentLoop {
             }
             lastIterRawContent = "";
             lastIterHadParseError = false;
+            lastIterParseErrorMessage = "";
             lastActionKind = undefined;
             continue;
           }
@@ -1584,32 +1617,68 @@ export class ReActLoop implements IAgentLoop {
               lastIterHadParseError &&
               lastIterParseErrorName === "JsonExtractFailed";
 
-            const critique = finalizeIsUnparsedRaw
-              ? `[FINALIZE REJECTED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] ` +
-                `Your previous response could NOT be parsed as JSON, so its raw text was used as the output — ` +
-                `you did not "emit a string"; the JSON itself was incomplete (most commonly the output ran past ` +
-                `the token budget and was cut off mid-structure).\n` +
-                `Do NOT change how you wrap the output. Instead emit the SAME structure but SHORTER so it completes:\n` +
-                `  - keep every REQUIRED field, drop optional ones\n` +
-                `  - shorten long free-text values; keep arrays to the most important entries\n` +
-                `  - no markdown fences, no prose before or after the JSON\n` +
-                `DO NOT rerun tools — use the tool results already in this conversation.` +
-                skeletonBlock
-              : finalizeIsToolCallEnvelope
-                ? // 专门处理 tool-call-in-finalize：明确"别再吐 tool_call"，给出空结果出口
-                  `[FINALIZE REQUIRED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] You emitted a tool_call where the FINAL ANSWER is required. ` +
-                  `You are out of search budget — do NOT emit any tool_call. ` +
-                  `Produce finalize.output from the tool results already in this conversation. ` +
-                  `If you genuinely found no usable sources, emit a schema-valid result with an EMPTY findings array ([]) ` +
-                  `and a summary stating that no usable sources were found for this dimension.` +
+            // ★ 2026-08-04（生产实证 researcher 81653316 iter=2）：上面那条 2026-08-02
+            //   的修复只网住 JsonExtractFailed（JSON 压根没解出来）。**JSON 解出来了、
+            //   但 action 信封形状不合法**（InvalidActionError）走的是同一个兜底
+            //   —— raw 被塞进 finalize.output —— 却掉进下面的通用分支，于是：
+            //
+            //     模型吐 {"action":"parallel_tool_call","calls":[5 个工具调用]}
+            //       → 信封畸形，一个工具都没执行
+            //       → critique 却说「你的 finalize.output 校验失败：
+            //          dimension Required; findings Required; summary Required」
+            //
+            //   一个**想搜索**的 agent 被告知「该交 findings 了」，下一轮很可能不搜
+            //   就编 —— 与 a5a1f0963「critique 说假话把模型带偏两轮」同款危害。
+            //
+            //   真话是：你的意图我们没能执行，因为信封形状不对；工具**没有跑**。
+            //   给出的行动也必须不同 —— 不是"补字段"，而是"用正确信封重发同一个意图"。
+            //   注意**不能**加 `typeof output === "string"` 条件（JsonExtractFailed
+            //   那条可以，因为解不出 JSON 时 raw 必然是字符串）。信封畸形时 raw 是
+            //   一段**合法 JSON 文本**，会被 unwrapDoubleEncodedJson 解回对象 ——
+            //   加了字符串条件这条分支就永远不触发。（本条件写错过一次，被
+            //   envelope-dialects.spec 的 critique 用例当场抓出。）
+            const finalizeIsMalformedEnvelope =
+              lastIterHadParseError &&
+              lastIterParseErrorName === "InvalidActionError";
+
+            const critique = finalizeIsMalformedEnvelope
+              ? `[ENVELOPE REJECTED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] ` +
+                `Your JSON parsed fine, but its "action" envelope was not in an executable shape ` +
+                `(${lastIterParseErrorMessage.slice(0, 200)}). ` +
+                `NOTHING you asked for was run — no tool was called — and your raw text was used as the ` +
+                `output instead, which is why any schema complaints look unrelated to what you wrote.\n` +
+                `Re-send the SAME intent using exactly one of these envelopes:\n` +
+                `  one tool:    {"thinking":"...","action":{"kind":"tool_call","toolId":"<id>","input":{...}}}\n` +
+                `  many tools:  {"thinking":"...","action":{"kind":"parallel_tool_call","calls":[{"toolId":"<id>","input":{...}}]}}\n` +
+                `  final answer:{"thinking":"...","action":{"kind":"finalize","output":<answer>}}\n` +
+                `"kind"/"toolId"/"input"/"calls" go INSIDE "action" — never as siblings of "thinking".\n` +
+                `If you intended tool calls, emit them now — they were NOT executed.`
+              : finalizeIsUnparsedRaw
+                ? `[FINALIZE REJECTED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] ` +
+                  `Your previous response could NOT be parsed as JSON, so its raw text was used as the output — ` +
+                  `you did not "emit a string"; the JSON itself was incomplete (most commonly the output ran past ` +
+                  `the token budget and was cut off mid-structure).\n` +
+                  `Do NOT change how you wrap the output. Instead emit the SAME structure but SHORTER so it completes:\n` +
+                  `  - keep every REQUIRED field, drop optional ones\n` +
+                  `  - shorten long free-text values; keep arrays to the most important entries\n` +
+                  `  - no markdown fences, no prose before or after the JSON\n` +
+                  `DO NOT rerun tools — use the tool results already in this conversation.` +
                   skeletonBlock
-                : `[FINALIZE REJECTED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] Your finalize.output failed validation:\n` +
-                  issuesParts.map((p) => `  - ${p}`).join("\n") +
-                  `\n\nDO NOT rerun tools. Use the tool results already in this conversation to ` +
-                  `produce a corrected finalize that addresses the issues above. ` +
-                  `If the existing tool results genuinely don't have the needed information, ` +
-                  `you may emit ONE focused tool_call to fill the specific gap (do not search broadly).` +
-                  skeletonBlock;
+                : finalizeIsToolCallEnvelope
+                  ? // 专门处理 tool-call-in-finalize：明确"别再吐 tool_call"，给出空结果出口
+                    `[FINALIZE REQUIRED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] You emitted a tool_call where the FINAL ANSWER is required. ` +
+                    `You are out of search budget — do NOT emit any tool_call. ` +
+                    `Produce finalize.output from the tool results already in this conversation. ` +
+                    `If you genuinely found no usable sources, emit a schema-valid result with an EMPTY findings array ([]) ` +
+                    `and a summary stating that no usable sources were found for this dimension.` +
+                    skeletonBlock
+                  : `[FINALIZE REJECTED ${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}] Your finalize.output failed validation:\n` +
+                    issuesParts.map((p) => `  - ${p}`).join("\n") +
+                    `\n\nDO NOT rerun tools. Use the tool results already in this conversation to ` +
+                    `produce a corrected finalize that addresses the issues above. ` +
+                    `If the existing tool results genuinely don't have the needed information, ` +
+                    `you may emit ONE focused tool_call to fill the specific gap (do not search broadly).` +
+                    skeletonBlock;
             this.logger.log(
               `[${agentId}] finalize rejected (${finalizeRejectCount}/${MAX_FINALIZE_REJECTS}): ${issuesParts.join("; ").slice(0, 200)}`,
             );
@@ -2322,6 +2391,39 @@ export class ReActLoop implements IAgentLoop {
             },
           },
         };
+      }
+
+      // ★ 2026-08-04 容错（Railway 生产实证，researcher 81653316 iter=2）：
+      //   模型把信封**压平**——action 退化成 kind 字符串，本该在 action 里的字段
+      //   升到顶层当兄弟：
+      //     {"action":"parallel_tool_call","calls":[{"toolId":"web-search",...}, ...]}
+      //     → InvalidActionError: missing valid 'action' field (got string)
+      //
+      //   JSON 完整、5 个工具调用参数齐全（web-search / job-search /
+      //   radar-signal-search / explore-search / whitehouse-…），却被整份丢弃，
+      //   然后 catch 分支把 raw 当 finalize.output，schema 回一条**假 critique**
+      //   "dimension/findings/summary Required" —— 一个想搜索的 agent 被告知
+      //   "该交 findings 了"，下一轮很可能不搜就编（同 a5a1f0963 的危害）。
+      //
+      //   这与本文件已有两条容错同源：协议里同一件事存在多种写法（顶层裸 kind /
+      //   actions 简写 / action 对象），模型混用完全可预期。这里补第三种：
+      //   action 是**协议保留 kind 字符串**时，把顶层兄弟字段当作它的载荷提上来，
+      //   走与"顶层裸 kind"（上方 2235 分支）完全相同的归一化路径。
+      //
+      //   保守判定：只认三个协议 kind。其它任意字符串不猜，照旧抛错——错误信息
+      //   本身是准确的，不该被容错吞掉。
+      if (typeof obj.action === "string") {
+        const liftedKind = obj.action.trim();
+        if (PROTOCOL_ACTION_KINDS.has(liftedKind)) {
+          const lifted: Record<string, unknown> = {
+            ...(obj as Record<string, unknown>),
+            kind: liftedKind,
+          };
+          delete lifted.action;
+          delete lifted.thinking;
+          const action = this.normalizeAction(lifted);
+          return { decision: { thinking, action } };
+        }
       }
 
       const action = this.normalizeAction(obj.action);
