@@ -7,10 +7,17 @@
  * ★ 新增：同时持久化关键事件到数据库（团队消息、Agent活动）
  */
 
-import { Injectable, Logger, Optional } from "@nestjs/common";
+import {
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+  forwardRef,
+} from "@nestjs/common";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { PrismaService } from "@/common/prisma/prisma.service";
 import { ResearchRealtimeAdapter } from "./research-realtime.adapter";
+import { AgentActivityService } from "../../monitoring/agent-activity.service";
 
 /**
  * 内部事件常量（用于 NestJS EventEmitter2 解耦循环依赖）
@@ -194,6 +201,12 @@ export class ResearchEventEmitterService {
     private readonly prisma: PrismaService,
     private readonly nestEventEmitter: EventEmitter2,
     @Optional() private readonly realtimeAdapter?: ResearchRealtimeAdapter,
+    // ★ 2026-08-04 深度检视 #6：归档回读复用 AgentActivityService 的唯一实现。
+    //   @Optional + forwardRef：同模块内两者互不依赖，但 provider 注册顺序不保证，
+    //   缺失时退化为「只查 Postgres」= 修复前的行为，不会让启动失败。
+    @Optional()
+    @Inject(forwardRef(() => AgentActivityService))
+    private readonly agentActivityService?: AgentActivityService,
   ) {
     if (this.realtimeAdapter) {
       this.logger.log(
@@ -1165,6 +1178,17 @@ export class ResearchEventEmitterService {
       orderBy: { createdAt: "desc" },
       take: options?.limit || 200,
     });
+    // ★ 2026-08-04 深度检视 #6：Postgres 空 → 回读 R2 归档。
+    //   EventArchiveService 会把超出保留期的 research_agent_activities 归档后
+    //   从 Postgres 删除；此处原先只查 Postgres，归档一开旧专题时间线就返回 []，
+    //   界面显示「无活动记录」。归档回读实现只此一份（AgentActivityService），
+    //   本处不复制逻辑，只在命中为空时委托。
+    if (activities.length === 0 && this.agentActivityService) {
+      return this.agentActivityService.readArchivedAgentActivities(
+        topicId,
+        options,
+      );
+    }
     // 反转为时间正序，便于前端显示
     return activities.reverse();
   }

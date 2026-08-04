@@ -177,27 +177,74 @@ export class ModelPricingRegistry implements OnApplicationBootstrap {
         },
       });
       const byokTierDefault = TIER_DEFAULT_PRICING.standard;
+
+      // ★ 2026-08-04 深度检视 #4：**跨用户计价污染**。
+      //
+      //   UserModelConfig 是**每用户一行、用户自己可写**的表（priceInputPerMillion /
+      //   priceOutputPerMillion 是他自填的单价），而本 registry 只有
+      //   `byId: Map<modelId, …>` 一维、查询不带 userId、不带 orderBy，
+      //   原先 `if (byId.has) continue` 就是「DB 返回顺序里谁先谁算数」。
+      //
+      //   后果：用户 A 和 B 各自配了同一个 modelId（各用自己的 key），A 把单价
+      //   填成 0.01（填错或故意压低）→ 全平台该模型都按 0.01 计价 → B 的
+      //   BudgetAccountant 拿到实际花费的百分之一，预算护栏形同虚设、downgrade
+      //   永不触发；A 若填了个极大值，B 的 mission 会在没花几个钱时被掐断。
+      //
+      //   彻底修法是给 registry 加 userId 维度（键 `${userId}::${modelId}`），
+      //   但那要动 estimateCost 的所有调用点。这里先做**语义正确**的收敛：
+      //   单键 registry 里只允许放「全平台无歧义」的价——
+      //     · 该 modelId 的所有 enabled 行给出**同一个**显式单价 → 用它
+      //     · 有分歧、或部分填部分没填 → 一律回落 standard 档位默认价 + warn
+      //   档位默认价是平台中立估算，不是别人的私有计费数字。护栏照样生效
+      //   （estimatedFromTier=true，成本面板标记为估算值），但不会再有
+      //   「A 的数字决定 B 的账」。
+      const byModelId = new Map<string, typeof userRows>();
       for (const row of userRows) {
-        if (this.byId.has(row.modelId)) continue;
-        const explicitInput =
-          row.priceInputPerMillion != null
-            ? Number(row.priceInputPerMillion)
-            : null;
-        const explicitOutput =
-          row.priceOutputPerMillion != null
-            ? Number(row.priceOutputPerMillion)
-            : null;
-        const usingTierDefault =
-          explicitInput == null && explicitOutput == null;
+        const list = byModelId.get(row.modelId);
+        if (list) list.push(row);
+        else byModelId.set(row.modelId, [row]);
+      }
+      let byokAmbiguous = 0;
+      for (const [modelId, rows] of byModelId) {
+        if (this.byId.has(modelId)) continue;
+        const priced = rows
+          .map((r) => ({
+            input:
+              r.priceInputPerMillion != null
+                ? Number(r.priceInputPerMillion)
+                : null,
+            output:
+              r.priceOutputPerMillion != null
+                ? Number(r.priceOutputPerMillion)
+                : null,
+          }))
+          .filter((p) => p.input != null || p.output != null);
+
+        // 无歧义 = 要么没人填价，要么所有 enabled 行填的是同一对数字。
+        const distinct = new Set(priced.map((p) => `${p.input}/${p.output}`));
+        const unambiguous =
+          priced.length === 0 ||
+          (distinct.size === 1 && priced.length === rows.length);
+        if (!unambiguous) byokAmbiguous += 1;
+
+        const agreed = unambiguous && priced.length > 0 ? priced[0] : null;
+        const usingTierDefault = agreed === null;
         this.register({
-          modelId: row.modelId,
+          modelId,
           tier: "standard",
-          inputPricePerM: explicitInput ?? byokTierDefault.inputPerM,
-          outputPricePerM: explicitOutput ?? byokTierDefault.outputPerM,
+          inputPricePerM: agreed?.input ?? byokTierDefault.inputPerM,
+          outputPricePerM: agreed?.output ?? byokTierDefault.outputPerM,
           estimatedFromTier: usingTierDefault,
         });
         byokRegistered += 1;
         if (usingTierDefault) byokTierEstimated += 1;
+      }
+      if (byokAmbiguous > 0) {
+        this.logger.warn(
+          `[hydrateFromDb] ${byokAmbiguous} 个 BYOK 模型存在**跨用户单价分歧**（同一 modelId ` +
+            `被多个用户配置且填价不一致），已回落 standard 档位默认价估算 —— ` +
+            `单键 registry 无法区分用户，不能让某个用户填的数字成为其他人的计价基准。`,
+        );
       }
       if (byokTierEstimated > 0) {
         this.logger.log(

@@ -111,6 +111,42 @@ export class AgentActivityService {
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 
+  /**
+   * ★ 2026-08-04 深度检视 #6：归档回读的**唯一公开入口**。
+   *
+   * 原缺陷：EventArchiveReader 回落只接在 getActivitiesByDimension /
+   * getLeaderThinkingHistory 上，而这两个方法**零调用方**；前端真正走的是
+   * ResearchEventEmitterService.getAgentActivities（裸 prisma）。归档开启后
+   * 旧专题时间线返回 []，界面显示「无活动记录」—— 提交标题声称修好的
+   * "traces lost" 原样保留，等于没修。
+   *
+   * 这里把归档回读收成一个公开方法给 emitter 复用，而不是在 emitter 里再抄一份
+   * （同一读语义两套实现正是本次要根治的病根）。热路径的 take-limit Postgres
+   * 查询仍留在调用方，只有**命中为空**时才走这里。
+   */
+  async readArchivedAgentActivities(
+    topicId: string,
+    options?: { limit?: number; missionId?: string; agentRole?: string },
+  ): Promise<ResearchAgentActivity[]> {
+    if (!this.archiveReader) return [];
+    const window = await this.archiveDayWindow(topicId, options?.missionId);
+    if (!window) return [];
+    const archived = await this.archiveReader.readArchivedRows({
+      table: "research_agent_activities",
+      dayFrom: window.from,
+      dayTo: window.to,
+      rowFilter: (r) =>
+        r.topicId === topicId &&
+        (options?.missionId == null || r.missionId === options.missionId) &&
+        (options?.agentRole == null || r.agentRole === options.agentRole),
+      limit: 5000,
+    });
+    return archived
+      .map((r) => this.reviveActivity(r))
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .slice(-(options?.limit ?? 200));
+  }
+
   /** 归档回读的日期窗口：优先按 mission 起止，否则按该 topic 下所有 mission 聚合。 */
   private async archiveDayWindow(
     topicId: string,

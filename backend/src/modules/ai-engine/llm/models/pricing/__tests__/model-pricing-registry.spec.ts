@@ -455,3 +455,114 @@ describe("ModelPricingRegistry", () => {
     });
   });
 });
+
+// ============================================================================
+// ★ 2026-08-04 深度检视 #4：BYOK 跨用户计价污染
+// ============================================================================
+describe("BYOK 单价：跨用户分歧一律回落档位默认价", () => {
+  function mkPrisma(userRows: unknown[]) {
+    return {
+      aIModel: { findMany: jest.fn().mockResolvedValue([]) },
+      userModelConfig: { findMany: jest.fn().mockResolvedValue(userRows) },
+    };
+  }
+
+  it("同一 modelId 只有一个用户配置 → 用他的显式单价", async () => {
+    const reg = new ModelPricingRegistry(
+      mkPrisma([
+        {
+          modelId: "grok-4.5",
+          priceInputPerMillion: 3,
+          priceOutputPerMillion: 15,
+        },
+      ]) as never,
+    );
+    await reg.onApplicationBootstrap();
+    const e = reg.get("grok-4.5");
+    expect(e!.inputPricePerM).toBe(3);
+    expect(e!.outputPricePerM).toBe(15);
+    expect(e!.estimatedFromTier).toBe(false);
+  });
+
+  it("多个用户填了**相同**单价 → 无歧义，仍用该价", async () => {
+    const reg = new ModelPricingRegistry(
+      mkPrisma([
+        {
+          modelId: "grok-4.5",
+          priceInputPerMillion: 3,
+          priceOutputPerMillion: 15,
+        },
+        {
+          modelId: "grok-4.5",
+          priceInputPerMillion: 3,
+          priceOutputPerMillion: 15,
+        },
+      ]) as never,
+    );
+    await reg.onApplicationBootstrap();
+    expect(reg.get("grok-4.5")!.inputPricePerM).toBe(3);
+  });
+
+  it("★ 两个用户填了**不同**单价 → 绝不能采用任何一方的数字", async () => {
+    const reg = new ModelPricingRegistry(
+      mkPrisma([
+        {
+          modelId: "grok-4.5",
+          priceInputPerMillion: 0.01,
+          priceOutputPerMillion: 0.01,
+        },
+        {
+          modelId: "grok-4.5",
+          priceInputPerMillion: 77.7,
+          priceOutputPerMillion: 88.8,
+        },
+      ]) as never,
+    );
+    await reg.onApplicationBootstrap();
+    const e = reg.get("grok-4.5")!;
+    // 两个用户的数字都选了**不会与档位默认价重合**的值，否则断言会被巧合掩盖
+    // （第一版用了 3/15，恰好等于 standard 档位默认价，assertion 形同虚设）。
+    // 恢复旧实现（先到先得）时会拿到 0.01 —— 用户 A 的数字决定用户 B 的账。
+    expect(e.inputPricePerM).not.toBe(0.01);
+    expect(e.outputPricePerM).not.toBe(0.01);
+    expect(e.inputPricePerM).not.toBe(77.7);
+    expect(e.outputPricePerM).not.toBe(88.8);
+    expect(e.estimatedFromTier).toBe(true);
+  });
+
+  it("★ 一人填价、一人留空 → 同样算歧义，回落档位默认价", async () => {
+    const reg = new ModelPricingRegistry(
+      mkPrisma([
+        {
+          modelId: "grok-4.5",
+          priceInputPerMillion: 0.01,
+          priceOutputPerMillion: 0.01,
+        },
+        {
+          modelId: "grok-4.5",
+          priceInputPerMillion: null,
+          priceOutputPerMillion: null,
+        },
+      ]) as never,
+    );
+    await reg.onApplicationBootstrap();
+    const e = reg.get("grok-4.5")!;
+    expect(e.inputPricePerM).not.toBe(0.01);
+    expect(e.estimatedFromTier).toBe(true);
+  });
+
+  it("都没填价 → 档位默认价（护栏仍生效，不退回 $0）", async () => {
+    const reg = new ModelPricingRegistry(
+      mkPrisma([
+        {
+          modelId: "grok-4.5",
+          priceInputPerMillion: null,
+          priceOutputPerMillion: null,
+        },
+      ]) as never,
+    );
+    await reg.onApplicationBootstrap();
+    expect(reg.estimateCost("grok-4.5", 1000, 500)).not.toBeNull();
+    expect(reg.get("grok-4.5")!.estimatedFromTier).toBe(true);
+  });
+});
