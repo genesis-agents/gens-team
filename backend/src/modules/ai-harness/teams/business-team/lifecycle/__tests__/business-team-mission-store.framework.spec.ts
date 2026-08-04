@@ -39,6 +39,54 @@ describe("BusinessTeamMissionStoreFramework (FakeMars)", () => {
     expect(hooks.emergencyAbort).not.toHaveBeenCalled();
   });
 
+  // ★ 2026-08-04 跨 pod 取消传播：heartbeat 条件写 0 行 → 探 readStatus → 终态本地 abort
+  it("refreshHeartbeat: count=0 + readStatus=cancelled → emergencyAbort(db-terminal:cancelled)", async () => {
+    const hooks = makeFakeMarsMissionStoreHooks({
+      readStatus: jest.fn(async () => "cancelled"),
+    });
+    (hooks.writeHeartbeat as jest.Mock).mockResolvedValue(0);
+    const store = new FakeMarsMissionStore(hooks);
+    await store.refreshHeartbeat("m1", "pod-1");
+    expect(hooks.emergencyAbort).toHaveBeenCalledWith(
+      "m1",
+      "db-terminal:cancelled",
+    );
+  });
+
+  it("refreshHeartbeat: count=0 + readStatus=null → row-missing abort", async () => {
+    const hooks = makeFakeMarsMissionStoreHooks({
+      readStatus: jest.fn(async () => null),
+    });
+    (hooks.writeHeartbeat as jest.Mock).mockResolvedValue(0);
+    const store = new FakeMarsMissionStore(hooks);
+    await store.refreshHeartbeat("m1", "pod-1");
+    expect(hooks.emergencyAbort).toHaveBeenCalledWith(
+      "m1",
+      "heartbeat row missing",
+    );
+  });
+
+  it("refreshHeartbeat: count=0 且无 readStatus hook → 退化为 row-missing abort", async () => {
+    const hooks = makeFakeMarsMissionStoreHooks();
+    (hooks.writeHeartbeat as jest.Mock).mockResolvedValue(0);
+    const store = new FakeMarsMissionStore(hooks);
+    await store.refreshHeartbeat("m1", "pod-1");
+    expect(hooks.emergencyAbort).toHaveBeenCalledWith(
+      "m1",
+      "heartbeat row missing",
+    );
+  });
+
+  it("refreshHeartbeat: count=1（仍 running）→ 不触发 abort", async () => {
+    const hooks = makeFakeMarsMissionStoreHooks({
+      readStatus: jest.fn(async () => "running"),
+    });
+    const store = new FakeMarsMissionStore(hooks);
+    await store.refreshHeartbeat("m1", "pod-1");
+    expect(hooks.emergencyAbort).not.toHaveBeenCalled();
+    expect(hooks.readStatus).not.toHaveBeenCalled();
+  });
+
   it("clearHeartbeat: swallows error", async () => {
     const hooks = makeFakeMarsMissionStoreHooks();
     (hooks.resetHeartbeat as jest.Mock).mockRejectedValue(new Error("x"));

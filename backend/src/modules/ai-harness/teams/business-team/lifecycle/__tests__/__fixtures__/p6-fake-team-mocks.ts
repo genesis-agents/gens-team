@@ -140,7 +140,8 @@ export function makeFakeMarsMissionStoreHooks(
   return {
     loggerNamespace: "fake-mars-mission-store",
     createMission: jest.fn(async () => undefined),
-    writeHeartbeat: jest.fn(async () => undefined),
+    // 契约 2026-08-04：条件写返回命中行数（1 = 仍 running）
+    writeHeartbeat: jest.fn(async () => 1),
     resetHeartbeat: jest.fn(async () => undefined),
     findOrphanRunning: jest.fn(async () => []),
     claimOrphanFailed: jest.fn(async () => true),

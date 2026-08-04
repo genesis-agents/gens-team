@@ -197,8 +197,22 @@ export class MissionStore
       const code = (err as { code?: string }).code;
       return code === "P2003" || code === "P2025";
     };
-    const emergencyAbort = (missionId: string): void => {
-      abortRegistry?.abort(missionId, MissionAbortReason.mission_row_missing);
+    const emergencyAbort = (missionId: string, reason: string): void => {
+      // ★ 2026-08-04（跨 pod 取消传播）：framework 经 heartbeat 探针发现 mission
+      //   已在 DB 被推到终态时，reason 为 "db-terminal:<status>"。按终态种类映射
+      //   abort reason——pipeline 收尾按 signal.reason 区分"用户主动取消"与系统中止
+      //   （user_cancelled 不发 mission:failed），映射错会把用户取消误报成失败。
+      let abortReason = MissionAbortReason.mission_row_missing;
+      if (reason === "db-terminal:cancelled") {
+        abortReason = MissionAbortReason.user_cancelled;
+      } else if (reason === "db-terminal:failed") {
+        // 异 pod liveness/orphan 回收已标 failed（认为本 worker 已死）→ 按无活动回收停
+        abortReason = MissionAbortReason.mission_no_activity;
+      } else if (reason.startsWith("db-terminal:")) {
+        // completed / quality-failed 等罕见竞态：本 run 已被别处终结，停即可
+        abortReason = MissionAbortReason.superseded;
+      }
+      abortRegistry?.abort(missionId, abortReason);
     };
     const hooks: MissionStoreHooks<PlaygroundMissionCreateInput> = {
       loggerNamespace: MissionStore.name,
@@ -236,11 +250,21 @@ export class MissionStore
           });
         });
       },
+      // ★ 2026-08-04：条件写 WHERE status='running' 并返回 count——heartbeat 兼任
+      //   "DB 里是否仍 running"的跨 pod 探针（取消传播通道，详见 framework 注释）。
       writeHeartbeat: async (missionId, podId) => {
-        await prisma.agentPlaygroundMission.update({
-          where: { id: missionId },
+        const res = await prisma.agentPlaygroundMission.updateMany({
+          where: { id: missionId, status: "running" },
           data: { heartbeatAt: new Date(), podId },
         });
+        return res.count;
+      },
+      readStatus: async (missionId) => {
+        const row = await prisma.agentPlaygroundMission.findUnique({
+          where: { id: missionId },
+          select: { status: true },
+        });
+        return row?.status ?? null;
       },
       resetHeartbeat: async (missionId, userId) => {
         await prisma.agentPlaygroundMission.updateMany({

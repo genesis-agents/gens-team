@@ -559,10 +559,13 @@ describe("MissionStore", () => {
   // ─────────────────────────────────────────────
 
   describe("PR-H v1 heartbeat lifecycle", () => {
-    it("refreshHeartbeat: updates heartbeatAt and podId", async () => {
+    it("refreshHeartbeat: 条件写 WHERE status='running'，更新 heartbeatAt + podId", async () => {
+      prisma.agentPlaygroundMission.updateMany.mockResolvedValueOnce({
+        count: 1,
+      });
       await store.refreshHeartbeat("m1", "pod-abc");
-      expect(prisma.agentPlaygroundMission.update).toHaveBeenCalledWith({
-        where: { id: "m1" },
+      expect(prisma.agentPlaygroundMission.updateMany).toHaveBeenCalledWith({
+        where: { id: "m1", status: "running" },
         data: expect.objectContaining({
           heartbeatAt: expect.any(Date),
           podId: "pod-abc",
@@ -571,7 +574,7 @@ describe("MissionStore", () => {
     });
 
     it("refreshHeartbeat: silently swallows DB errors (debug log only)", async () => {
-      prisma.agentPlaygroundMission.update.mockRejectedValueOnce(
+      prisma.agentPlaygroundMission.updateMany.mockRejectedValueOnce(
         new Error("DB down"),
       );
       await expect(
@@ -691,12 +694,34 @@ describe("MissionStore", () => {
         undefined,
         abortRegistry as never,
       );
-      prismaFull.agentPlaygroundMission.update.mockRejectedValueOnce(
+      prismaFull.agentPlaygroundMission.updateMany.mockRejectedValueOnce(
         new Error("transient DB outage"),
       );
 
       await store.refreshHeartbeat("m1", "pod-1");
       expect(abortRegistry.abort).not.toHaveBeenCalled();
+    });
+
+    // ★ 2026-08-04 跨 pod 取消传播：heartbeat 条件写 0 行 + DB status=cancelled
+    //   → 本地 abort(user_cancelled)。取消请求落在异 pod 时（in-memory abort no-op），
+    //   worker 靠这条链在 ≤30s 内感知并停止（此前会一直跑到自然结束，"取消无效"）。
+    it("heartbeat 探到 DB 已 cancelled → abort(user_cancelled)", async () => {
+      const abortRegistry = makeAbortRegistry();
+      const prismaFull = makePrismaWithChildTables(prisma);
+      store = new MissionStore(
+        prismaFull as never,
+        undefined,
+        abortRegistry as never,
+      );
+      prismaFull.agentPlaygroundMission.updateMany.mockResolvedValueOnce({
+        count: 0,
+      });
+      prismaFull.agentPlaygroundMission.findUnique.mockResolvedValueOnce({
+        status: "cancelled",
+      });
+
+      await store.refreshHeartbeat("m1", "pod-1");
+      expect(abortRegistry.abort).toHaveBeenCalledWith("m1", "user_cancelled");
     });
 
     it("works without abortRegistry injected (backward-compat)", async () => {

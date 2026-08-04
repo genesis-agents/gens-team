@@ -43,10 +43,29 @@ export abstract class BusinessTeamMissionStoreFramework<
     await this.storeHooks.createMission(input);
   }
 
-  /** 写 heartbeat。Row missing → emergency abort。 */
+  /**
+   * 写 heartbeat。Row missing → emergency abort。
+   *
+   * ★ 2026-08-04（跨 pod 取消传播）：heartbeat 是条件写（WHERE status='running'），
+   * count===0 表示 mission 已不处于 running——最常见的原因是用户在**另一个 pod**
+   * 点了取消（abort registry 是进程内存 Map，跨 pod 的 abort 是 no-op，worker
+   * 对 DB 里的 cancelled 全程无感知，继续烧钱/发事件，用户看到"取消无效"）。
+   * 此时经 readStatus 区分终态种类，触发本地 abort 让 in-flight run 停下。
+   * 传播延迟上限 = heartbeat 间隔（30s）。
+   */
   async refreshHeartbeat(missionId: string, podId: string): Promise<void> {
     try {
-      await this.storeHooks.writeHeartbeat(missionId, podId);
+      const affected = await this.storeHooks.writeHeartbeat(missionId, podId);
+      if (affected > 0) return;
+      // count===0：row 蒸发或已被推到终态。readStatus 缺省时按 row missing 处理。
+      const status = this.storeHooks.readStatus
+        ? await this.storeHooks.readStatus(missionId)
+        : null;
+      if (status === null) {
+        this.triggerEmergencyAbort(missionId, "heartbeat row missing");
+        return;
+      }
+      this.triggerEmergencyAbort(missionId, `db-terminal:${status}`);
     } catch (err: unknown) {
       if (this.storeHooks.isMissionRowMissing(err)) {
         this.triggerEmergencyAbort(missionId, "heartbeat row missing");
@@ -154,9 +173,12 @@ export abstract class BusinessTeamMissionStoreFramework<
   protected triggerEmergencyAbort(missionId: string, reason: string): void {
     if (this.emergencyAborted.has(missionId)) return;
     this.emergencyAborted.add(missionId);
+    // db-terminal:* = mission 已在 DB 被推到终态（如异 pod 用户取消），非事故；其余为 row 蒸发类事故。
+    const detail = reason.startsWith("db-terminal:")
+      ? "mission already terminal in DB (e.g. cancelled from another pod), stopping local in-flight run."
+      : "DB row missing, proactively aborting in-flight orchestrator to prevent FK / heartbeat error storm.";
     this.log.error(
-      `[emergency-abort] mission=${missionId} reason="${reason}" — DB row missing, ` +
-        `proactively aborting in-flight orchestrator to prevent FK / heartbeat error storm.`,
+      `[emergency-abort] mission=${missionId} reason="${reason}" — ${detail}`,
     );
     this.storeHooks.emergencyAbort(missionId, reason);
   }

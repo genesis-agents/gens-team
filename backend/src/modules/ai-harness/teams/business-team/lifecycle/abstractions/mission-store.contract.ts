@@ -41,8 +41,24 @@ export interface MissionStoreHooks<
 > {
   /** 业务方负责 create（含表 / 业务字段 / status='running' 初始化）。 */
   readonly createMission: (input: TCreateInput) => Promise<void>;
-  /** 写 heartbeat（update where id；业务方决定列名 heartbeatAt / podId）。 */
-  readonly writeHeartbeat: (missionId: string, podId: string) => Promise<void>;
+  /**
+   * 写 heartbeat，返回命中行数。
+   *
+   * ★ 2026-08-04（跨 pod 取消传播）：实现必须用条件写
+   * `updateMany(WHERE id, status='running')` 并返回 count——heartbeat 同时充当
+   * "本 mission 在 DB 里是否仍是 running"的周期探针。取消/终态由别的 pod 写入时
+   * （abort registry 是进程内存，跨 pod 的 abort 是 no-op），本 pod worker 唯一的
+   * 感知通道就是这里：count===0 → framework 探 readStatus → 终态则本地 abort。
+   */
+  readonly writeHeartbeat: (
+    missionId: string,
+    podId: string,
+  ) => Promise<number>;
+  /**
+   * 读 mission 当前 status（无行返回 null）。heartbeat count===0 时 framework 用它
+   * 区分"row 蒸发"与"已被推到终态"。不提供则退化为一律按 row missing 处理。
+   */
+  readonly readStatus?: (missionId: string) => Promise<string | null>;
   /** 清 heartbeat（条件 where{id, userId}）。 */
   readonly resetHeartbeat: (missionId: string, userId: string) => Promise<void>;
   /** 查询 stale-heartbeat running mission。 */
