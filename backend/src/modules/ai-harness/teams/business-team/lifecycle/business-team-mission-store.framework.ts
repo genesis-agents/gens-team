@@ -56,7 +56,14 @@ export abstract class BusinessTeamMissionStoreFramework<
   async refreshHeartbeat(missionId: string, podId: string): Promise<void> {
     try {
       const affected = await this.storeHooks.writeHeartbeat(missionId, podId);
-      if (affected > 0) return;
+      if (affected > 0) {
+        // ★ 2026-08-04（深度检视 #3）：emergencyAborted 原先只增不删 —— 一个 mission
+        //   被 emergency-abort 过一次，本进程内就**永久**失去该保护（后续真正的
+        //   row-missing 事故也不再触发）。心跳条件写命中 = 行确实回到 running
+        //   （重跑/续跑翻回来了），此时解除去重标记让保护恢复。
+        this.emergencyAborted.delete(missionId);
+        return;
+      }
       // count===0：row 蒸发或已被推到终态。readStatus 缺省时按 row missing 处理。
       const status = this.storeHooks.readStatus
         ? await this.storeHooks.readStatus(missionId)

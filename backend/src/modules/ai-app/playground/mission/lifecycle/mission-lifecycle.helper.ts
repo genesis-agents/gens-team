@@ -77,7 +77,21 @@ export class MissionLifecycleHelper extends BusinessTeamLifecycleTransitionsFram
       // ★ 2026-05-30：playground 允许从 cancelled 复活（默认只有 failed/quality-failed）。
       //   用户对一个被取消的 mission 点「重跑」= 明确想重新跑；不复活的话 cascade 会跑、
       //   烧额度，但终态永远卡在 cancelled，重跑的真实失败（如额度耗尽）写不回也显示不出来。
-      reopenableStatuses: ["failed", "quality-failed", "cancelled"],
+      // ★ 2026-08-04（深度检视 #3，high）：补上 "completed"。
+      //   mission-rerun-orchestrator 的 rerunnableStatuses 明确允许重跑 completed
+      //   （API 返回 201 受理），但这份清单不含 completed → markReopened 抛
+      //   BadRequest → 行仍是 completed → 紧接着的第一次 refreshHeartbeat 条件写
+      //   （where status='running'）命中 0 行 → readStatus 拿到 "completed" →
+      //   triggerEmergencyAbort("db-terminal:completed") → 重跑在第一秒被自己掐死、
+      //   零产出。两份状态清单必须一致，否则"受理了但跑不起来"。
+      //   影响面核过：markReopened 另一个调用方 local-rerun.service.ts:486-488 自己
+      //   就把 completed 排除在外，不受本次放宽影响。
+      reopenableStatuses: [
+        "failed",
+        "quality-failed",
+        "cancelled",
+        "completed",
+      ],
       buildCompletedUpdate: (d) => {
         const update: Prisma.AgentPlaygroundMissionUpdateInput = {
           status: "completed",

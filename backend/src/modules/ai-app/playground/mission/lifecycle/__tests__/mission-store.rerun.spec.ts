@@ -92,21 +92,33 @@ describe("MissionStore.markIntermediateState (PR-R3)", () => {
 });
 
 describe("MissionStore.markReopened (PR-R3 真 5×5 矩阵)", () => {
-  // v1.2 类别 B3 + 2026-05-30：failed/quality-failed/cancelled → running 允许；
-  // completed/running → 拒绝（保留原状态）。cancelled 加入复活白名单 —— 被取消的
-  // mission 点重跑也应能复活（见 mission-lifecycle.helper.ts reopenableStatuses）。
+  // v1.2 类别 B3 + 2026-05-30：failed/quality-failed/cancelled → running 允许。
+  // ★ 2026-08-04（深度检视 #3，high）：completed 从"拒绝"改为"允许"。
+  //   理由不是放宽标准，而是**两份清单本来就该一致**：
+  //     mission-rerun-orchestrator.service.ts:85 rerunnableStatuses 明确含 completed
+  //     （用户对已完成 mission 点重跑，API 返回 201 受理）
+  //     rerun 自 2026-06-11 起是**同-id 原地重跑**，必经 createMissionRow →
+  //     markReopened 把行翻回 running（见该文件 rerunFullMission 注释）
+  //   此处拒绝 → 行仍是 completed → 第一次条件写心跳（where status='running'）
+  //   命中 0 行 → db-terminal:completed → emergencyAbort → 重跑第一秒零产出中止。
+  //   即"受理了但永远跑不起来"。
+  //   已确认无数据损失风险：reopenTransaction 只清 errorMessage/completedAt/
+  //   finalScore/leaderSigned/leaderOverallScore/leaderVerdict，**不动 reportFull /
+  //   dimensions / verdicts**，且历史版本另存于 report-versions 表。
+  //   running 仍拒绝（它不是终态，重入由 pipeline 并发护栏负责）。
   const cases = [
     { from: "failed", expectedTo: "running", shouldThrow: false },
     { from: "quality-failed", expectedTo: "running", shouldThrow: false },
     { from: "cancelled", expectedTo: "running", shouldThrow: false },
-    { from: "completed", expectedTo: "completed", shouldThrow: true },
+    { from: "completed", expectedTo: "running", shouldThrow: false },
     { from: "running", expectedTo: "running", shouldThrow: true }, // 拒但 to 仍是 running 因为不变
   ] as const;
 
   for (const c of cases) {
     it(`from=${c.from} → ${c.shouldThrow ? "throw 且 status 保持 " + c.expectedTo : "成功转 running"}`, async () => {
       const prisma = makeMockPrisma();
-      // mock updateMany 行为：仅当 status in [failed, quality-failed] 才 count=1
+      // mock updateMany 从**真实传入的白名单**派生（args.where.status.in），
+      // 不硬编码清单 —— 否则 reopenableStatuses 变更时这里会静默失效。
       prisma.agentPlaygroundMission.updateMany.mockImplementation(
         async (args: { where: { status: { in: string[] } } }) => {
           const allowed = args.where.status.in;

@@ -92,9 +92,22 @@ export class MissionRuntimeShellService {
         //     bump runCount（"增加一个版本"）+ 清终态字段。
         //   - running 孤儿（重启续跑）→ markReopened 白名单不含 running → no-op，直接复用现有行。
         //   两种情况 runMission 随后都从 checkpoint 原地续跑（R2-#37 已实现）。
+        // ★ 2026-08-04（深度检视 #3，high）：原先是 `.catch(() => undefined)` 一律
+        //   静默吞。后果：markReopened 因状态不在白名单而失败时，行**没有**翻回
+        //   running，但这里假装成功继续开跑 —— 紧接着的第一次条件写心跳命中 0 行，
+        //   被判 db-terminal 触发 emergencyAbort，整条重跑零产出中止。失败被吞在
+        //   这里，症状爆在几百毫秒之后的心跳里，完全对不上号。
+        //   改法：把两种情况显式分开，不再用 catch 兜住语义差异。
         const existing = await store.getStatusById(missionId).catch(() => null);
         if (existing) {
-          await store.markReopened(missionId, userId).catch(() => undefined);
+          if (existing.status === "running") {
+            // running 孤儿（后端重启后续跑）：行本来就是 running，无需也不该 reopen。
+            // 这不是错误路径，所以不调用、也就不需要 catch。
+            return;
+          }
+          // 终态行同-id 重跑：必须**真的**翻回 running。失败就显式抛，让调用方拿到
+          // 4xx，而不是让下游心跳去"发现"并 abort。
+          await store.markReopened(missionId, userId);
           return;
         }
         await store.create({

@@ -130,6 +130,38 @@ export class PlaygroundPipelineDispatcher
   private readonly sessions = new Map<string, SessionEntry>();
 
   /**
+   * ★ 2026-08-04 深度检视 #1（TOCTOU）：sessions 落键太晚，挡不住双击。
+   *
+   * runMission 里 `sessions.has` 检查（护栏）与 `sessions.set`（落键）之间隔着
+   * **多次 await**：两次 overlay 刷新（DB）+ openSession（validateModels /
+   * validateCredits / createMissionRow 的网络+DB 往返）。两个相隔 <100ms 的请求
+   * 都能通过检查、都 openSession 成功，后者的 set 覆盖前者的 entry；随后任一 run
+   * 走 finally 的 sessions.delete 就删掉了另一个 run 还在用的 entry → 对方的
+   * stage hook 撞 "no active session for mission" 刷屏，两份算力同时对同一
+   * missionId 写章节草稿/事件。
+   *
+   * 修法：检查通过后**同步**占位（无 await 间隔），护栏与前置检查都读它。
+   * 带 TTL 是故意的兜底：占位与落键之间若抛在了没有 catch 的语句上，占位不会
+   * 永久卡死这个 mission（那比原 bug 更糟），最坏退化成 TTL 内不可重入。
+   * 正常路径在 finally 里立即释放，不依赖 TTL。
+   */
+  private readonly startClaims = new Map<string, number>();
+  private static readonly START_CLAIM_TTL_MS = 60_000;
+
+  private hasFreshStartClaim(missionId: string): boolean {
+    const claimedAt = this.startClaims.get(missionId);
+    if (claimedAt === undefined) return false;
+    if (
+      Date.now() - claimedAt >
+      PlaygroundPipelineDispatcher.START_CLAIM_TTL_MS
+    ) {
+      this.startClaims.delete(missionId);
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * ★ 2026-08-02：本进程是否正在跑该 mission —— **唯一真源**。
    *
    * 审计发现的病灶：续跑的 409 前置检查问的是 `MissionAbortRegistry.hasLiveRun`
@@ -142,7 +174,9 @@ export class PlaygroundPipelineDispatcher
    * 双源就是病根，故对外暴露这一个探针，让前置检查与护栏问同一个问题。
    */
   hasActiveLocalRun(missionId: string): boolean {
-    return this.sessions.has(missionId);
+    // ★ 2026-08-04：并上同步占位 —— 否则前置检查在"已占位但 session 还没落键"
+    //   的窗口里放行，就是 #1 那条 TOCTOU 的上游一半。
+    return this.sessions.has(missionId) || this.hasFreshStartClaim(missionId);
   }
 
   constructor(
@@ -446,15 +480,19 @@ export class PlaygroundPipelineDispatcher
     //   （mission-rerun-orchestrator 的 `void this.hooks.runMission(...).catch(...)`）
     //   既不读返回值也收不到异常，HTTP 早已 201。"拒绝执行"就这样被伪装成"受理成功"，
     //   用户连点 8 次拿到 8 个 201、界面零变化。守卫拒绝执行时必须让调用方知道。
-    if (this.sessions.has(missionId)) {
+    if (this.sessions.has(missionId) || this.hasFreshStartClaim(missionId)) {
       this.log.warn(
-        `[runMission ${missionId}] 已有进行中的 run（session 在场）→ 拒绝本次重入，` +
+        `[runMission ${missionId}] 已有进行中的 run（session 在场或已占位）→ 拒绝本次重入，` +
           `避免 session map 竞态 clobber（防 no-active-session 刷屏）`,
       );
       throw new ConflictException(
         `[playground-pipeline] concurrent run for mission ${missionId} rejected (already in flight)`,
       );
     }
+    // ★ 2026-08-04 深度检视 #1：**同步**占位，与上面的检查之间没有任何 await。
+    //   下面到 sessions.set 之间有多次 await（overlay×2 + openSession），此前那段
+    //   窗口里第二个请求能整个穿过去。释放见 finally 与 openSession 的 catch。
+    this.startClaims.set(missionId, Date.now());
     // ★ L3 W1 批 2c: mission 启动时刷新策略阈值 overlay（DB dual-read 快照）。
     //   失败不阻断 mission。
     // ★ 深度检视修复（2026-07-03）：strategy 快照是模块级共享的（同步消费方
@@ -497,12 +535,20 @@ export class PlaygroundPipelineDispatcher
       overlaidBase === PLAYGROUND_PIPELINE
         ? undefined
         : { ...this.buildPipelineWithHooks(), roles: overlaidBase.roles };
-    const session = await this.runtimeShell.openSession({
-      missionId,
-      input,
-      userId,
-      workspaceId,
-    });
+    const session = await this.runtimeShell
+      .openSession({
+        missionId,
+        input,
+        userId,
+        workspaceId,
+      })
+      // ★ 占位到落键之间唯一会抛的语句（validateModels / validateCredits /
+      //   createMissionRow→markReopened）。抛了要立刻释放占位，否则用户看到
+      //   错误后立即重试会被自己的残留占位挡住（TTL 兜底但体验差）。
+      .catch((err: unknown) => {
+        this.startClaims.delete(missionId);
+        throw err;
+      });
     // 创建 SupervisedMission（Leader 容器）—— 整 mission 复用，s2/s4/s10 都用它
     const leader = this.leaderService.create(
       missionId,
@@ -768,6 +814,7 @@ export class PlaygroundPipelineDispatcher
       // ★ P0-1 (2026-05-06): relay exhaustedMissions cleanup —— short mission 不 leak Map 条目
       this.invoker.clearMissionRelayState(missionId);
       this.sessions.delete(missionId);
+      this.startClaims.delete(missionId);
       this.electionTracker.clear(missionId);
     }
   }
