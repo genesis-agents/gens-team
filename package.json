@@ -132,7 +132,7 @@
     "@napi-rs/canvas": "^0.1.100",
     "@nestjs/cache-manager": "^3.1.0",
     "@tiptap/extensions": "^3.20.2",
-    "js-yaml": "^4.1.1",
+    "js-yaml": "^4.3.1",
     "sharp": "^0.34.5"
   },
   "overrides": {
