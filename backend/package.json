@@ -119,7 +119,7 @@
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "pdf-parse": "^2.4.5",
-    "pdfjs-dist": "^5.4.394",
+    "pdfjs-dist": "^6.2.108",
     "pdfkit": "^0.17.2",
     "pdfkit-table": "^0.1.99",
     "pg": "^8.16.3",
@@ -188,6 +188,6 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
-    "pdfjs-dist": "^5.4.394"
+    "pdfjs-dist": "^6.2.108"
   }
 }
