@@ -127,6 +127,100 @@ describe('ReferencePanel', () => {
     expect(screen.getByText('可信度 50')).toBeInTheDocument();
   });
 
+  // ★ 2026-08-09 布局不变量（用户实证 Screenshot_81：导出 PDF 里来源类型徽章
+  //   竖排成「行/业」「学/术」）。参考文献条目在 A4 打印宽度下会被 flex 压缩，
+  //   而 CJK 任意两字之间都可断行 → min-content 宽度 = 1 个字 → 短标签竖排。
+  //   jsdom 没有排版引擎，测不出视觉效果，只能把「不允许被压缩」钉在 class 上。
+  //   这个缺陷已经犯过两次（先是可信度，再是来源类型徽章），值得钉住。
+  describe('打印/窄栏布局不变量：短标签不得被 flex 压缩', () => {
+    it.each([
+      ['来源类型徽章', '行业'],
+      ['引用编号角标', '[1]'],
+      ['可信度', '可信度 65'],
+      ['引用次数', '文中 2 处'],
+    ])('%s 带 shrink-0', (_label, text) => {
+      render(
+        <ReferencePanel
+          citations={[
+            makeCitation(1, {
+              sourceType: 'industry',
+              credibilityScore: 65,
+              occurrences: [
+                { sectionId: 'sec-1', paragraphIndex: 0, characterOffset: 0 },
+                { sectionId: 'sec-2', paragraphIndex: 1, characterOffset: 5 },
+              ],
+            }),
+          ]}
+        />
+      );
+      const el = screen.getByText(
+        (_c, node) =>
+          (node?.textContent ?? '').replace(/\s+/g, ' ').trim() === text &&
+          node?.children.length === 0
+      );
+      expect(el.className).toContain('shrink-0');
+    });
+  });
+
+  // ★ 2026-08-09：摘掉图片 CDN 假引用后 citations 编号会出现空缺（1、3、4），
+  //   若 <ol> 还渲染自动序号（1、2、3）就会和 [N] 角标并排且不一致。
+  it('不渲染 ol 自动序号，编号唯一来源是 [N]', () => {
+    const { container } = render(
+      <ReferencePanel citations={[makeCitation(1), makeCitation(3)]} />
+    );
+    expect(container.querySelector('ol')?.className).toContain('list-none');
+    expect(screen.getByText('[1]')).toBeInTheDocument();
+    expect(screen.getByText('[3]')).toBeInTheDocument();
+  });
+
+  // ★ 2026-08-09：导出 PDF 走 print 媒体（WysiwygRenderService 未调
+  //   emulateMediaType，puppeteer page.pdf 默认 print）。屏幕上的交互附属信息
+  //   不属于报告正文，打印时必须退化成标准文献条目：[N] 标题. 域名 · 日期。
+  describe('打印媒体：导出成文献格式而不是应用卡片', () => {
+    it.each([
+      ['来源类型标签', '行业'],
+      ['引用次数', '文中 2 处'],
+      ['可信度', '可信度 65'],
+    ])('%s 在打印时隐藏', (_label, text) => {
+      render(
+        <ReferencePanel
+          citations={[
+            makeCitation(1, {
+              sourceType: 'industry',
+              credibilityScore: 65,
+              occurrences: [
+                { sectionId: 'sec-1', paragraphIndex: 0, characterOffset: 0 },
+                { sectionId: 'sec-2', paragraphIndex: 1, characterOffset: 5 },
+              ],
+            }),
+          ]}
+        />
+      );
+      const el = screen.getByText(
+        (_c, node) =>
+          (node?.textContent ?? '').replace(/\s+/g, ' ').trim() === text &&
+          node?.children.length === 0
+      );
+      expect(el.className).toContain('print:hidden');
+    });
+
+    it('条目在打印时去卡片化（无边框/底色/内边距）', () => {
+      const { container } = render(
+        <ReferencePanel citations={[makeCitation(1)]} />
+      );
+      const li = container.querySelector('li')!;
+      expect(li.className).toContain('print:border-0');
+      expect(li.className).toContain('print:bg-transparent');
+    });
+
+    it('标题在打印时不截断（line-clamp 会砍掉文献标题）', () => {
+      render(<ReferencePanel citations={[makeCitation(1)]} />);
+      expect(
+        screen.getByRole('link', { name: /Article 1/ }).className
+      ).toContain('print:line-clamp-none');
+    });
+  });
+
   it('shows credibility score', () => {
     render(
       <ReferencePanel citations={[makeCitation(1, { credibilityScore: 85 })]} />
