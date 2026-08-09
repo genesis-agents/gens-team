@@ -17,7 +17,7 @@
  *   - F18 prompt injection redaction
  */
 
-export const MARKDOWN_SANITIZER_VERSION = "1.1.0";
+export const MARKDOWN_SANITIZER_VERSION = "1.2.0";
 
 export interface SanitizeOptions {
   /**
@@ -35,6 +35,16 @@ export interface SanitizeOptions {
   abortSignal?: AbortSignal;
   /** 调试：触发段名（让 metric 上报能精确到哪段触发） */
   segmentName?: string;
+  /**
+   * 是否把 `![alt](#fig-xxx)` 视为非法残片剥掉（默认 false）。
+   *
+   * ★ 2026-08-09：只有**图占位符注入之前**的 body 才该开。
+   *   - StructuralReportAssembler 对每段 raw LLM body 调用 → 此刻 body 里不可能
+   *     有合法占位符，出现即 LLM 照抄 prompt 反面示例，必须剥（否则原样渲染成
+   *     一行 markdown 文本，用户实证 RSI 报告 p.67）。
+   *   - 注入之后再 sanitize 的管线绝不能开，会把真图全删掉。
+   */
+  stripFigurePlaceholders?: boolean;
 }
 
 export type SanitizeRule =
@@ -52,6 +62,13 @@ export type SanitizeRule =
   | "inline-fig-image-stripped" // ![FIG-N](xxx)
   | "figure-references-tag-stripped" // <figureReferences>...</figureReferences>
   | "figure-tag-stripped" // <figure>...</figure>
+  // ★ 2026-08-09 (用户实证 RSI 报告正文里出现"脚本"): LLM 把 finalize envelope
+  //   的结构化字段当正文写了出来。旧规则只覆盖 ![FIG-N](url) / <figureReferences>
+  //   / <figure> 三种，漏掉下面三种，导致 JSON 片段、裸 FIG-N、未解析的图占位
+  //   原样出现在最终 PDF 里。
+  | "output-envelope-json-stripped" // 正文里的 { "figureReferences": [...] } 等 envelope 残片
+  | "bare-figure-token-stripped" // 正文里裸写的 FIG-3 / FIG-12
+  | "unresolved-fig-placeholder-stripped" // ![alt](#fig-xxx) —— 注入前的 body 里不该存在
   // ★ 2026-06-15: run-on 散文段（>240 字、句末相接、无段落空行）按句切成自然段
   | "paragraph-segmented";
 

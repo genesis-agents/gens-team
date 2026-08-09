@@ -429,6 +429,114 @@ describe("MarkdownSanitizer (18 fixture)", () => {
   });
 
   // ★ 2026-05-08 PR-8 (mission 843f6958 Round 3 第 4 路要求)：锁住 PR-6 加的 3 条规则
+  // ★ 2026-08-09：用户实证 RSI 深度调研报告 PDF 正文里出现三种"脚本"。
+  //   PR-6 三条规则全部漏检，报告照样出货（quality 的 formatCorrectness 只扣分不删）。
+  describe("2026-08 envelope 残片剥离（RSI 报告实证）", () => {
+    it("剥正文里的 finalize envelope JSON 残片（实证形态：不闭合）", () => {
+      const raw = [
+        "上一段正文。",
+        "",
+        "{",
+        '  "figureReferences": [{"figureId": "FIG-1", "anchorParagraph": 2, "caption": "',
+        "             人工智能",
+        "}",
+        "",
+        "下一段正文。",
+      ].join("\n");
+      const r = sanitizeMarkdownBody(raw);
+      expect(r.body).not.toContain("figureReferences");
+      expect(r.body).toContain("上一段正文。");
+      expect(r.body).toContain("下一段正文。");
+      expect(
+        r.appliedRules.find((x) => x.rule === "output-envelope-json-stripped"),
+      ).toBeDefined();
+    });
+
+    // ★ 生产 artifact 51b6b494 实测形态：LLM 把 envelope 写进 ```json 围栏。
+    //   第一版规则 fence-aware 地跳过围栏，对真实形态完全失效 —— 必须覆盖。
+    it("剥 ```json 围栏里的 envelope 块（生产 artifact 51b6b494 实测形态）", () => {
+      const raw = [
+        "投资人在评估此类初创时，应当将模型是否具备可审计的内部状态访问接口作为关键尽调维度。",
+        "",
+        "```json",
+        "{",
+        '  "figureReferences": [{"figureId": "FIG-1", "anchorParagraph": 2, "caption": "内省阈值理论"}]',
+        "}",
+        "```",
+        "",
+        "### 可证伪的奇点框架",
+      ].join("\n");
+      const r = sanitizeMarkdownBody(raw);
+      expect(r.body).not.toContain("figureReferences");
+      expect(r.body).not.toContain("```json");
+      expect(r.body).toContain("### 可证伪的奇点框架");
+      expect(
+        r.appliedRules.find((x) => x.rule === "output-envelope-json-stripped"),
+      ).toBeDefined();
+    });
+
+    it("不剥普通 JSON 代码块（讲 API schema 的章节是合法正文）", () => {
+      const raw = [
+        "下面是接口返回：",
+        "```json",
+        "{",
+        '  "name": "demo",',
+        '  "items": [1, 2, 3]',
+        "}",
+        "```",
+      ].join("\n");
+      const r = sanitizeMarkdownBody(raw);
+      expect(r.body).toContain('"name"');
+      expect(r.body).toContain("```json");
+      expect(
+        r.appliedRules.find((x) => x.rule === "output-envelope-json-stripped"),
+      ).toBeUndefined();
+    });
+
+    it("不剥非 JSON 代码块", () => {
+      const raw = ["```ts", "const x = { a: 1 };", "```"].join("\n");
+      const r = sanitizeMarkdownBody(raw);
+      expect(r.body).toContain("const x = { a: 1 };");
+    });
+
+    it("不剥与 envelope 无关的普通 JSON 块", () => {
+      const raw = ["{", '  "name": "demo",', '  "value": 1', "}"].join("\n");
+      const r = sanitizeMarkdownBody(raw);
+      expect(r.body).toContain('"name"');
+      expect(
+        r.appliedRules.find((x) => x.rule === "output-envelope-json-stripped"),
+      ).toBeUndefined();
+    });
+
+    it("剥正文里裸写的 FIG-N token", () => {
+      const raw = "Claude 家族的能力演进见下图。\nFIG-1\n人工智能的发展。";
+      const r = sanitizeMarkdownBody(raw);
+      expect(r.body).not.toMatch(/FIG-\d/);
+      expect(
+        r.appliedRules.find((x) => x.rule === "bare-figure-token-stripped"),
+      ).toBeDefined();
+    });
+
+    it("stripFigurePlaceholders=true 时剥未解析的 #fig 占位（注入前管线）", () => {
+      const raw =
+        '![DeepSeek made AI cheap](#fig-dim-8-8 "DeepSeek made AI cheap")\n正常段落。';
+      const r = sanitizeMarkdownBody(raw, { stripFigurePlaceholders: true });
+      expect(r.body).not.toContain("#fig-dim-8-8");
+      expect(r.body).toContain("正常段落。");
+      expect(
+        r.appliedRules.find(
+          (x) => x.rule === "unresolved-fig-placeholder-stripped",
+        ),
+      ).toBeDefined();
+    });
+
+    it("默认不开 stripFigurePlaceholders —— 注入后管线的真占位符必须保留", () => {
+      const raw = "![chapter-figure](#fig-sec1-0)\n正常段落。";
+      const r = sanitizeMarkdownBody(raw);
+      expect(r.body).toContain("![chapter-figure](#fig-sec1-0)");
+    });
+  });
+
   describe("PR-6 figure 引用契约垃圾剥离（mission 843f6958 实证）", () => {
     it("剥 ![FIG-N](url) inline-fig-image 形式（LLM 误把图 url 写 markdown）", () => {
       const raw = [

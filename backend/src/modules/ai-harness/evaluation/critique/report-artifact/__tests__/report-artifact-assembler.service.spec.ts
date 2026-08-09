@@ -415,12 +415,63 @@ describe("ReportArtifactAssembler", () => {
     expect(fig1?.caption).toBe("Custom caption from LLM");
     // referencedBy 头条 = chapter heading（精确锚点）
     expect(fig1?.referencedBy[0]?.phrase).toBe("Market Sizing");
-    // FIG-2 未被 chapter 引用，仍由 fallback 路径追加（兜底兼容）
+    // ★ 2026-08-09 契约变更：FIG-2 未被 chapter.figureReferences 选中 → 丢弃。
+    //   旧行为是"兜底追加"，等于 chapter-writer 的取舍完全无效、抽到的候选图
+    //   100% 进报告——用户实证报告配图全是无关人物照的直接原因之一。
     const fig2 = result.figures.find(
       (f) => f.imageUrl === "https://mckinsey.com/chart2.png",
     );
-    expect(fig2).toBeDefined();
-    expect(fig2?.paragraphIndex).toBe(0); // fallback 默认 paragraphIndex=0
+    expect(fig2).toBeUndefined();
+  });
+
+  it("assemble: figure 匹配不到同一篇来源文章的引用时丢弃，不再合成假引用", () => {
+    // 用户实证：参考文献 [125]-[128] 是 cdn.i-scmp.com / img.staticimg.com 之类
+    // 图片 CDN 地址，标题是被截到 100 字的半句 caption —— 全部来自这条已删除的
+    // synthetic citation 兜底路径。
+    const base = makeBaseInput();
+    const citationCountBefore = base.researcherResults.length;
+    const input = {
+      ...base,
+      researcherResults: [
+        {
+          ...base.researcherResults[0],
+          figureCandidates: [
+            {
+              // sourceUrl 指向一个不在 citations 里的域名
+              sourceUrl: "https://cdn.unknown-host.example/photo-page",
+              imageUrl: "https://cdn.unknown-host.example/photo.jpg",
+              caption: "A photo with no matching citation",
+              relevanceHint: "medium" as const,
+            },
+          ],
+          chapters: [
+            {
+              index: 1,
+              heading: "Market Sizing",
+              body: "Some chapter body",
+              wordCount: 1500,
+              figureReferences: [{ figureId: "FIG-1", anchorParagraph: 1 }],
+            },
+          ],
+        },
+        base.researcherResults[1],
+      ],
+    };
+    const result = service.assemble(input);
+    // 图被丢弃
+    expect(
+      result.figures.find(
+        (f) => f.imageUrl === "https://cdn.unknown-host.example/photo.jpg",
+      ),
+    ).toBeUndefined();
+    // 参考文献里不得出现该域名（旧实现会 push 一条 synthetic citation）
+    expect(
+      result.citations.some((c) => c.domain.includes("unknown-host.example")),
+    ).toBe(false);
+    expect(result.citations.every((c) => !c.uuid.startsWith("synth-"))).toBe(
+      true,
+    );
+    expect(citationCountBefore).toBeGreaterThan(0);
   });
 
   it("assemble: invalid figureId in chapter.figureReferences is silently skipped (LLM hallucination guard)", () => {
@@ -1333,5 +1384,95 @@ describe("★ 2026-07-21 curatedSources 白名单信誉覆盖（citation 管道�
     const cite = artifact.citations.find((c) => c.url.includes("doi.org"));
     expect(cite!.sourceType).toBe("academic");
     expect(cite!.credibilityScore).toBe(92);
+  });
+
+  // ★ 2026-08-09: 删掉 host 兜底匹配后，figure.sourceUrl 与 citation.url 的
+  //   协议差异（citations 被 upgradeHttpToHttps 升到 https）会直接导致丢图。
+  //   normalizeUrlForMatch 归一了协议与 www 前缀，这里守住该行为。
+  it("figure sourceUrl 与 citation 只差协议/www 时仍能关联（不丢图）", () => {
+    const service = makeService();
+    const base = makeBaseInput();
+    const dimName = base.researcherResults[0].dimension;
+    const input = {
+      ...base,
+      researcherResults: [
+        {
+          ...base.researcherResults[0],
+          findings: [
+            {
+              claim: "c",
+              evidence: "e",
+              source: "https://www.gartner.com/ai-report",
+            },
+          ],
+          figureCandidates: [
+            {
+              // http + 无 www，citation 侧是 https + www
+              sourceUrl: "http://gartner.com/ai-report",
+              imageUrl: "https://gartner.com/chart1.png",
+              caption: "AI market growth chart showing 35% CAGR",
+              relevanceHint: "high" as const,
+            },
+          ],
+          chapters: [
+            {
+              index: 1,
+              heading: dimName,
+              body: "Some chapter body",
+              wordCount: 1500,
+              figureReferences: [{ figureId: "FIG-1", anchorParagraph: 1 }],
+            },
+          ],
+        },
+        base.researcherResults[1],
+      ],
+    };
+    const result = service.assemble(input);
+    const fig = result.figures.find(
+      (f) => f.imageUrl === "https://gartner.com/chart1.png",
+    );
+    expect(fig).toBeDefined();
+    // 关联到的是真实来源文章的引用，不是合成引用
+    const cite = result.citations.find(
+      (c) => c.index === fig!.evidenceCitationIndex,
+    );
+    expect(cite!.url).toContain("gartner.com/ai-report");
+    expect(cite!.uuid.startsWith("synth-")).toBe(false);
+  });
+
+  // ★ 2026-08-09 生产 artifact 51b6b494 实证：占位符 alt/title 里的 `$` 被
+  //   前端 remark-math 当行内公式定界符，把 `](#fig-…"` 整段吞成公式，
+  //   图片语法散架 → PDF 里出现一行原始 `![...](...)` 文本。
+  //   该 artifact 19 个占位符里只有含 `$` 的那 1 个破损。
+  it("injectFigurePlaceholders 去掉 alt/title 里的 $（防 remark-math 撑碎图片语法）", () => {
+    const service = makeService();
+    const caption = "DeepSeek made AI cheap. Now it is raising $8bn and robots";
+    const md = "## 资本流向\n\n第一段正文。\n";
+    const sections = service.rebuildSectionTreePublic(
+      md,
+      [{ id: "dim-1", name: "资本流向", rationale: "" }],
+      "zh-CN",
+    );
+    const out = service.injectFigurePlaceholdersPublic(md, sections, [
+      {
+        id: "fig-dim-1-0",
+        type: "reference",
+        evidenceCitationIndex: 1,
+        sourceUrl: "https://thenextweb.com/article",
+        imageUrl: "https://media.thenextweb.com/x.avif",
+        title: caption,
+        caption,
+        altText: caption,
+        sectionId: sections[0].id,
+        paragraphIndex: 0,
+        anchorMode: "after_paragraph",
+        referencedBy: [],
+      } as never,
+    ]);
+    expect(out).toContain("#fig-dim-1-0");
+    // 占位符整行不得再含 `$`
+    const placeholder = /!\[[^\]]*\]\([^)]*\)/.exec(out)?.[0] ?? "";
+    expect(placeholder).not.toContain("$");
+    expect(placeholder).toContain("8bn");
   });
 });

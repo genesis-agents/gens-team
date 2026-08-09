@@ -8,6 +8,11 @@ import type {
 import { ArtifactMarkdown } from './ArtifactMarkdown';
 import { ReferencePanel } from './ReferencePanel';
 import { AlertTriangle } from 'lucide-react';
+import { stripEnvelopeResidue } from '@/lib/markdown/stripEnvelopeResidue';
+import {
+  dropImageResourceCitations,
+  figureIdSet,
+} from './legacy-artifact-cleanup';
 
 interface Props {
   artifact: ReportArtifact;
@@ -29,9 +34,21 @@ export function ContinuousReader({ artifact }: Props) {
   const [highlightedCite] = useState<number | null>(null);
   const [reverseHighlight, setReverseHighlight] = useState<number | null>(null);
   // ★ 2026-05-06 #87: 剥除 fullMarkdown 末尾参考文献段，由 ReferencePanel 独立渲染
+  // ★ 2026-08-09: 叠加 envelope 残片兜底清理（治存量；后端 sanitizer v1.2.0 治本）
   const bodyMarkdown = useMemo(
-    () => stripTrailingReferences(artifact.content.fullMarkdown),
-    [artifact.content.fullMarkdown]
+    () =>
+      stripEnvelopeResidue(
+        stripTrailingReferences(artifact.content.fullMarkdown),
+        figureIdSet(artifact.figures)
+      ),
+    [artifact.content.fullMarkdown, artifact.figures]
+  );
+
+  // ★ 2026-08-09: 摘掉存量报告里"图片 CDN 假引用"（正文从未引用 + URL 指向图片文件）。
+  //   不重排编号 —— 正文 [N] 角标必须继续对得上剩余引用。
+  const citations = useMemo(
+    () => dropImageResourceCitations(artifact.citations),
+    [artifact.citations]
   );
 
   // ★ 2026-05-07：从 sections 反查"真维度名"列表，传给 ArtifactMarkdown 让
@@ -132,13 +149,13 @@ export function ContinuousReader({ artifact }: Props) {
         <div className="bg-white p-6">
           <ArtifactMarkdown
             markdown={bodyMarkdown}
-            citations={artifact.citations}
+            citations={citations}
             figures={artifact.figures}
             dimNames={dimNames}
           />
         </div>
         <ReferencePanel
-          citations={artifact.citations}
+          citations={citations}
           highlightedIndex={highlightedCite}
           onClickReverseHighlight={handleReverseHighlight}
         />

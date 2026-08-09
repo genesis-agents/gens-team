@@ -83,6 +83,60 @@ const RECOVERABLE_FAILURES = new Set([
   "PARSE_EMPTY_ACTIONS_ARRAY",
 ]);
 
+/** 每个维度最多抓图的来源页数量（抓取有成本，取排序后的 top-N） */
+const FIGURE_SOURCE_URL_LIMIT = 8;
+
+/** 每个维度最终保留的配图数量上限 */
+const FIGURES_PER_DIMENSION = 3;
+
+/**
+ * findings.source → 去重 + 按精选源信誉分排序 + 截断的来源页列表。
+ *
+ * 根因（2026-08-09 用户实证）：原实现按 findings 出现顺序取前 6 个 URL 抓图。
+ * 顺序由 web-search 决定，与"这一页有没有数据图表"无关。
+ *
+ * 排序依据走**已有的 canonical 来源信誉表**（`tool_configs.industry-report.
+ * config.sources`，管理员在后台可配 domain/credibilityScore），不在代码里另立
+ * 一份域名清单。未收录的域名一律同分，保持 findings 原序 —— 排序只是把已知的
+ * 高信誉源提前，不对未知源做臆测。
+ */
+function rankFigureSourceUrls(
+  sources: unknown[],
+  curatedScoreByDomain: ReadonlyMap<string, number>,
+  limit: number,
+): string[] {
+  const unique = Array.from(
+    new Set(
+      sources.filter(
+        (s): s is string => typeof s === "string" && /^https?:\/\//i.test(s),
+      ),
+    ),
+  );
+  const scoreOf = (url: string): number => {
+    if (curatedScoreByDomain.size === 0) return 0;
+    let host: string;
+    try {
+      host = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    } catch {
+      return 0;
+    }
+    const exact = curatedScoreByDomain.get(host);
+    if (exact !== undefined) return exact;
+    for (const [domain, score] of curatedScoreByDomain) {
+      if (host.endsWith(`.${domain}`)) return score;
+    }
+    return 0;
+  };
+  return (
+    unique
+      .map((url, i) => ({ url, score: scoreOf(url), i }))
+      // 稳定排序：同分保持 findings 原序
+      .sort((a, b) => b.score - a.score || a.i - b.i)
+      .slice(0, limit)
+      .map((e) => e.url)
+  );
+}
+
 /**
  * ★ 2026-05-23 P0-1 抢救：从 run 结果里抠出 well-formed finding。
  * 非 completed ≠ 无数据：
@@ -886,71 +940,89 @@ async function runOneDim(
 
     // ── 沉淀（2026-04-29）: figure pipeline 自动抽图 ─────────────────
     //   不再依赖 LLM 主动抽 figureCandidates（researcher 经常忽略 prompt）。
-    //   从 findings.source URL 自动 web-scraper 抽图 → embedding 相关性过滤 →
+    //   从 findings.source URL 自动 web-scraper 抽图 → 相关性/信息量过滤 →
     //   填回 researcherOut.figureCandidates。
+    //
+    // ★ 2026-08-09 图质量根因修（用户实证 RSI 报告全是人物头像 + 参考文献混入图片 CDN）：
+    //   1) sourceUrl 必须是**来源页 URL**，不是图片 URL。原实现写 `sourceUrl: f.imageUrl`，
+    //      导致下游 assembler 拿图片 CDN host 去匹配引用 → 匹配不上 → 合成一条假引用
+    //      （参考文献里出现 cdn.i-scmp.com / img.staticimg.com 之类）。
+    //   2) 候选来源页按"出图质量"排序后再取，而不是按 findings 出现顺序取前 6 个。
+    //      新闻站排在前面时，抽到的永远是文章头图 / 作者照。
+    //   3) filterRelevantFigures 失败**不再 fail-open 回退全量**（原实现把未过滤的
+    //      全部图片当作"相关"，闸门等于没有）。失败即放弃本维度配图。
     if (input.withFigures && researcherOut.findings.length > 0) {
       try {
-        // 取前 3 个高质量 source URL（避免抽太多浪费时间）
-        const sourceUrls = Array.from(
-          new Set(
-            researcherOut.findings
-              .map((f) => f.source)
-              .filter(
-                (s): s is string =>
-                  typeof s === "string" && /^https?:\/\//i.test(s),
-              )
-              // ★ 2026-05-02 (用户实证图片严重缺失)：原 slice(0,3) 太严，每 dim
-              //   只抽 3 个 URL，半数 mission 抓不到合适图。提到 6 给 figure
-              //   relevance filter 更多候选。relevant.slice(0,3) 仍保留每 dim 上限。
-              .slice(0, 6),
-          ),
+        // 精选源信誉表（service 内 5 分钟缓存，逐 dim 调用无额外 DB 压力）；
+        // 未配置 / 取不到时返回空表 → 排序退化为 findings 原序，不臆测域名。
+        const curatedScoreByDomain = new Map<string, number>(
+          (
+            (await deps.industrySourceRegistry
+              ?.getCuratedDomainScores()
+              .catch(() => [])) ?? []
+          ).map((s) => [s.domain, s.credibilityScore]),
+        );
+        const sourceUrls = rankFigureSourceUrls(
+          researcherOut.findings.map((f) => f.source),
+          curatedScoreByDomain,
+          FIGURE_SOURCE_URL_LIMIT,
         );
         if (sourceUrls.length > 0) {
+          // 保留「图 → 来源页」映射：extractFiguresFromUrl 只返回 imageUrl，
+          // 页面 URL 必须在这里带下来，否则下游无法做引用归因。
           const allFigures = (
             await Promise.all(
-              sourceUrls.map((url) =>
-                deps.figureExtractor
-                  .extractFiguresFromUrl(url, 15_000)
+              sourceUrls.map(async (pageUrl) => {
+                const figs = await deps.figureExtractor
+                  .extractFiguresFromUrl(pageUrl, 15_000)
                   .catch((err: unknown) => {
                     deps.log.debug(
-                      `[researcher#${idx}] figureExtractor failed for url=${url}: ${err instanceof Error ? err.message : String(err)}`,
+                      `[researcher#${idx}] figureExtractor failed for url=${pageUrl}: ${err instanceof Error ? err.message : String(err)}`,
                     );
                     return [];
-                  }),
-              ),
+                  });
+                return figs.map((f) => ({ fig: f, pageUrl }));
+              }),
             )
           ).flat();
           if (allFigures.length > 0) {
+            // 同一张图可能同时出现在多个来源页；保留**第一个**（sourceUrls 已按
+            // 精选源信誉降序，第一个就是信誉最高的那页），而不是被后面的覆盖。
+            const byImageUrl = new Map<string, string>();
+            for (const e of allFigures) {
+              if (!byImageUrl.has(e.fig.imageUrl)) {
+                byImageUrl.set(e.fig.imageUrl, e.pageUrl);
+              }
+            }
+            // 闸门失败 → 放弃本维度配图（宁缺勿滥），绝不回退到未过滤全量。
             const relevant = await deps.figureRelevance
-              .filterRelevantFigures(allFigures, dim.name)
+              .filterRelevantFigures(
+                allFigures.map((e) => e.fig),
+                dim.name,
+              )
               .catch((err: unknown) => {
                 deps.log.warn(
-                  `[researcher#${idx}] filterRelevantFigures failed for dim "${dim.name}" (fallback to allFigures): ${err instanceof Error ? err.message : String(err)}`,
+                  `[researcher#${idx}] filterRelevantFigures failed for dim "${dim.name}" — 放弃本维度配图（不回退全量）: ${err instanceof Error ? err.message : String(err)}`,
                 );
-                return allFigures;
+                return [];
               });
-            // 取前 3 张高相关度图填到 figureCandidates
+            // filterRelevantFigures 返回已按信息量排序（best first），直接取前 3 张
             researcherOut.figureCandidates = relevant
-              .slice(0, 3)
-              .map(
-                (f: {
-                  imageUrl: string;
-                  caption?: string;
-                  alt?: string;
-                  type?: string;
-                }) => ({
-                  sourceUrl: f.imageUrl, // 沉淀实现里 imageUrl 是绝对 URL
-                  imageUrl: f.imageUrl,
-                  caption: f.caption || `(图自 ${dim.name})`,
-                  sourcePageOrSection: f.alt,
-                  relevanceHint:
-                    f.type === "chart" || f.type === "table"
-                      ? "high"
-                      : "medium",
-                }),
-              );
+              .slice(0, FIGURES_PER_DIMENSION)
+              .map((f) => ({
+                // ★ 来源页 URL（不是图片 URL）——下游据此关联到真实引用编号
+                sourceUrl: byImageUrl.get(f.imageUrl) ?? "",
+                imageUrl: f.imageUrl,
+                caption: f.caption || `(图自 ${dim.name})`,
+                sourcePageOrSection: f.alt,
+                relevanceHint: (f.type === "chart" || f.type === "table"
+                  ? "high"
+                  : "medium") as "high" | "medium",
+              }))
+              // 拿不到来源页 URL 的图直接丢（无法归因 = 无法进报告）
+              .filter((c) => c.sourceUrl.length > 0);
             deps.log.log(
-              `[s3 figure-pipeline ${idx}] dim "${dim.name}" 抽 ${allFigures.length} 张 → 相关 ${relevant.length} → 用 ${(researcherOut.figureCandidates ?? []).length}`,
+              `[s3 figure-pipeline ${idx}] dim "${dim.name}" 抽 ${allFigures.length} 张 → 过闸 ${relevant.length} → 用 ${(researcherOut.figureCandidates ?? []).length}`,
             );
           }
         }

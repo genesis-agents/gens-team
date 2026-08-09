@@ -29,10 +29,31 @@ const SOURCE_TYPE_LABEL: Record<ArtifactCitation['sourceType'], string> = {
 };
 
 /**
+ * 可信度分归一到 0-100。
+ *
+ * ★ 2026-08-09：历史报告里混有 0-1 量纲的条目（assembler 早期给图片补的
+ * "合成引用" 写的是 0.5，而正常 citation 走 scoreCredibility 是 0-100）。
+ * 直接渲染会显示成「可信度 0.5」并恒判为低可信。产线侧已删掉合成引用，
+ * 这里做渲染期归一，让**存量报告重新导出**也能显示正确数值。
+ */
+function normalizeCredibility(score: number | null | undefined): number | null {
+  if (typeof score !== 'number' || Number.isNaN(score)) return null;
+  if (score < 0) return null;
+  return score <= 1 ? Math.round(score * 100) : Math.round(score);
+}
+
+/**
  * ReferencePanel —— 引用列表，支持反向溯源（baseline §8.3 [4]）。
  *
  * - hover/scroll 来源：从角标点击触发 scroll-into-view + 高亮 highlightedIndex
  * - click：触发 onClickReverseHighlight，调用方用 occurrences[] 高亮文中所有出现位置
+ *
+ * ★ 2026-08-09 导出排版修（用户实证：PDF 参考文献页右边距掉了一列孤立数字）：
+ *   元信息行原本是 `flex flex-wrap` + 末项 `ml-auto`，且末项没有 shrink-0。
+ *   A4 打印宽度下这一项被压到约 1 字符宽，「可信度 85」竖着一个字一行落到页边。
+ *   现在：元信息行不再用 auto margin 撑开，每一项 whitespace-nowrap + shrink-0，
+ *   整条目 break-inside-avoid 防止跨页撕裂。
+ *   同时移除原本直接暴露给用户的内部 section id（`章: dim-8, dim-9`）。
  */
 export function ReferencePanel({
   citations,
@@ -50,7 +71,7 @@ export function ReferencePanel({
           <li
             id={`ref-${c.index}`}
             key={c.index}
-            className={`scroll-mt-4 rounded-md border p-2.5 transition-colors ${
+            className={`scroll-mt-4 break-inside-avoid rounded-md border p-2.5 transition-colors ${
               highlightedIndex === c.index
                 ? 'border-violet-300 bg-violet-50'
                 : 'border-gray-100 bg-gray-50/50'
@@ -81,35 +102,37 @@ export function ReferencePanel({
                     <ExternalLink className="ml-1 inline h-2.5 w-2.5" />
                   </a>
                 </div>
-                <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
-                  <span>{c.domain}</span>
-                  {c.publishedAt && <span>· {c.publishedAt.slice(0, 10)}</span>}
-                  {c.occurrences.length > 0 && (
-                    <span className="rounded bg-gray-100 px-1 py-0 text-[10px] text-gray-600">
-                      {c.occurrences.length} 处
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500">
+                  <span className="shrink-0 break-all">{c.domain}</span>
+                  {c.publishedAt && (
+                    <span className="shrink-0 whitespace-nowrap">
+                      · {c.publishedAt.slice(0, 10)}
                     </span>
                   )}
                   {c.occurrences.length > 0 && (
-                    <span className="text-[10px] text-gray-400">
-                      章:{' '}
-                      {Array.from(
-                        new Set(c.occurrences.map((o) => o.sectionId))
-                      )
-                        .slice(0, 3)
-                        .join(', ')}
+                    <span className="shrink-0 whitespace-nowrap rounded bg-gray-100 px-1 py-0 text-[10px] text-gray-600">
+                      文中 {c.occurrences.length} 处
                     </span>
                   )}
-                  <span
-                    className={`ml-auto ${
-                      c.credibilityScore >= 80
-                        ? 'text-emerald-600'
-                        : c.credibilityScore >= 60
-                          ? 'text-amber-600'
-                          : 'text-gray-400'
-                    }`}
-                  >
-                    可信度 {c.credibilityScore}
-                  </span>
+                  {(() => {
+                    const credibility = normalizeCredibility(
+                      c.credibilityScore
+                    );
+                    if (credibility === null) return null;
+                    return (
+                      <span
+                        className={`shrink-0 whitespace-nowrap ${
+                          credibility >= 80
+                            ? 'text-emerald-600'
+                            : credibility >= 60
+                              ? 'text-amber-600'
+                              : 'text-gray-400'
+                        }`}
+                      >
+                        可信度 {credibility}
+                      </span>
+                    );
+                  })()}
                 </p>
               </div>
             </div>

@@ -10,6 +10,11 @@ import type {
 } from '@/lib/features/agent-playground/report-artifact.types';
 import type { DimensionPipelineState } from '@/lib/features/agent-playground/mission-presentation.types';
 import { ArtifactMarkdown } from './ArtifactMarkdown';
+import { stripEnvelopeResidue } from '@/lib/markdown/stripEnvelopeResidue';
+import {
+  dropImageResourceCitations,
+  figureIdSet,
+} from './legacy-artifact-cleanup';
 
 interface Props {
   artifact: ReportArtifact;
@@ -404,11 +409,13 @@ export function ChapterReader({
       selectedSection
     ).trimEnd();
     // 其余章节: 仍剥末尾 "## 参考文献" inline 段, 与 ContinuousReader 行为一致 (#87)
-    return slice.replace(
-      /\n+##\s*(参考文献|参考资料|References)[\s\S]*$/m,
-      '\n'
+    // ★ 2026-08-09: 叠加 envelope 残片兜底清理，与 ContinuousReader 保持一致，
+    //   否则同一份报告在"章节视图"里还能看到 JSON 残片 / 破损图占位。
+    return stripEnvelopeResidue(
+      slice.replace(/\n+##\s*(参考文献|参考资料|References)[\s\S]*$/m, '\n'),
+      figureIdSet(artifact.figures)
     );
-  }, [selectedSection, artifact.content.fullMarkdown]);
+  }, [selectedSection, artifact.content.fullMarkdown, artifact.figures]);
 
   const sectionFigures = useMemo(() => {
     if (!selectedSection) return [];
@@ -426,6 +433,13 @@ export function ChapterReader({
   //   index 通常不作为 [N] 出现在正文，需并入引用集合；否则章节视图里图片角标
   //   hover 不出引用卡（evidenceInfo=null → 退化成无提示的 [N] 链接）。连续视图传
   //   全量 citations 不受影响，这里对齐其行为。
+  // ★ 2026-08-09: 与 ContinuousReader 一致，先摘掉存量报告里的"图片 CDN 假引用"，
+  //   否则"参考文献"章节仍会把 cdn.*/img.* 这类条目当成文献列出来。
+  const cleanCitations = useMemo(
+    () => dropImageResourceCitations(artifact.citations),
+    [artifact.citations]
+  );
+
   const sectionCitations = useMemo(() => {
     if (!selectedSection) return [];
     // ★ 2026-05-27 修复 (Screenshot_87 章节空白): "参考文献"章节自身 body
@@ -438,7 +452,7 @@ export function ChapterReader({
       titleNormalized === '参考资料' ||
       titleNormalized === 'references'
     ) {
-      return artifact.citations.slice();
+      return cleanCitations.slice();
     }
     const cited = new Set<number>();
     const re = /\[(\d+)\]/g;
@@ -449,8 +463,8 @@ export function ChapterReader({
     for (const f of sectionFigures) {
       if (f.evidenceCitationIndex != null) cited.add(f.evidenceCitationIndex);
     }
-    return artifact.citations.filter((c) => cited.has(c.index));
-  }, [selectedSection, sectionMarkdown, sectionFigures, artifact.citations]);
+    return cleanCitations.filter((c) => cited.has(c.index));
+  }, [selectedSection, sectionMarkdown, sectionFigures, cleanCitations]);
 
   // 反向溯源
   const [reverseHighlight, setReverseHighlight] = useState<number | null>(null);

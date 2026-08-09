@@ -142,6 +142,39 @@ export function sanitizeMarkdownBody(
     return "";
   });
 
+  // ★ 2026-08-09 (用户实证 RSI 报告正文里出现"脚本")：
+  //   PR-6 那三条规则漏掉了 envelope 泄漏的实际形态。
+  //
+  //   5.1 finalize envelope 的 JSON 被当正文写出来。生产 artifact 51b6b494 实测有
+  //       **两种**形态，两种都要治：
+  //         a) 裸块（不闭合残片，LLM 写到一半被 body 截断）
+  //         b) ```json 围栏块 —— 生产数据里就是这种。第一版规则 fence-aware 地
+  //            跳过了围栏，等于对真实形态完全失效。
+  body = stripOutputEnvelopeJson(body, inc);
+
+  //   5.2 正文里裸写的图编号 token（`FIG-1` 单独成行或夹在句中）。
+  //       只剥独立 token，不动 "FIG-1 所示" 这类被引号包住的正常引述之外的情况——
+  //       实测 LLM 的泄漏形态就是孤立 token，正文引述图片一律用自然语言。
+  body = body.replace(
+    /(^|[\s(（])FIG-\d+(?=$|[\s)）,，。;；:：])/gim,
+    (_m, lead) => {
+      inc("bare-figure-token-stripped");
+      return typeof lead === "string" ? lead : "";
+    },
+  );
+
+  //   5.3 未解析的图占位符 `![alt](#fig-xxx)` —— **仅在注入前的管线开启**。
+  //       structural assembler 对每段 raw LLM body 调用 sanitizer，此刻 body 里
+  //       不可能存在合法占位符，出现即 LLM 照抄 prompt 反面示例，必须剥掉，
+  //       否则会原样渲染成一行 markdown 文本（用户实证 RSI 报告 p.67）。
+  //       注入后再 sanitize 的管线不得开启，否则会把真图全删掉。
+  if (opts.stripFigurePlaceholders) {
+    body = body.replace(/!\[[^\]]*\]\(\s*#fig-[^)]*\)/gi, () => {
+      inc("unresolved-fig-placeholder-stripped");
+      return "";
+    });
+  }
+
   // 6. 状态机扫描 — fence 配对 + 顶级 heading 处理 + blockquote fence 修复 + TOC 移除
   body = scanLines(body, opts, inc);
 
@@ -313,6 +346,116 @@ function scanLines(
   return out.join("\n");
 }
 
+/**
+ * finalize envelope 的字段名 —— 正文里出现「以 `{` 开头且含这些 key」的块，
+ * 一律判定为 LLM 把结构化输出写进了正文。
+ *
+ * 只列 envelope 契约字段，不做通用 JSON 检测：报告正文里出现代码块形式的
+ * JSON 示例是**合法内容**（如讲 API schema 的章节），不能一刀切剥掉。
+ */
+const OUTPUT_ENVELOPE_KEYS =
+  /"(figureReferences|figureId|anchorParagraph|citationsUsed|wordCount|thinking|action|kind|finalize)"\s*:/;
+
+/** 单个 envelope 块的最大扫描行数（防止吃掉正常正文） */
+const MAX_ENVELOPE_BLOCK_LINES = 20;
+
+/**
+ * 剥离正文里的 finalize envelope JSON。
+ *
+ * 两种实证形态（生产 artifact 51b6b494）：
+ *
+ *   a) ```json 围栏块 —— 生产数据里实际就是这种：
+ *        ```json
+ *        {
+ *          "figureReferences": [{"figureId": "FIG-1", "anchorParagraph": 2, ...}]
+ *        }
+ *        ```
+ *   b) 裸块（不闭合残片，LLM 写到一半被 body 截断）：
+ *        {
+ *          "figureReferences": [{"figureId": "FIG-1", "anchorParagraph": 2, "caption": "
+ *                   某段中文
+ *        }
+ *      所以不能用配对花括号匹配，必须按行扫。
+ *
+ * 判定条件（两条都要满足才剥，避免误伤讲 API schema 的合法章节）：
+ *   · 块首个非空行是 `{`
+ *   · 块内出现 envelope 契约字段名
+ * 普通 JSON 代码块（`{"name": "demo"}`）不含这些 key，一律保留。
+ */
+function stripOutputEnvelopeJson(
+  body: string,
+  inc: (rule: SanitizeRule) => void,
+): string {
+  if (!body.includes("{")) return body;
+  const lines = body.split("\n");
+  const out: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // ── 形态 a：围栏块 ──
+    const fenceOpen = /^\s*(```|~~~)\s*(\w*)\s*$/.exec(line);
+    if (fenceOpen) {
+      const marker = fenceOpen[1];
+      let close = -1;
+      for (let j = i + 1; j < lines.length; j++) {
+        if (new RegExp(`^\\s*${marker}\\s*$`).test(lines[j])) {
+          close = j;
+          break;
+        }
+      }
+      if (close > i) {
+        const inner = lines.slice(i + 1, close);
+        const firstNonEmpty = inner.find((l) => l.trim() !== "")?.trim() ?? "";
+        const isEnvelope =
+          firstNonEmpty.startsWith("{") &&
+          inner.some((l) => OUTPUT_ENVELOPE_KEYS.test(l));
+        if (isEnvelope) {
+          inc("output-envelope-json-stripped");
+          i = close; // 连同围栏一起跳过
+          continue;
+        }
+        // 非 envelope 围栏：原样透传整块，且不让内部内容进入形态 b 的扫描
+        for (let j = i; j <= close; j++) out.push(lines[j]);
+        i = close;
+        continue;
+      }
+      // 没有配对收尾 → 交给后续 scanLines 的 fence 状态机处理
+      out.push(line);
+      continue;
+    }
+
+    // ── 形态 b：裸块 ──
+    if (line.trim() !== "{") {
+      out.push(line);
+      continue;
+    }
+    let end = -1;
+    let hasEnvelopeKey = false;
+    for (
+      let j = i + 1;
+      j < Math.min(lines.length, i + MAX_ENVELOPE_BLOCK_LINES);
+      j++
+    ) {
+      const cur = lines[j];
+      if (OUTPUT_ENVELOPE_KEYS.test(cur)) hasEnvelopeKey = true;
+      if (/^\s*\}[,;]?\s*$/.test(cur)) {
+        end = j;
+        break;
+      }
+      // 遇到标题说明已经越过块边界，放弃（不吃正文）
+      if (/^\s*#{1,6}\s/.test(cur)) break;
+    }
+    if (hasEnvelopeKey && end > i) {
+      inc("output-envelope-json-stripped");
+      i = end; // 整块跳过（含收尾 `}` 行）
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
 function severityOf(rule: SanitizeRule): "low" | "medium" | "high" {
   switch (rule) {
     case "unclosed-fence-appended":
@@ -332,7 +475,11 @@ function severityOf(rule: SanitizeRule): "low" | "medium" | "high" {
     case "inline-fig-image-stripped":
     case "figure-references-tag-stripped":
     case "figure-tag-stripped":
+    case "bare-figure-token-stripped":
+    case "unresolved-fig-placeholder-stripped":
       return "medium"; // LLM 写错图引用契约，应被 chapter-writer prompt + reviewer 拦
+    case "output-envelope-json-stripped":
+      return "high"; // 结构化输出漏进正文 —— 用户直接看到"报告里有段脚本"
     case "paragraph-segmented":
       return "low"; // 纯排版规整，无内容/安全影响
   }

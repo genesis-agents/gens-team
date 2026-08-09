@@ -90,7 +90,7 @@ describe('ReferencePanel', () => {
       ],
     });
     render(<ReferencePanel citations={[c]} />);
-    expect(screen.getByText('2 处')).toBeInTheDocument();
+    expect(screen.getByText(/文中\s*2\s*处/)).toBeInTheDocument();
   });
 
   it('does not show occurrences badge when empty', () => {
@@ -100,7 +100,9 @@ describe('ReferencePanel', () => {
     expect(screen.queryByText(/处/)).not.toBeInTheDocument();
   });
 
-  it('shows section ids from occurrences', () => {
+  // ★ 2026-08-09 契约变更：不再把内部 section id 暴露给读者。
+  //   原本渲染成「章: dim-8, dim-9」，用户在导出的 PDF 参考文献里直接看到内部 id。
+  it('does not leak internal section ids to the reader', () => {
     const c = makeCitation(1, {
       occurrences: [
         { sectionId: 'sec-1', paragraphIndex: 0, characterOffset: 0 },
@@ -108,8 +110,21 @@ describe('ReferencePanel', () => {
       ],
     });
     render(<ReferencePanel citations={[c]} />);
-    expect(screen.getByText(/章:/)).toBeInTheDocument();
-    expect(screen.getByText(/sec-1/)).toBeInTheDocument();
+    expect(screen.queryByText(/章:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sec-1/)).not.toBeInTheDocument();
+    // 引用次数仍然展示（对读者有意义的信息保留）
+    expect(screen.getByText(/文中\s*2\s*处/)).toBeInTheDocument();
+  });
+
+  // ★ 2026-08-09: 存量报告里混有 0-1 量纲的 credibilityScore（已删除的合成引用
+  //   写的是 0.5），渲染期归一后不再显示成「可信度 0.5」。
+  it('normalizes 0-1 scale credibility score for legacy artifacts', () => {
+    render(
+      <ReferencePanel
+        citations={[makeCitation(1, { credibilityScore: 0.5 })]}
+      />
+    );
+    expect(screen.getByText('可信度 50')).toBeInTheDocument();
   });
 
   it('shows credibility score', () => {

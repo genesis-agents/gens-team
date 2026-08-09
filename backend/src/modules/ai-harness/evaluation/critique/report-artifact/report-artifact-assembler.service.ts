@@ -323,12 +323,24 @@ export class ReportArtifactAssembler {
       if (!figs || figs.length === 0) continue;
       for (const f of figs) {
         // P56-2: alt text + caption 内 ] / [ / ( / ) 转义防 markdown 解析破坏
-        const safeAlt = f.altText
-          .replace(/[\[\]]/g, " ")
-          .replace(/[()]/g, " ")
-          .slice(0, 200);
-        const safeCaption = f.caption.replace(/"/g, "'").slice(0, 300);
-        const block = `\n\n![${safeAlt}](#${f.id} "${safeCaption}")\n`;
+        //
+        // ★ 2026-08-09 根因修（生产 artifact 51b6b494 实证）：**必须一并去掉 `$`**。
+        //   前端渲染链是 remark-math + rehype-katex，`$…$` 被当作行内公式定界符。
+        //   caption "Now it is raising $8bn and buying robots" 里有 2 个 `$`，
+        //   注入后 alt 与 title 各带一个，remark-math 把中间整段（含 `](#fig-…"`）
+        //   吞成公式，图片语法当场散架，用户在 PDF 里看到的就是一行原始
+        //   `![DeepSeek made AI cheap…](#fig-dim-8-8 "…")` 文本。
+        //   实证数据：该 artifact 19 个占位符里只有这 1 个含 `$`，也正好只有它渲染破损。
+        //   注意只处理**注入的 alt/title**；figure.caption 本体不动 —— 它由
+        //   FigureRenderer 以纯文本渲染，`$` 在那里是安全且有意义的。
+        const safeAlt = stripMathDelimiters(
+          f.altText.replace(/[\[\]]/g, " ").replace(/[()]/g, " "),
+        ).slice(0, 200);
+        const safeCaption = stripMathDelimiters(
+          f.caption.replace(/"/g, "'"),
+        ).slice(0, 300);
+        // ★ 2026-08-09: 收尾改成 `\n\n`，占位符独立成段，不与后续正文黏在一起。
+        const block = `\n\n![${safeAlt}](#${f.id} "${safeCaption}")\n\n`;
         let insertOffset = sec.endOffset;
         // 尝试用 referencedBy[0].phrase 做 anchor
         if (f.referencedBy.length > 0) {
@@ -1213,6 +1225,14 @@ export class ReportArtifactAssembler {
     try {
       const u = new URL(url);
       u.hash = "";
+      // ★ 2026-08-09: 协议与 www 前缀归一。
+      //   本函数**只用于 figure.sourceUrl ↔ citation.url 匹配**（两处调用点都在
+      //   buildFigures 内），不参与展示或去重编号。
+      //   citations 侧被 upgradeHttpToHttps 统一升到 https，而 figure.sourceUrl
+      //   来自 findings.source 原样，协议不一致就匹配不上。删掉 host 兜底匹配后
+      //   这会直接导致丢图，所以必须在这里归一。
+      u.protocol = "https:";
+      u.hostname = u.hostname.replace(/^www\./i, "");
       const TRACKER_RE =
         /^(utm_|gclid|fbclid|mc_|ref$|referrer$|share$|_ga$|_gl$|igshid$|yclid$|msclkid$|dclid$)/i;
       const keep: [string, string][] = [];
@@ -1579,19 +1599,19 @@ export class ReportArtifactAssembler {
         }
       }
 
-      // 兜底路径：未被 chapter.figureReferences 选中的 candidates 仍按 dim 追加章节末尾
-      // （兼容 chapter-writer 不输出 figureReferences 时的旧行为，及 LLM 漏选时的兜底）
-      for (let i = 0; i < candidates.length; i++) {
-        if (chapterRefUsed.has(i)) continue;
-        const f = candidates[i];
-        rawAll.push({
-          sourceUrl: f.sourceUrl,
-          imageUrl: f.imageUrl,
-          caption: f.caption,
-          sourcePageOrSection: f.sourcePageOrSection,
-          relevanceHint: f.relevanceHint,
-          fromDimensionId: dimId,
-        });
+      // ★ 2026-08-09 删除兜底追加路径（用户实证：报告配图全是无关人物照）。
+      //   原逻辑把"chapter-writer 没选中的候选"照样追加到章节末尾，于是
+      //   chapter-writer prompt 里的「每章 0-2 张，不强相关就不要硬塞」完全失效
+      //   —— 每个维度抽到的候选图 100% 进报告，LLM 的取舍等于没做。
+      //   现在只保留 chapter.figureReferences 明确选中的图（宁缺勿滥）。
+      //
+      //   兼容性：chapter-writer 完全不输出 figureReferences 的维度将没有配图。
+      //   这是有意为之 —— 与其塞一张没人选过的图，不如不配图。
+      const unusedCount = candidates.length - chapterRefUsed.size;
+      if (unusedCount > 0) {
+        this.logger?.debug?.(
+          `[buildFigures] dim "${r.dimension}": ${unusedCount}/${candidates.length} 张候选图未被 chapter.figureReferences 选中，已丢弃（不再兜底追加）`,
+        );
       }
     }
     // 黑名单过滤（垃圾图 URL）
@@ -1609,28 +1629,26 @@ export class ReportArtifactAssembler {
     const figures: ArtifactFigure[] = [];
     // ★ 2026-05-13 #59 修图片稀少（升级 2026-05-02 五项校验）：
     //   - 加 normalized URL 匹配（去 utm/gclid/末尾 slash 等），治 figure sourceUrl
-    //     与 citation URL 字符串不等价但语义相同的情况；
-    //   - host 匹配作为兜底（旧逻辑保留）；
-    //   - 全部失败时不再 continue 丢弃，而是 push 一个 synthetic citation
-    //     （sourceType=other, credibility=0.5），让 figure 入仓但不污染高可信引用池。
+    //     与 citation URL 字符串不等价但语义相同的情况。
+    //
+    // ★ 2026-08-09 根因修（用户实证：参考文献 [125]-[128] 是图片 CDN 地址）：
+    //   1) 删掉 synthetic citation 兜底。原逻辑在匹配不到引用时 push 一条
+    //      title=图 caption 截 100 字、domain=图片 CDN host 的假引用。这批条目
+    //      是在 buildCitations 之后追加的，**绕过 filterJunkReferences / URL 去重 /
+    //      编号重映射**，然后被写进「## 参考文献」——用户看到的就是
+    //      "[126] 6.5亿…RSI  media.thenextweb.com" 这类条目。
+    //      现在：匹配不到真实来源页引用的图直接丢弃（图没有出处 = 不可引用）。
+    //   2) 删掉 host-only 兜底匹配。同域名不等于同一篇文章，host 匹配会把图
+    //      挂到另一篇文章的引用上，让报告里的 "Source: … [N]" 归因说假话。
     const dropped = {
-      noEvFallbackSynth: 0,
-      noEvHost: 0,
       noEvNorm: 0,
+      noEvUnmatched: 0,
       noImageUrl: 0,
       noSec: 0,
     };
-    // host → citation index 表（fuzzy 匹配兜底）
-    const hostToIndex = new Map<string, number>();
     // normalizedUrl → citation index 表（去 utm / trailing slash）
     const normalizedUrlToIndex = new Map<string, number>();
     for (const c of citations) {
-      try {
-        const host = new URL(c.url).hostname.replace(/^www\./, "");
-        if (!hostToIndex.has(host)) hostToIndex.set(host, c.index);
-      } catch {
-        /* ignore parse error */
-      }
       const norm = this.normalizeUrlForMatch(c.url);
       if (norm && !normalizedUrlToIndex.has(norm)) {
         normalizedUrlToIndex.set(norm, c.index);
@@ -1639,7 +1657,7 @@ export class ReportArtifactAssembler {
     for (let i = 0; i < deduped.length; i++) {
       const f = deduped[i];
       let evIdx = urlToIndex.get(f.sourceUrl);
-      // ★ 1. normalized URL 匹配（去 utm/gclid/末尾 slash）
+      // ★ normalized URL 匹配（去 utm/gclid/末尾 slash）——同一篇文章的不同写法
       if (!evIdx && f.sourceUrl) {
         const norm = this.normalizeUrlForMatch(f.sourceUrl);
         if (norm) {
@@ -1647,52 +1665,14 @@ export class ReportArtifactAssembler {
           if (evIdx) dropped.noEvNorm++;
         }
       }
-      // ★ 2. host 匹配兜底
-      if (!evIdx && f.sourceUrl) {
-        try {
-          const host = new URL(f.sourceUrl).hostname.replace(/^www\./, "");
-          evIdx = hostToIndex.get(host);
-          if (evIdx) dropped.noEvHost++;
-        } catch {
-          /* ignore */
-        }
-      }
       if (!f.imageUrl) {
         dropped.noImageUrl++;
         continue;
       }
-      // ★ 3. 全部失败：push synthetic citation 而非丢图
-      //   （ArtifactFigure.evidenceCitationIndex 是必填字段，没有 citation 就没法落地）
-      //   sourceType=other + credibility=0.5 让 quality scorer 区分这类"补丁来源"。
-      if (!evIdx && f.sourceUrl) {
-        try {
-          const u = new URL(f.sourceUrl);
-          const domain = u.hostname.replace(/^www\./, "");
-          const synthIdx = citations.length + 1;
-          citations.push({
-            index: synthIdx,
-            uuid: `synth-${synthIdx}-${Date.now()}`,
-            title: f.caption.slice(0, 100) || domain,
-            url: f.sourceUrl,
-            domain,
-            accessedAt: new Date().toISOString(),
-            sourceType: "other",
-            credibilityScore: 0.5,
-            occurrences: [],
-          });
-          // 更新 lookup 表，让同 URL 后续 figure 复用
-          urlToIndex.set(f.sourceUrl, synthIdx);
-          const norm = this.normalizeUrlForMatch(f.sourceUrl);
-          if (norm) normalizedUrlToIndex.set(norm, synthIdx);
-          if (!hostToIndex.has(domain)) hostToIndex.set(domain, synthIdx);
-          evIdx = synthIdx;
-          dropped.noEvFallbackSynth++;
-        } catch {
-          /* URL parse 失败 → 真正没法救，跳过 */
-        }
-      }
       if (!evIdx) {
-        // sourceUrl 缺失或解析失败：真的丢
+        // ★ 2026-08-09: 匹配不到**同一篇**来源文章的引用 → 丢图。
+        //   不再 host 模糊匹配（会归错文章），也不再合成假引用（会污染参考文献）。
+        dropped.noEvUnmatched++;
         continue;
       }
       // 找 section（按 dim → section.sourceDimensionId）+ fallback 第一个 dim section
@@ -1731,11 +1711,11 @@ export class ReportArtifactAssembler {
       });
     }
     if (
-      dropped.noEvNorm + dropped.noEvHost + dropped.noEvFallbackSynth > 0 ||
-      dropped.noImageUrl + dropped.noSec > 0
+      dropped.noEvNorm > 0 ||
+      dropped.noEvUnmatched + dropped.noImageUrl + dropped.noSec > 0
     ) {
       this.logger?.warn?.(
-        `[buildFigures] kept ${figures.length}/${deduped.length} | norm-rescued ${dropped.noEvNorm} | host-rescued ${dropped.noEvHost} | synth-rescued ${dropped.noEvFallbackSynth} | dropped noImageUrl=${dropped.noImageUrl} noSec=${dropped.noSec}`,
+        `[buildFigures] kept ${figures.length}/${deduped.length} | norm-rescued ${dropped.noEvNorm} | dropped noCitationMatch=${dropped.noEvUnmatched} noImageUrl=${dropped.noImageUrl} noSec=${dropped.noSec}`,
       );
     }
     return figures;
@@ -2270,6 +2250,14 @@ export class ReportArtifactAssembler {
 }
 
 // ─── helpers ─────────────────────────────────────────────────────
+
+/**
+ * 去掉 `$` —— 注入 markdown 图占位符的 alt/title 专用。
+ * 前端渲染链含 remark-math，`$…$` 会被当行内公式定界符吞掉整段。
+ */
+function stripMathDelimiters(s: string): string {
+  return s.replace(/\$/g, "");
+}
 
 function countWords(s: string, lang: "zh-CN" | "en-US"): number {
   if (lang === "zh-CN") {

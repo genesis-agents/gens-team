@@ -291,7 +291,13 @@ export class StructuralReportAssembler {
     acc: { sanitizerVersion?: string },
     segmentName?: string,
   ): string {
-    const opts: SanitizeOptions = { knownDimNames, segmentName };
+    const opts: SanitizeOptions = {
+      knownDimNames,
+      segmentName,
+      // ★ 2026-08-09: 本 assembler 处理的是**注入图占位符之前**的 raw LLM body，
+      //   此刻出现的 ![](#fig-xxx) 一律是 LLM 照抄 prompt 反面示例的残片。
+      stripFigurePlaceholders: true,
+    };
     const result = sanitizeMarkdownBody(raw, opts);
     acc.sanitizerVersion = result.sanitizerVersion;
     // ★ PR-A8 (2026-05-07): 触发了任意 sanitize rule 时把 appliedRules 汇入 metrics。
