@@ -255,6 +255,50 @@ describe("FigureRelevanceService (v18 双闸)", () => {
       expect(result).toHaveLength(1);
     });
 
+    // ★ 2026-08-09：这条是"没有 vision 模型时报告还能有图"的关键。
+    //   生产核查发现多数账号没配可用 vision 模型；配合 extractor 把 arXiv abs
+    //   解析到 HTML 渲染版（figcaption = "Figure 1: ..."），论文真图表可以
+    //   完全不依赖 Vision 就放行。两块缺一不可。
+    it.each([
+      "Figure 1: Existing evaluations entangle multiple post-training choices",
+      "Figure 3: Selection-score trajectories across valid attempts",
+      "Table 1: Protocol-level comparison of benchmarks across data-synthesis",
+      "Fig. 2: Overview of the multi-agent architecture",
+      "图 4：递归自我改进的收敛区间",
+      "表 2：各机构 GPU 集群规模对照",
+    ])("学术图说前缀直通，无需 Vision：%s", async (caption) => {
+      // visionModelAvailable=false —— 复现"账号没配 vision 模型"的真实生产状态
+      const facade = makeEngineFacade({ visionModelAvailable: false });
+      const svc = new FigureRelevanceService(facade as never);
+      const figures = [
+        makeFigure({
+          type: "photo",
+          imageUrl: "https://arxiv.org/html/2607.25886v1/x1.png",
+          caption,
+        }),
+      ];
+      const result = await svc.filterRelevantFigures(figures, "AI Research");
+      expect(result).toHaveLength(1);
+    });
+
+    it("没有 vision 模型时：强信号图仍放行，模糊图才丢（不是全丢）", async () => {
+      const facade = makeEngineFacade({ visionModelAvailable: false });
+      const svc = new FigureRelevanceService(facade as never);
+      const figures = [
+        makeFigure({
+          imageUrl: "https://cdn.example.com/lead-photo.jpg",
+          caption: "Some ordinary caption for the lead image",
+        }),
+        makeFigure({
+          imageUrl: "https://arxiv.org/html/2607.25886v1/x2.png",
+          caption: "Figure 2: Overview of the co-scientist architecture",
+        }),
+      ];
+      const result = await svc.filterRelevantFigures(figures, "AI Research");
+      expect(result).toHaveLength(1);
+      expect(result[0].imageUrl).toContain("x2.png");
+    });
+
     it("结构化强信号（caption 同时含数字与图表词汇）直通", async () => {
       const facade = makeEngineFacade({ vision: "fail" });
       const svc = new FigureRelevanceService(facade as never);

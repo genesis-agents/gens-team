@@ -77,6 +77,12 @@ type ServicePrivate = {
   extractDimension: (tag: string, attr: string) => number | undefined;
   extractBestSrc: (imgTag: string) => string | null;
   extractHighestResSrcset: (imgTag: string) => string | null;
+  extractArxivId: (url: string) => string | null;
+  resolvePaperHtmlUrl: (
+    url: string,
+  ) => Promise<
+    { kind: "not-paper" } | { kind: "html"; url: string } | { kind: "no-html" }
+  >;
 };
 
 function priv(svc: FigureExtractorService): ServicePrivate {
@@ -1241,5 +1247,95 @@ describe("FigureExtractorService", () => {
       expect(Array.isArray(result)).toBe(true);
     });
   });
-});
+  // ─── 论文源 → HTML 渲染版解析（2026-08-09）────────────────────────────────
+  //
+  // 背景（用户实证 RSI 报告）：arXiv 是报告里信誉最高的一类来源，却一张有效图都
+  // 贡献不了 —— abs 页面只有页脚赞助方 logo，真图在 PDF 里而 extractor 拒 PDF。
+  // 解法是换 URL 而不是解析 PDF。下列 URL 形态与探测顺序来自 2026-08-09 实测。
+  describe("extractArxivId", () => {
+    it.each([
+      ["https://arxiv.org/abs/2607.25886", "2607.25886"],
+      ["https://arxiv.org/abs/2607.25886v2", "2607.25886v2"],
+      ["https://arxiv.org/pdf/2607.25886", "2607.25886"],
+      ["https://arxiv.org/pdf/2607.25886.pdf", "2607.25886"],
+      ["https://arxiv.org/html/2607.25886v1", "2607.25886v1"],
+      ["https://www.arxiv.org/abs/cs.AI/9901001", "cs.AI/9901001"],
+    ])("解析 %s → %s", (url, expected) => {
+      expect(priv(service).extractArxivId(url)).toBe(expected);
+    });
 
+    it.each([
+      "https://example.com/abs/2607.25886",
+      "https://arxiv.org/list/cs.AI/recent",
+      "not-a-url",
+    ])("非论文 URL 返回 null: %s", (url) => {
+      expect(priv(service).extractArxivId(url)).toBeNull();
+    });
+  });
+
+  describe("resolvePaperHtmlUrl", () => {
+    const htmlOk = {
+      ok: true,
+      status: 200,
+      headers: {
+        get: (k: string) => (k === "content-type" ? "text/html" : null),
+      },
+      arrayBuffer: async () => new ArrayBuffer(8),
+    };
+    const notFound = {
+      ok: false,
+      status: 404,
+      headers: { get: () => "text/html" },
+      arrayBuffer: async () => new ArrayBuffer(8),
+    };
+
+    it("非论文源不改 URL、不发探测请求", async () => {
+      const r = await priv(service).resolvePaperHtmlUrl(
+        "https://metr.org/blog/post",
+      );
+      expect(r).toEqual({ kind: "not-paper" });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("arXiv 原生 HTML 可用时用它（实测 2607.25886 → 200）", async () => {
+      mockFetch.mockResolvedValueOnce(htmlOk);
+      const r = await priv(service).resolvePaperHtmlUrl(
+        "https://arxiv.org/abs/2607.25886",
+      );
+      expect(r).toEqual({
+        kind: "html",
+        url: "https://arxiv.org/html/2607.25886",
+      });
+    });
+
+    it("原生 HTML 404 时回落 ar5iv（实测 2506.13131 → ar5iv 200，28 个 figure）", async () => {
+      mockFetch.mockResolvedValueOnce(notFound).mockResolvedValueOnce(htmlOk);
+      const r = await priv(service).resolvePaperHtmlUrl(
+        "https://arxiv.org/abs/2506.13131",
+      );
+      expect(r).toEqual({
+        kind: "html",
+        url: "https://ar5iv.labs.arxiv.org/html/2506.13131",
+      });
+    });
+
+    it("两个都不可用 → no-html（abs 页只有装饰图，必须放弃而不是去抓）", async () => {
+      mockFetch.mockResolvedValue(notFound);
+      const r = await priv(service).resolvePaperHtmlUrl(
+        "https://arxiv.org/abs/1234.56789",
+      );
+      expect(r).toEqual({ kind: "no-html" });
+    });
+
+    it("已经是 HTML 渲染版则直接用，不再探测", async () => {
+      const r = await priv(service).resolvePaperHtmlUrl(
+        "https://arxiv.org/html/2607.25886v1",
+      );
+      expect(r).toEqual({
+        kind: "html",
+        url: "https://arxiv.org/html/2607.25886v1",
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+});

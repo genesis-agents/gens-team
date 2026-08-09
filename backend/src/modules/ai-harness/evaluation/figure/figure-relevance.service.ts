@@ -23,9 +23,18 @@
  *     · 只对 photo 类型判；informational 类型跳过（与 v17 行为一致）
  *
  *   Stage C 信息量（v18 新增，本次修复核心）
- *     · 结构化强信号（URL / caption 明确指向图表）→ 直通，零成本
+ *     · 结构化强信号 → 直通，零成本、不调模型。三类信号：
+ *         - caption 学术图说前缀（"Figure 3:" / "表 1："）—— 置信度最高
+ *         - URL 落在 /charts/ /figures/ 等通用图表目录，或含 fig-3 这类编号
+ *         - caption 同时具备数字与图表词汇
  *     · 其余一律 borderline → **一次 Vision batch 真看图**判是否承载信息
- *     · Vision 不可用 / 失败 → 拒（fail-closed）
+ *     · Vision 不可用 / 失败 → 只丢 borderline（fail-closed），强信号图不受影响
+ *
+ * ★ 降级语义（没有配 vision 模型时）：不是"跳过检测放行全部"，也不是"全部丢弃"，
+ *   而是**只放行强结构信号图**。生产核查（2026-08-09）发现多数账号没有可用的
+ *   vision 模型，所以这条降级路径是常态而非边缘情况。它能成立的前提是
+ *   ai-engine/content/figure 把 arXiv abs 解析到 HTML 渲染版 —— 那里的
+ *   `<figcaption>` 就是 "Figure 1: ..."，强信号自然充足。两处改动互为前提。
  *
  *   Stage D 排序：直通 > Vision 通过；组内按 informationScore 降序
  *
@@ -106,6 +115,20 @@ const FIGURE_URL_PATTERNS: RegExp[] = [
   /\/(charts?|figures?|graphs?|plots?|tables?|diagrams?|infographics?|exhibits?)\//i,
   /(^|[-_/])(fig|figure|chart|graph|plot|exhibit)[-_]?\d+/i,
 ];
+
+/**
+ * 学术图说前缀 —— 最硬的结构信号。
+ *
+ * `<figcaption>` 以 "Figure 3:" / "Table 1." / "图 2：" 开头，是论文排版的强约定：
+ * 这就是一张正式编号的图表，不可能是人物照或装饰图。
+ *
+ * ★ 2026-08-09 加这条的直接动机：多数账号没有配可用的 vision 模型（生产核查），
+ *   Vision 闸门用不了时 borderline 会被全部丢弃。有了这条，论文类来源的真图表
+ *   **不依赖 Vision 也能稳稳放行** —— 与 extractor 把 arXiv abs 解析到 HTML
+ *   渲染版是同一件事的两半，缺一不可。
+ */
+const CAPTION_ACADEMIC_LABEL =
+  /^\s*(figure|fig\.?|table|chart|exhibit|图|表)\s*\.?\s*\d+\s*[:：.、]/i;
 
 /** caption 里的"承载数据"信号：数字 + 单位 / 百分比 / 年份 / 图表词汇 */
 const CAPTION_DATA_SIGNAL = /\d/;
@@ -218,9 +241,11 @@ export class FigureRelevanceService {
    * 以及 caption 同时具备"数据 + 图表词汇"这种不易误判的组合。
    */
   private hasStrongFigureSignal(fig: ExtractedFigure): boolean {
+    const caption = captionOf(fig);
+    // 学术图说前缀（"Figure 3:" / "表 1："）—— 论文排版的强约定，最高置信
+    if (CAPTION_ACADEMIC_LABEL.test(caption)) return true;
     const url = fig.imageUrl ?? "";
     if (FIGURE_URL_PATTERNS.some((re) => re.test(url))) return true;
-    const caption = captionOf(fig);
     return (
       CAPTION_DATA_SIGNAL.test(caption) && CAPTION_FIGURE_VOCAB.test(caption)
     );
@@ -231,6 +256,7 @@ export class FigureRelevanceService {
     const caption = captionOf(fig);
     const url = fig.imageUrl ?? "";
     let score = 0;
+    if (CAPTION_ACADEMIC_LABEL.test(caption)) score += 5;
     if (FIGURE_URL_PATTERNS.some((re) => re.test(url))) score += 4;
     if (CAPTION_FIGURE_VOCAB.test(caption)) score += 3;
     if (/\d+\s*(%|％)/.test(caption)) score += 2;
@@ -265,8 +291,9 @@ export class FigureRelevanceService {
     if (!visionModel) {
       this.logger.error(
         `[figureGate] 未找到可用的 vision 模型（AIModelType.MULTIMODAL 且 supportsVision=true）——` +
-          ` ${borderline.length} 张候选图无法判定，全部丢弃（fail-closed）。` +
-          ` 请在模型配置里启用一个支持图像输入的 MULTIMODAL 模型，否则报告将没有配图。`,
+          ` ${borderline.length} 张"需要看图才能判定"的候选图已丢弃（fail-closed）。` +
+          ` 注意：强结构信号图（学术图说 "Figure N:" / 图表目录 URL）不受影响，仍会放行。` +
+          ` 若报告配图仍偏少，请在模型配置里启用一个支持图像输入的 MULTIMODAL 模型。`,
       );
       return [];
     }

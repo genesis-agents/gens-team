@@ -103,6 +103,21 @@ export class FigureExtractorService {
     timeout: number = 10000,
   ): Promise<ExtractedFigure[]> {
     try {
+      // ★ 2026-08-09: 论文类来源先解析到「带图的 HTML 渲染版」再抓。
+      //   实测（用户报告 RSI）：直接抓 arxiv.org/abs/... 只能刮到页脚赞助方 logo
+      //   （funders/simons-foundation.png 等），真正的 Figure/Table 全在 PDF 里。
+      //   而 arXiv 对多数论文提供 HTML 渲染，图是可直接引用的 PNG，figcaption
+      //   就是 "Figure 1: ..." 学术图说 —— 换个 URL 就能拿到，不需要解析 PDF。
+      const resolution = await this.resolvePaperHtmlUrl(url);
+      if (resolution.kind === "no-html") {
+        // 论文源但没有 HTML 渲染版 → abs 页只有站点装饰图，抓了也是垃圾，直接放弃
+        this.logger.debug(
+          `[extractFiguresFromUrl] paper source without HTML rendering, skipped: ${url}`,
+        );
+        return [];
+      }
+      const fetchUrl = resolution.kind === "html" ? resolution.url : url;
+
       // 通过 ToolRegistry 获取 web-scraper 工具
       const webScraperTool = this.toolRegistry.tryGet("web-scraper");
       if (!webScraperTool) {
@@ -116,7 +131,7 @@ export class FigureExtractorService {
       const toolResult = await withTimeoutFallback(
         webScraperTool.execute(
           {
-            url,
+            url: fetchUrl,
             maxLength: 50000, // 获取更多内容以便提取图片
             returnHtml: true, // 请求返回 HTML（如果工具支持）
           },
@@ -131,7 +146,7 @@ export class FigureExtractorService {
 
       if (!toolResult.success || !toolResult.data) {
         this.logger.debug(
-          `[extractFiguresFromUrl] Failed to fetch ${url}: ${toolResult.error?.message}`,
+          `[extractFiguresFromUrl] Failed to fetch ${fetchUrl}: ${toolResult.error?.message}`,
         );
         return [];
       }
@@ -149,10 +164,10 @@ export class FigureExtractorService {
       // 使用 HTML 内容（如果可用），否则使用 content
       const htmlContent = scraperData.html || scraperData.content || "";
 
-      // 提取图表
-      const figures = this.extractFigures(url, htmlContent);
+      // 提取图表（baseUrl 用实际抓取的 URL，相对路径才解析得对）
+      const figures = this.extractFigures(fetchUrl, htmlContent);
       this.logger.debug(
-        `[extractFiguresFromUrl] Extracted ${figures.length} figures from ${url}`,
+        `[extractFiguresFromUrl] Extracted ${figures.length} figures from ${fetchUrl}`,
       );
 
       // ★ v4.5: 异步校验图片可访问性 + 质量
@@ -163,6 +178,107 @@ export class FigureExtractorService {
         `[extractFiguresFromUrl] Error: ${error instanceof Error ? error.message : String(error)}`,
       );
       return [];
+    }
+  }
+
+  /**
+   * 论文类 URL → 带图的 HTML 渲染版。
+   *
+   * ★ 2026-08-09（用户实证 RSI 报告）：arXiv 是报告里信誉最高的一类来源，却一张
+   *   有效图都贡献不了 —— abs 页面上只有站点装饰（页脚赞助方 logo），真正的
+   *   Figure/Table 在 PDF 里，而 extractor 明确拒 PDF。
+   *
+   *   解法不是去解析 PDF，而是换 URL：arXiv 对论文提供 HTML 渲染，
+   *   图就是可直接引用的 PNG，`<figcaption>` 就是 "Figure 1: ..." 学术图说。
+   *   实测（2026-08-09，取自该报告真实引用）：
+   *     arxiv.org/html/2607.25886           → 200，11 个 <figure>
+   *     arxiv.org/html/2506.13131           → 404（无原生 HTML）
+   *     ar5iv.labs.arxiv.org/html/2506.13131 → 200，28 个 <figure>
+   *     ar5iv.labs.arxiv.org/html/2502.18864 → 200，14 个 <figure>
+   *   所以按 arxiv 原生 HTML → ar5iv 顺序探测，都没有就放弃该来源。
+   *
+   * @returns
+   *   `{ kind: "not-paper" }` 非论文源，照常抓原 URL
+   *   `{ kind: "html", url }` 解析到 HTML 渲染版，抓它
+   *   `{ kind: "no-html" }`   论文源但无 HTML 版 —— 抓 abs 页只会得到装饰图，放弃
+   */
+  private async resolvePaperHtmlUrl(
+    url: string,
+  ): Promise<
+    { kind: "not-paper" } | { kind: "html"; url: string } | { kind: "no-html" }
+  > {
+    const arxivId = this.extractArxivId(url);
+    if (!arxivId) return { kind: "not-paper" };
+
+    // 已经是 HTML 渲染版就直接用，别再探测
+    if (/\/html\//i.test(url)) return { kind: "html", url };
+
+    const candidates = [
+      `https://arxiv.org/html/${arxivId}`,
+      `https://ar5iv.labs.arxiv.org/html/${arxivId}`,
+    ];
+    for (const candidate of candidates) {
+      if (await this.isFetchableHtml(candidate)) {
+        this.logger.debug(
+          `[resolvePaperHtmlUrl] ${url} → ${candidate}（PDF 里的图改从 HTML 渲染版抓）`,
+        );
+        return { kind: "html", url: candidate };
+      }
+    }
+    return { kind: "no-html" };
+  }
+
+  /**
+   * 从 arXiv URL 里抠出论文 id（含可选版本号），非 arXiv 返回 null。
+   * 覆盖 /abs/、/pdf/（含 .pdf 后缀）、/html/ 三种形态，以及老式
+   * 分类前缀 id（如 cs.AI/9901001）。
+   */
+  private extractArxivId(url: string): string | null {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return null;
+    }
+    if (!/(^|\.)arxiv\.org$/i.test(parsed.hostname)) return null;
+    const m = parsed.pathname.match(
+      /^\/(?:abs|pdf|html)\/(.+?)(?:\.pdf)?\/?$/i,
+    );
+    return m ? m[1] : null;
+  }
+
+  /** 轻量探测：URL 是否返回 200 且是 HTML（用于 HTML 渲染版可用性判断） */
+  private async isFetchableHtml(url: string): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          signal: controller.signal,
+          redirect: "follow",
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (compatible; GenesisBot/1.0; +https://gens.team)",
+            Accept: "text/html",
+            // 只要头部即可判断，不拉全文（ar5iv 单页可达数百 KB）
+            Range: "bytes=0-2047",
+          },
+        });
+        // 消费 body 防连接泄漏
+        try {
+          await response.arrayBuffer();
+        } catch {
+          /* ignore */
+        }
+        if (!response.ok && response.status !== 206) return false;
+        const ct = response.headers.get("content-type") ?? "";
+        return ct.includes("html");
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch {
+      return false;
     }
   }
 
