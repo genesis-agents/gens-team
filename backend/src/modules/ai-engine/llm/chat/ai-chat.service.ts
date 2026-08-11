@@ -2517,7 +2517,28 @@ export class AiChatService {
     }
 
     effectiveMaxTokens = effectiveMaxTokens || 4000;
-    effectiveTemperature = effectiveTemperature ?? 0.7;
+
+    // ★ 2026-08-10 修流式 400：与 callAPIWithConfig 同一判据（parity）。
+    //   reasoning 模型硬性拒绝 temperature（发即 INVALID_REQUEST），
+    //   supportsTemperature=false 的模型同理。此前流式路径只做 `?? 0.7` 兜底、
+    //   完全不看 isReasoning / supportsTemperature，于是非流式已经修掉的坑在
+    //   chatStream 上又踩一遍（ask SSE → HTTP 400）。
+    //   注意 taskProfileMapper.mapToParameters 永远返回 number temperature，
+    //   所以必须在这里 gate，不能指望 mapper 给 undefined。
+    const streamIsReasoning =
+      modelConfig.isReasoning || inferIsReasoning(modelConfig.modelId);
+    const streamSupportsTemp = streamIsReasoning
+      ? false
+      : (modelConfig.supportsTemperature ?? true);
+    if (!streamSupportsTemp && effectiveTemperature !== undefined) {
+      this.logger.debug(
+        `[chatStream] Model ${modelConfig.modelId} does not support temperature, ` +
+          `ignoring temperature=${effectiveTemperature}`,
+      );
+    }
+    effectiveTemperature = streamSupportsTemp
+      ? (effectiveTemperature ?? 0.7)
+      : undefined;
 
     // 构建消息
     const fullMessages: ChatMessage[] = [];
@@ -2587,8 +2608,7 @@ export class AiChatService {
         // ★ 约束：DB 显式设了 isReasoning 就用 DB；没设（用户配置时漏标）则按
         //   modelId 启发式兜底。否则 reasoning 模型（gpt-5.x/o1/o3/o4 等）流式会被
         //   发 max_tokens 而非 max_completion_tokens，OpenAI 直接 INVALID_REQUEST。
-        const isReasoning =
-          modelConfig.isReasoning || inferIsReasoning(modelConfig.modelId);
+        const isReasoning = streamIsReasoning;
         const tokenParamName =
           modelConfig.tokenParamName ||
           (isReasoning ? "max_completion_tokens" : "max_tokens");

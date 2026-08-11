@@ -5,7 +5,7 @@ import {
   ChatMessage,
   ensureChatCompletionsPath,
   ensureMessagesPath,
-  reasoningDepthToEffort,
+  safeReasoningEffort,
 } from "../types";
 
 export interface StreamChunk {
@@ -41,6 +41,55 @@ export class AiStreamHandlerService {
 
   constructor(private readonly httpService: HttpService) {}
 
+  /**
+   * 把 axios 错误翻译成"能定位根因"的字符串。
+   *
+   * ★ 2026-08-10：`responseType: "stream"` 下 `error.response.data` 是一条**没人读过
+   *   的可读流**，不排干就只剩 `Request failed with status code 400` —— 上游到底拒了
+   *   哪个参数（temperature / reasoning_effort / stream_options / max_tokens）全丢，
+   *   线上只能靠猜。这里把 status + body 前 500 字带出来。
+   */
+  private async describeHttpError(error: unknown): Promise<string> {
+    const base = error instanceof Error ? error.message : String(error);
+    const response = (
+      error as { response?: { status?: number; data?: unknown } } | undefined
+    )?.response;
+    if (!response) return base;
+    const status = response.status ?? "?";
+    const body = await this.readErrorBody(response.data);
+    return body
+      ? `${base} (HTTP ${status}) upstream: ${body}`
+      : `${base} (HTTP ${status})`;
+  }
+
+  /** 读出错误响应体（stream / string / object 三种形态），失败返回空串 */
+  private async readErrorBody(data: unknown): Promise<string> {
+    if (!data) return "";
+    if (typeof data === "string") return data.slice(0, 500);
+    // 错误响应体也是 stream（responseType: "stream" 对成功/失败一视同仁）
+    if (
+      typeof (data as { [Symbol.asyncIterator]?: unknown })[
+        Symbol.asyncIterator
+      ] === "function"
+    ) {
+      try {
+        let text = "";
+        for await (const chunk of data as AsyncIterable<Buffer | string>) {
+          text += chunk.toString();
+          if (text.length >= 500) break; // 错误体很小，够定位即止
+        }
+        return text.slice(0, 500);
+      } catch {
+        return "";
+      }
+    }
+    try {
+      return JSON.stringify(data).slice(0, 500);
+    } catch {
+      return "";
+    }
+  }
+
   /** 构建流式时延指标 */
   private buildTiming(
     streamStartTime: number,
@@ -75,8 +124,12 @@ export class AiStreamHandlerService {
     // ★ DB 驱动 isReasoning + task profile reasoningDepth → reasoning_effort
     //   不再 hardcode "low"。caller 传 deep → high effort（多步推理任务）；
     //   不传 → 缺省 low（最省 token，避免 CoT 吃光 max_completion_tokens）。
+    // ★ 2026-08-10：用 safeReasoningEffort 而非 reasoningDepthToEffort ——
+    //   caller 显式传 "minimal" 时，不在白名单的模型（gpt-5.x BYOK 变体等）会直接
+    //   INVALID_REQUEST 400。非流式 callOpenAICompatibleAPI 早已走 safe 版，
+    //   流式漏了，属同一坑的两处实现分叉。
     const reasoningParam = isReasoning
-      ? { reasoning_effort: reasoningDepthToEffort(reasoningDepth) }
+      ? { reasoning_effort: safeReasoningEffort(reasoningDepth, modelId) }
       : {};
 
     // 2026-05-10 §2/§4：单源归一化。BYOK 兜底 endpoint（如 deepseek 默认
@@ -191,8 +244,12 @@ export class AiStreamHandlerService {
       );
       yield { content: "", done: true, timing };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`[streamOpenAICompatible] Error: ${errorMsg}`);
+      const errorMsg = await this.describeHttpError(error);
+      this.logger.error(
+        `[streamOpenAICompatible] Error: ${errorMsg} ` +
+          `[model=${modelId}, ${tokenParamName}=${maxTokens}, temperature=${temperature ?? "omitted"}, ` +
+          `isReasoning=${isReasoning}]`,
+      );
       yield { content: "", done: true, error: errorMsg };
     }
   }
@@ -304,8 +361,11 @@ export class AiStreamHandlerService {
       );
       yield { content: "", done: true, timing };
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`[streamAnthropic] Error: ${errorMsg}`);
+      const errorMsg = await this.describeHttpError(error);
+      this.logger.error(
+        `[streamAnthropic] Error: ${errorMsg} ` +
+          `[model=${modelId}, max_tokens=${maxTokens}, temperature=${temperature ?? "omitted"}]`,
+      );
       yield { content: "", done: true, error: errorMsg };
     }
   }

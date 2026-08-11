@@ -178,6 +178,92 @@ describe("AiStreamHandlerService", () => {
       expect(callArgs[1]).toHaveProperty("reasoning_effort", "low");
     });
 
+    it("should downgrade reasoning_effort minimal→low for models that reject minimal", async () => {
+      // ★ 2026-08-10 防回归：流式路径曾直接用 reasoningDepthToEffort，把 "minimal"
+      //   原样发给不支持它的模型（gpt-5.x BYOK 变体等）→ 上游 INVALID_REQUEST 400。
+      //   非流式 callOpenAICompatibleAPI 一直走 safeReasoningEffort，两边必须一致。
+      const mockStream = createMockStream(["data: [DONE]"]);
+
+      mockHttpService.post.mockReturnValueOnce(
+        of({ data: mockStream } as any) as any,
+      );
+
+      for await (const _ of service.streamOpenAICompatible(
+        "https://api.openai.com/v1/chat/completions",
+        "test-key",
+        "gpt-5.4", // 不在 minimal 白名单
+        messages,
+        25000,
+        undefined,
+        "max_completion_tokens",
+        true,
+        "minimal", // ★ caller 显式要 minimal
+      )) {
+        break;
+      }
+
+      const callArgs = (mockHttpService.post as jest.Mock).mock.calls[0];
+      expect(callArgs[1]).toHaveProperty("reasoning_effort", "low");
+    });
+
+    it("should keep reasoning_effort minimal for whitelisted models", async () => {
+      const mockStream = createMockStream(["data: [DONE]"]);
+
+      mockHttpService.post.mockReturnValueOnce(
+        of({ data: mockStream } as any) as any,
+      );
+
+      for await (const _ of service.streamOpenAICompatible(
+        "https://api.openai.com/v1/chat/completions",
+        "test-key",
+        "o4-mini", // 白名单内
+        messages,
+        25000,
+        undefined,
+        "max_completion_tokens",
+        true,
+        "minimal",
+      )) {
+        break;
+      }
+
+      const callArgs = (mockHttpService.post as jest.Mock).mock.calls[0];
+      expect(callArgs[1]).toHaveProperty("reasoning_effort", "minimal");
+    });
+
+    it("should surface upstream status + body on 4xx (error body is a stream)", async () => {
+      // ★ 2026-08-10 防回归：responseType:"stream" 下 error.response.data 是未读的流，
+      //   不排干就只剩 "Request failed with status code 400"，根因（被拒的参数）全丢。
+      const errorBody = createMockStream([
+        '{"error":{"message":"Unsupported value: \'temperature\' does not support 0.7 with this model","code":"unsupported_value"}}',
+      ]);
+      const axiosError = Object.assign(
+        new Error("Request failed with status code 400"),
+        { response: { status: 400, data: errorBody } },
+      );
+      mockHttpService.post.mockImplementationOnce(() => {
+        throw axiosError;
+      });
+
+      const chunks: any[] = [];
+      for await (const chunk of service.streamOpenAICompatible(
+        "https://api.openai.com/v1/chat/completions",
+        "test-key",
+        "gpt-5.4",
+        messages,
+        4000,
+        0.7,
+      )) {
+        chunks.push(chunk);
+      }
+
+      const errorChunk = chunks.find((c) => c.error);
+      expect(errorChunk).toBeDefined();
+      expect(errorChunk.error).toContain("HTTP 400");
+      expect(errorChunk.error).toContain("unsupported_value");
+      expect(errorChunk.error).toContain("temperature");
+    });
+
     it("should NOT add reasoning_effort when isReasoning=false (default)", async () => {
       const mockStream = createMockStream(["data: [DONE]"]);
 
