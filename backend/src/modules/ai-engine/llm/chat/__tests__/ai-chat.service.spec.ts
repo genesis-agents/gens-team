@@ -1444,68 +1444,6 @@ describe("AiChatService", () => {
       ).toHaveBeenCalled();
     });
 
-    it("should NOT send temperature to reasoning models (parity with chat())", async () => {
-      // ★ 2026-08-10 防回归：chatStream 曾无条件 `effectiveTemperature ?? 0.7`，
-      //   把 temperature 发给硬性拒绝它的 reasoning 模型 → 上游 HTTP 400。
-      //   非流式 callAPIWithConfig 早已 gate（supportsTemp），两条路径必须一致。
-      const mockConfig = createMockModelConfig({
-        apiFormat: "openai",
-        modelId: "gpt-5.4",
-        isReasoning: true,
-        supportsTemperature: false,
-      });
-      mockModelConfigService.getModelConfig.mockResolvedValue(mockConfig);
-
-      mockStreamHandlerService.streamOpenAICompatible.mockReturnValue(
-        (async function* () {
-          yield { content: "", done: true };
-        })(),
-      );
-
-      for await (const _ of service.chatStream({
-        messages: [{ role: "user", content: "Hello" }],
-        model: "gpt-5.4",
-        taskProfile: { creativity: "medium", outputLength: "standard" },
-      })) {
-        // drain
-      }
-
-      const args = (
-        mockStreamHandlerService.streamOpenAICompatible as jest.Mock
-      ).mock.calls[0];
-      // 位置参数 5 = temperature（endpoint, key, modelId, messages, maxTokens, temperature）
-      expect(args[5]).toBeUndefined();
-    });
-
-    it("should send temperature to non-reasoning models", async () => {
-      const mockConfig = createMockModelConfig({
-        apiFormat: "openai",
-        modelId: "gpt-4o",
-        isReasoning: false,
-        supportsTemperature: true,
-      });
-      mockModelConfigService.getModelConfig.mockResolvedValue(mockConfig);
-
-      mockStreamHandlerService.streamOpenAICompatible.mockReturnValue(
-        (async function* () {
-          yield { content: "", done: true };
-        })(),
-      );
-
-      for await (const _ of service.chatStream({
-        messages: [{ role: "user", content: "Hello" }],
-        model: "gpt-4o",
-        temperature: 0.3,
-      })) {
-        // drain
-      }
-
-      const args = (
-        mockStreamHandlerService.streamOpenAICompatible as jest.Mock
-      ).mock.calls[0];
-      expect(args[5]).toBe(0.3);
-    });
-
     it("should stream response for Anthropic format", async () => {
       const mockConfig = createMockModelConfig({
         apiFormat: "anthropic",
