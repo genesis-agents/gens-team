@@ -12,7 +12,23 @@ import {
   ToolCategory,
 } from "../../abstractions/tool.interface";
 
-import * as sharp from "sharp";
+import type * as sharpType from "sharp";
+
+/**
+ * 懒加载 sharp —— 实测 require 开销约 8MB（native 绑定），
+ * 只有真正做图片转换时才载入。
+ * 见 2026-08-14 Railway 内存成本治理。
+ */
+let sharpRuntime: typeof sharpType | null = null;
+function sharp(
+  ...args: Parameters<typeof sharpType>
+): ReturnType<typeof sharpType> {
+  if (!sharpRuntime) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    sharpRuntime = require("sharp") as typeof sharpType;
+  }
+  return sharpRuntime(...args);
+}
 
 // ============================================================================
 // Types

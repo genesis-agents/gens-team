@@ -18,7 +18,22 @@ import {
 import { ThemeConfig, LayoutConfig } from "../types/theme-config";
 import { ExportOptions } from "../types/export-options";
 import { APP_CONFIG } from "../../config/app.config";
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
+
+/**
+ * 懒加载 exceljs —— 实测 require 开销约 15MB，只有真正导出 XLSX 时才载入。
+ * 上面降级为 `import type` 后，`ExcelJS.Workbook` / `ExcelJS.Worksheet`
+ * 等类型标注全部照常，仅运行时构造走这里。
+ * 见 2026-08-14 Railway 内存成本治理。
+ */
+let ExcelJSRuntime: typeof ExcelJS | null = null;
+function loadExcelJS(): typeof ExcelJS {
+  if (!ExcelJSRuntime) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    ExcelJSRuntime = require("exceljs") as typeof ExcelJS;
+  }
+  return ExcelJSRuntime;
+}
 
 @Injectable()
 export class XlsxRenderer implements ExportRenderer {
@@ -33,7 +48,7 @@ export class XlsxRenderer implements ExportRenderer {
   ): Promise<Buffer> {
     this.logger.debug("Rendering XLSX...");
 
-    const workbook = new ExcelJS.Workbook();
+    const workbook = new (loadExcelJS().Workbook)();
 
     // 设置工作簿属性
     workbook.creator = content.metadata.author || APP_CONFIG.brand.fullName;

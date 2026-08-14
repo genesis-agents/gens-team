@@ -19,8 +19,20 @@ import { ThemeConfig, LayoutConfig } from "../types/theme-config";
 import { ExportOptions } from "../types/export-options";
 import { APP_CONFIG } from "../../config/app.config";
 import type PptxGenJSType from "pptxgenjs";
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const PptxGenJS: new () => PptxGenJSType = require("pptxgenjs");
+
+/**
+ * 懒加载 pptxgenjs —— 此前虽写成 `import type`，但下面这行是**顶层** require，
+ * 实际仍在启动时加载（约 2.6MB）。改为按需载入。
+ * 见 2026-08-14 Railway 内存成本治理。
+ */
+let PptxGenJSCtor: (new () => PptxGenJSType) | null = null;
+function loadPptxGenJS(): new () => PptxGenJSType {
+  if (!PptxGenJSCtor) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    PptxGenJSCtor = require("pptxgenjs") as new () => PptxGenJSType;
+  }
+  return PptxGenJSCtor;
+}
 
 @Injectable()
 export class PptxRenderer implements ExportRenderer {
@@ -35,6 +47,7 @@ export class PptxRenderer implements ExportRenderer {
   ): Promise<Buffer> {
     this.logger.debug("Rendering PPTX...");
 
+    const PptxGenJS = loadPptxGenJS();
     const pptx = new PptxGenJS();
 
     // 设置演示文稿属性
@@ -581,6 +594,7 @@ export class PptxRenderer implements ExportRenderer {
     title: string,
     options: ExportOptions,
   ): Promise<Buffer> {
+    const PptxGenJS = loadPptxGenJS();
     const pptx = new PptxGenJS();
     pptx.title = title;
     pptx.layout =

@@ -20,8 +20,6 @@ import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
 import { PuppeteerPoolService } from "../../../../../common/browser/puppeteer-pool.service";
 import { APP_CONFIG } from "../../../../../common/config/app.config";
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const PptxGenJS = require("pptxgenjs");
 import {
   PPTDocument,
   PPTTheme,
@@ -43,6 +41,19 @@ import {
 import type PptxGenJSType from "pptxgenjs";
 type PptxInstance = InstanceType<typeof PptxGenJSType>;
 type Slide = ReturnType<PptxInstance["addSlide"]>;
+
+/**
+ * 懒加载 pptxgenjs —— 原为顶层 require，每次进程启动都加载。
+ * 见 2026-08-14 Railway 内存成本治理。
+ */
+let PptxGenJSCtor: (new () => PptxInstance) | null = null;
+function loadPptxGenJS(): new () => PptxInstance {
+  if (!PptxGenJSCtor) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    PptxGenJSCtor = require("pptxgenjs") as new () => PptxInstance;
+  }
+  return PptxGenJSCtor;
+}
 
 // 导出结果
 export interface PPTXExportResult {
@@ -134,6 +145,7 @@ export class SlidesExportService {
     );
 
     const startTime = Date.now();
+    const PptxGenJS = loadPptxGenJS();
     const pptx = new PptxGenJS();
 
     // 1. 设置文档属性
@@ -217,6 +229,7 @@ export class SlidesExportService {
     );
 
     const startTime = Date.now();
+    const PptxGenJS = loadPptxGenJS();
     const pptx = new PptxGenJS();
 
     // 1. 设置文档属性
@@ -328,6 +341,7 @@ export class SlidesExportService {
     );
 
     const startTime = Date.now();
+    const PptxGenJS = loadPptxGenJS();
     const pptx = new PptxGenJS();
 
     // 设置文档属性

@@ -5,16 +5,64 @@ import * as path from "path";
 import * as os from "os";
 import axios from "axios";
 // 使用 legacy 版本，兼容 Node.js 环境（无需 DOMMatrix）
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import type * as pdfjsLibType from "pdfjs-dist/legacy/build/pdf.mjs";
 // ★ 用 @napi-rs/canvas 而非 node-canvas：node-canvas 无法渲染 pdfjs v5 的字体
 //   （浏览器靠 @font-face，node-canvas 没有 → 正文文字画不出来、含图 PDF 抛
 //   "Image or Canvas expected"）。@napi-rs/canvas 是 pdfjs 官方 Node 示例所用，
 //   自带预编译二进制（无需 cairo/pango 系统库），文字与图片均正常光栅化。
-import { createCanvas } from "@napi-rs/canvas";
+import type { createCanvas as createCanvasType } from "@napi-rs/canvas";
 import { ObjectStorageService } from "../../../platform/facade";
 
-// 动态导入sharp以兼容生产环境
-const sharp = require("sharp");
+/**
+ * 懒加载 @napi-rs/canvas —— 实测 require 开销约 21MB（native 绑定），
+ * 只有真正渲染 PDF 缩略图时才载入。
+ * 用同步 require：下面的 NapiCanvasFactory.create() 是 pdfjs 回调的同步方法。
+ * 见 2026-08-14 Railway 内存成本治理。
+ *
+ * 注意返回函数本身而不是包一层转发：createCanvas 是重载函数，
+ * 用 `...args: Parameters<typeof createCanvasType>` 转发只会取到最后一个重载，
+ * 把 2 参数用法和 Canvas 返回类型压塌。
+ */
+let createCanvasFn: typeof createCanvasType | null = null;
+function createCanvas(): typeof createCanvasType {
+  if (!createCanvasFn) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    createCanvasFn = (
+      require("@napi-rs/canvas") as typeof import("@napi-rs/canvas")
+    ).createCanvas;
+  }
+  return createCanvasFn;
+}
+
+/**
+ * 懒加载 pdfjs-dist —— 实测它连同传递依赖约 31.6MB，且**它自己会 require
+ * @napi-rs/canvas**。所以只把 createCanvas 改懒是不够的：顶层 import pdfjs
+ * 依然会把 canvas 一起拉进来（已用 require.cache 实测确认）。两者都懒才有效。
+ * 见 2026-08-14 Railway 内存成本治理。
+ */
+let pdfjsRuntime: typeof pdfjsLibType | null = null;
+function loadPdfjs(): typeof pdfjsLibType {
+  if (!pdfjsRuntime) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    pdfjsRuntime =
+      require("pdfjs-dist/legacy/build/pdf.mjs") as typeof pdfjsLibType;
+  }
+  return pdfjsRuntime;
+}
+
+/**
+ * 懒加载 sharp —— 原来这行注释写着"动态导入"，但它是**顶层** require，
+ * 实际每次进程启动都会加载 native 绑定（约 8MB）。改为真正按需载入。
+ * 见 2026-08-14 Railway 内存成本治理。
+ */
+let sharpRuntime: typeof import("sharp") | null = null;
+function loadSharp(): typeof import("sharp") {
+  if (!sharpRuntime) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    sharpRuntime = require("sharp") as typeof import("sharp");
+  }
+  return sharpRuntime;
+}
 
 /**
  * pdfjs 标准字体目录（base-14 等）。pdfjs v5 在 Node 下必须显式提供
@@ -33,7 +81,7 @@ function resolveStandardFontDataUrl(): string {
  */
 class NapiCanvasFactory {
   create(width: number, height: number) {
-    const canvas = createCanvas(width, height);
+    const canvas = createCanvas()(width, height);
     return { canvas, context: canvas.getContext("2d") };
   }
   reset(
@@ -127,6 +175,7 @@ export class PdfThumbnailService {
       // Convert Buffer to Uint8Array for pdfjs-dist
       const uint8Array = new Uint8Array(pdfData);
       // canvasFactory 在运行时受支持，但该版本 pdfjs 的类型未声明 → cast 绕过。
+      const pdfjsLib = loadPdfjs();
       const loadingTask = pdfjsLib.getDocument({
         data: uint8Array,
         standardFontDataUrl: resolveStandardFontDataUrl(),
@@ -149,7 +198,10 @@ export class PdfThumbnailService {
       const scaledViewport = page.getViewport({ scale });
 
       // 5. 创建canvas
-      const canvas = createCanvas(scaledViewport.width, scaledViewport.height);
+      const canvas = createCanvas()(
+        scaledViewport.width,
+        scaledViewport.height,
+      );
       const context = canvas.getContext("2d");
 
       // 6. 渲染PDF页面到canvas（canvasFactory 已在 getDocument 提供）
@@ -164,7 +216,7 @@ export class PdfThumbnailService {
       const buffer = canvas.toBuffer("image/png");
 
       // 8. 使用sharp优化图片（可选：压缩、调整大小）
-      const optimizedBuffer = await sharp(buffer)
+      const optimizedBuffer = await loadSharp()(buffer)
         .resize(this.thumbnailWidth, this.thumbnailHeight, {
           fit: "inside",
           withoutEnlargement: true,

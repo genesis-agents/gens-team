@@ -25,8 +25,18 @@
 set -e
 
 export NODE_ENV="${NODE_ENV:-production}"
+# ★ 2026-08-14 内存成本治理：本行是堆上限的唯一真相源。
+#   历史问题：Railway Variables 面板曾设 NODE_OPTIONS=--max-old-space-size=3072，
+#   静默覆盖此处默认值，导致代码里的 1536 变成没人在看的死配置（配置漂移）。
+#   V8 拿到 3GB 授权后不会把已释放的页还给 OS，任何一次突发分配都变成永久平台期，
+#   而 Railway 按 RSS 分钟计费 —— 生产实测空载常驻 1.7GB、峰值 2.4GB。
+#   面板变量已删除，改回本行统一管理；要调整请改这里并走 code review，
+#   不要在面板重新加回去，否则漂移会重现。
 export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1536}"
 export PUPPETEER_EXECUTABLE_PATH="${PUPPETEER_EXECUTABLE_PATH:-/usr/bin/chromium}"
+# 浏览器空闲多久后自动关闭释放内存（配合 PuppeteerPoolService 空闲扫描）。
+# 设为 0 可禁用，回到"拉起后常驻到进程退出"的旧行为。
+export PUPPETEER_IDLE_TIMEOUT_MS="${PUPPETEER_IDLE_TIMEOUT_MS:-300000}"
 
 echo "=========================================="
 echo "Starting ${BRAND_FULL_NAME:-gens.team} Backend"

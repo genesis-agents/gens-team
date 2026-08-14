@@ -11,7 +11,20 @@ import {
   ToolCategory,
 } from "../../abstractions/tool.interface";
 
-import Tesseract from "tesseract.js";
+import type TesseractType from "tesseract.js";
+
+/**
+ * 懒加载 tesseract.js —— 只有真正做 OCR 时才载入。
+ * 见 2026-08-14 Railway 内存成本治理。
+ */
+let TesseractRuntime: typeof TesseractType | null = null;
+function loadTesseract(): typeof TesseractType {
+  if (!TesseractRuntime) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    TesseractRuntime = require("tesseract.js") as typeof TesseractType;
+  }
+  return TesseractRuntime;
+}
 
 // ============================================================================
 // Types
@@ -343,7 +356,7 @@ export class OCRRecognitionTool extends BaseTool<
       const imageSource = image.url || image.base64 || image.path || "";
 
       // 执行 OCR 识别
-      const result = await Tesseract.recognize(imageSource, language, {
+      const result = await loadTesseract().recognize(imageSource, language, {
         logger: (m) => {
           if (m.status === "recognizing text") {
             this.logger.debug(

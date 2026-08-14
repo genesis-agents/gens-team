@@ -1,5 +1,23 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { JSDOM } from "jsdom";
+import type { JSDOM as JSDOMClass } from "jsdom";
+
+/**
+ * 懒加载 jsdom —— 实测 require 开销约 31MB，空载进程不应为它付内存。
+ * 见 2026-08-14 Railway 内存成本治理。
+ *
+ * 这里用同步 require 而非 `await import()`：本文件的
+ * detectMetaRefreshRedirect() 是同步公开方法（1 个生产调用方 + 15 处测试断言），
+ * 改成 async 会把签名变更扩散到整条调用链，收益不变而风险变大。
+ * 同步懒加载对调用方零影响，且与 pptx.renderer.ts 既有写法一致。
+ */
+let JSDOMCtor: typeof JSDOMClass | null = null;
+function loadJSDOM(): typeof JSDOMClass {
+  if (!JSDOMCtor) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    JSDOMCtor = (require("jsdom") as typeof import("jsdom")).JSDOM;
+  }
+  return JSDOMCtor;
+}
 
 /**
  * Meta Refresh 重定向检测结果
@@ -55,6 +73,7 @@ export class NewsExtractorService {
    */
   detectMetaRefreshRedirect(html: string, baseUrl: string): MetaRefreshResult {
     try {
+      const JSDOM = loadJSDOM();
       const dom = new JSDOM(html, { url: baseUrl });
       const doc = dom.window.document;
 
@@ -129,6 +148,7 @@ export class NewsExtractorService {
   async extractNews(html: string, url: string): Promise<NewsExtractionResult> {
     this.logger.log(`Extracting news content from: ${url}`);
 
+    const JSDOM = loadJSDOM();
     const dom = new JSDOM(html, {
       url,
       pretendToBeVisual: true,

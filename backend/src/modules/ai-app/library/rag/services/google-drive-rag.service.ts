@@ -11,7 +11,20 @@ import { KnowledgeBaseStatus } from "@prisma/client";
 import { OAuth2Client } from "google-auth-library";
 import { drive, drive_v3 } from "@googleapis/drive";
 import { SyncResult, GoogleDriveFile } from "@/modules/ai-harness/facade";
-import * as mammoth from "mammoth";
+import type * as mammothType from "mammoth";
+
+/**
+ * 懒加载 mammoth —— 只有真正解析 .docx 时才载入。
+ * 见 2026-08-14 Railway 内存成本治理。
+ */
+let mammothRuntime: typeof mammothType | null = null;
+function loadMammoth(): typeof mammothType {
+  if (!mammothRuntime) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    mammothRuntime = require("mammoth") as typeof mammothType;
+  }
+  return mammothRuntime;
+}
 
 // Supported MIME types for document processing
 const SUPPORTED_MIME_TYPES: Record<string, string> = {
@@ -537,7 +550,7 @@ export class GoogleDriveRAGService {
    */
   private async extractDocxContent(buffer: Buffer): Promise<string> {
     try {
-      const result = await mammoth.extractRawText({ buffer });
+      const result = await loadMammoth().extractRawText({ buffer });
       return result.value;
     } catch (error) {
       this.logger.warn(`Failed to extract DOCX content: ${error}`);

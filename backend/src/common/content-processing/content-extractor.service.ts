@@ -2,10 +2,25 @@ import { Injectable, Logger, Optional } from "@nestjs/common";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
 import { YoutubeService } from "../../modules/ai-engine/content/fetch/youtube.service";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import type * as pdfjsLibType from "pdfjs-dist/legacy/build/pdf.mjs";
 import { MinerUService } from "./mineru.service";
 import { AdvancedExtractorService } from "./advanced-extractor.service";
 import { APP_CONFIG } from "../config/app.config";
+
+/**
+ * 懒加载 pdfjs-dist —— 实测连同传递依赖约 31.6MB（还会顺带拉入
+ * @napi-rs/canvas），只有真正解析 PDF 时才载入。
+ * 见 2026-08-14 Railway 内存成本治理。
+ */
+let pdfjsRuntime: typeof pdfjsLibType | null = null;
+function loadPdfjs(): typeof pdfjsLibType {
+  if (!pdfjsRuntime) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    pdfjsRuntime =
+      require("pdfjs-dist/legacy/build/pdf.mjs") as typeof pdfjsLibType;
+  }
+  return pdfjsRuntime;
+}
 
 /**
  * PDF 提取选项
@@ -585,6 +600,7 @@ export class ContentExtractorService {
     try {
       const uint8Array = new Uint8Array(buffer);
 
+      const pdfjsLib = loadPdfjs();
       const loadingTask = pdfjsLib.getDocument({
         data: uint8Array,
         useSystemFonts: true,

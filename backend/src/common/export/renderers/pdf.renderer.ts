@@ -23,10 +23,24 @@ import {
 import { ThemeConfig, LayoutConfig } from "../types/theme-config";
 import { ExportOptions } from "../types/export-options";
 import { PDFOptions } from "puppeteer";
-import * as PDFDocument from "pdfkit";
+import type * as PDFDocument from "pdfkit";
 import { accessSync, constants as fsConstants } from "fs";
 import { WysiwygRenderService } from "../services/wysiwyg-render.service";
 import { normalizeMarkdownSlug } from "../../../modules/ai-engine/content/markdown/slug-normalize.util";
+
+/**
+ * 懒加载 pdfkit —— 实测 require 开销约 22MB，只有真正导出 PDF 时才载入。
+ * 上面的 import 已降级为 `import type`，所以 `typeof PDFDocument` 类型标注不变，
+ * 仅运行时构造走这里。见 2026-08-14 Railway 内存成本治理。
+ */
+let PDFDocumentCtor: typeof PDFDocument | null = null;
+function loadPDFDocument(): typeof PDFDocument {
+  if (!PDFDocumentCtor) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    PDFDocumentCtor = require("pdfkit") as typeof PDFDocument;
+  }
+  return PDFDocumentCtor;
+}
 
 @Injectable()
 export class PdfRenderer implements ExportRenderer {
@@ -127,7 +141,8 @@ export class PdfRenderer implements ExportRenderer {
   ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       try {
-        const doc = new PDFDocument({
+        const PDFDocumentImpl = loadPDFDocument();
+        const doc = new PDFDocumentImpl({
           size: this.mapPageSize(layout.pageSize).toUpperCase() as
             | "A4"
             | "A3"

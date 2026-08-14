@@ -1,6 +1,20 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { JSDOM } from "jsdom";
+import type { JSDOM as JSDOMClass } from "jsdom";
 import { Readability } from "@mozilla/readability";
+
+/**
+ * 懒加载 jsdom —— 实测 require 开销约 31MB（backend 依赖里最大的一笔）。
+ * 只有真正解析 HTML 时才载入，空载进程不为它付内存。
+ * 见 2026-08-14 Railway 内存成本治理。
+ */
+let JSDOMCtor: typeof JSDOMClass | null = null;
+async function loadJSDOM(): Promise<typeof JSDOMClass> {
+  if (!JSDOMCtor) {
+    const mod = await import("jsdom");
+    JSDOMCtor = mod.JSDOM;
+  }
+  return JSDOMCtor;
+}
 
 /**
  * 提取结果数据结构
@@ -132,6 +146,9 @@ export class AdvancedExtractorService {
     url: string,
     timeout: number,
   ): Promise<ExtractionResult> {
+    // Promise executor 是同步回调，必须在进入前把 JSDOM 载入好
+    const JSDOM = await loadJSDOM();
+
     return new Promise((resolve, reject) => {
       const timeoutHandle = setTimeout(
         () => reject(new Error("Readability parsing timeout")),
@@ -190,6 +207,7 @@ export class AdvancedExtractorService {
     html: string,
     url: string,
   ): Promise<ExtractionResult> {
+    const JSDOM = await loadJSDOM();
     const dom = new JSDOM(html, {
       url: url,
       pretendToBeVisual: true,
@@ -343,6 +361,7 @@ export class AdvancedExtractorService {
       .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "");
 
     // 简单的DOM解析
+    const JSDOM = await loadJSDOM();
     const dom = new JSDOM(cleaned, { url });
     const doc = dom.window.document;
 
