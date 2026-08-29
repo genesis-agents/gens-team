@@ -10,14 +10,14 @@ pydantic-settings==2.6.0
 
 # HTTP Client
 httpx==0.27.2
-aiohttp==3.11.2
+aiohttp==3.14.1
 
 # AI/ML Libraries
 openai==1.54.4
 anthropic==0.39.0
 
 # Environment & Configuration
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 
 # Cloud Services
 google-cloud-secret-manager==2.20.2
@@ -26,4 +26,4 @@ google-cloud-secret-manager==2.20.2
 loguru==0.7.2
 
 # Data Processing
-python-multipart==0.0.20
+python-multipart==0.0.31
