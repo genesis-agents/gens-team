@@ -97,7 +97,7 @@
     "cron-parser": "^4.9.0",
     "docx": "^9.5.1",
     "duck-duck-scrape": "^2.2.7",
-    "echarts": "^6.0.0",
+    "echarts": "^6.1.0",
     "exceljs": "^4.4.0",
     "fontkit": "^2.0.4",
     "google-auth-library": "^9.0.0",
