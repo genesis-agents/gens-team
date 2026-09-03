@@ -31,7 +31,7 @@
     "@remotion/player": "4.0.427",
     "@tanstack/react-query": "^5.28.0",
     "@tanstack/react-virtual": "^3.13.12",
-    "@tiptap/core": "3.20.2",
+    "@tiptap/core": "3.31.2",
     "@tiptap/extension-code-block-lowlight": "3.20.2",
     "@tiptap/extension-gapcursor": "3.20.2",
     "@tiptap/extension-highlight": "3.20.2",
@@ -108,7 +108,7 @@
   },
   "overrides": {
     "pdfjs-dist": "^5.4.394",
-    "@tiptap/core": "3.20.2",
+    "@tiptap/core": "3.31.2",
     "@tiptap/pm": "3.20.2",
     "@tiptap/extension-bold": "3.20.2",
     "@tiptap/extension-code": "3.20.2",
